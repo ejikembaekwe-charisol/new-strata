@@ -7,7 +7,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 1.25rem 2rem;
-    background: rgba(5, 5, 5, 0.7);
+    background: var(--nav-bg);
     backdrop-filter: blur(12px);
     z-index: 1000;
     border-bottom: 1px solid var(--border);
@@ -94,8 +94,8 @@
 }
 
 .nav-cta {
-    background: #fff;
-    color: #000;
+    background: var(--text-primary);
+    color: var(--bg);
     padding: 0.5rem 1.25rem;
     border-radius: 6px;
     font-size: 0.9rem;
@@ -252,7 +252,7 @@
 
 .btn-secondary {
     background: transparent;
-    color: white;
+    color: var(--text-primary);
     border: 1px solid var(--border-bright);
 }
 
@@ -389,10 +389,10 @@
 
 /* Live Sync Demo */
 .demo-container {
-    background: #000;
+    background: var(--bg-secondary);
     padding: 2rem;
     border-radius: 20px;
-    border: 1px solid var(--border-bright);
+    border: 1px solid var(--border);
     position: relative;
 }
 
@@ -415,7 +415,7 @@
 }
 
 .sync-window {
-    background: #0a0a0a;
+    background: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.5rem;
@@ -440,12 +440,12 @@
 
 /* Code Block */
 .code-block {
-    background: #0a0a0a;
+    background: var(--bg-tertiary);
     padding: 2rem;
     border-radius: 12px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.9rem;
-    color: #d1d5db;
+    color: var(--text-primary);
     border: 1px solid var(--border);
     overflow-x: auto;
 }
@@ -550,7 +550,7 @@
     flex-direction: column;
     overflow: hidden;
     animation: panelIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.6);
+    box-shadow: var(--shadow-modal);
 }
 
 @keyframes panelIn {

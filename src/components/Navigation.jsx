@@ -64,7 +64,7 @@ const Navigation = () => {
                 position: 'absolute', top: 'calc(100% + 12px)', right: 0,
                 background: 'var(--bg-secondary)', border: '1px solid var(--border)',
                 borderRadius: '12px', padding: '0.375rem',
-                minWidth: '200px', boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                minWidth: '200px', boxShadow: 'var(--shadow-dropdown)',
                 zIndex: 2000, animation: 'panelIn 0.2s ease',
               }}>
                 {/* User info */}
