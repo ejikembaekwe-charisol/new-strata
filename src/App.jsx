@@ -18,6 +18,9 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
+import Generator from './pages/Generator';
+import SharedProject from './pages/SharedProject';
+import ForgotPassword from './pages/ForgotPassword';
 
 // Auth Guard Component
 const ProtectedRoute = ({ children }) => {
@@ -31,7 +34,7 @@ const ProtectedRoute = ({ children }) => {
 
 function AppInner() {
   const location = useLocation();
-  const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password';
   const isAppPage = location.pathname.startsWith('/projects/');
 
   return (
@@ -43,16 +46,23 @@ function AppInner() {
         <Route path="/designers" element={<Designers />} />
         <Route path="/design-teams" element={<DesignTeams />} />
         <Route path="/explore" element={<Explore />} />
+        <Route path="/explore/:id" element={<SharedProject />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/vibe-coders" element={<VibeCoders />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         
         {/* Protected App Routes */}
         <Route path="/projects" element={
           <ProtectedRoute>
             <Projects />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/generate" element={
+          <ProtectedRoute>
+            <Generator />
           </ProtectedRoute>
         } />
         <Route path="/projects/:id" element={

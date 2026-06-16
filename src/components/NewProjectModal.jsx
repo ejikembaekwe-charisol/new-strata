@@ -1,39 +1,39 @@
 import React, { useState, useRef } from 'react';
-import { extractColorsFromImage, parseBrandText } from '../utils/colorExtract';
-
-const ACCENT_COLORS = ['#FC0694', '#3B82F6', '#22C55E', '#F59E0B', '#8B5CF6', '#EF4444'];
-
-const TONE_OPTIONS = ['Bold', 'Minimal', 'Playful', 'Corporate', 'Friendly', 'Technical', 'Luxury', 'Warm', 'Energetic', 'Calm'];
+import { useNavigate } from 'react-router-dom';
+import { extractColorsFromImage, parseBrandText, parseJsonTokens } from '../utils/colorExtract';
 
 const initialData = {
   title: '',
   description: '',
   visibility: 'private',
-  color: '#FC0694',
+  color: '#FC0694', // default fallback project banner color
   websiteUrl: '',
   figmaUrl: '',
   brand: {
     logo: null,
     logoPreview: null,
-    primaryColor: '#FC0694',
-    secondaryColor: '#1A1A24',
-    accentColor: '#8B5CF6',
+    primaryColor: null,
+    secondaryColor: null,
+    accentColor: null,
     headingFont: 'Outfit',
     bodyFont: 'Inter',
     toneKeywords: [],
     guidelinesDoc: null,
   },
   tokens: {
-    importMethod: 'json',
+    importMethod: 'json', // 'json' (text paste) or 'file' (upload)
     jsonContent: '',
+    jsonFileName: '',
   },
 };
 
 export default function NewProjectModal({ onClose, onCreate }) {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [data, setData] = useState(initialData);
   const logoRef = useRef();
   const docRef = useRef();
+  const jsonFileRef = useRef();
 
   const update = (key, value) => setData(prev => ({ ...prev, [key]: value }));
   const updateBrand = (key, value) => setData(prev => ({ ...prev, brand: { ...prev.brand, [key]: value } }));
@@ -53,9 +53,12 @@ export default function NewProjectModal({ onClose, onCreate }) {
     // Infer colors from logo
     const colors = await extractColorsFromImage(file);
     if (colors.extracted) {
-      updateBrand('primaryColor', colors.primaryColor);
-      updateBrand('secondaryColor', colors.secondaryColor);
-      updateBrand('accentColor', colors.accentColor);
+      if (colors.primaryColor) {
+        updateBrand('primaryColor', colors.primaryColor);
+        update('color', colors.primaryColor);
+      }
+      if (colors.secondaryColor) updateBrand('secondaryColor', colors.secondaryColor);
+      if (colors.accentColor) updateBrand('accentColor', colors.accentColor);
     }
   };
 
@@ -69,7 +72,10 @@ export default function NewProjectModal({ onClose, onCreate }) {
       const text = await file.text();
       const brandData = parseBrandText(text);
       if (brandData.extracted) {
-        if (brandData.primaryColor) updateBrand('primaryColor', brandData.primaryColor);
+        if (brandData.primaryColor) {
+          updateBrand('primaryColor', brandData.primaryColor);
+          update('color', brandData.primaryColor);
+        }
         if (brandData.secondaryColor) updateBrand('secondaryColor', brandData.secondaryColor);
         if (brandData.accentColor) updateBrand('accentColor', brandData.accentColor);
         if (brandData.headingFont) updateBrand('headingFont', brandData.headingFont);
@@ -81,19 +87,56 @@ export default function NewProjectModal({ onClose, onCreate }) {
     }
   };
 
-  const handleCreate = () => {
-    onCreate?.(data);
-    onClose();
+  const handleJsonTextChange = (text) => {
+    updateTokens('jsonContent', text);
+    const colors = parseJsonTokens(text);
+    if (colors.extracted) {
+      if (colors.primaryColor) {
+        updateBrand('primaryColor', colors.primaryColor);
+        update('color', colors.primaryColor);
+      }
+      if (colors.secondaryColor) updateBrand('secondaryColor', colors.secondaryColor);
+      if (colors.accentColor) updateBrand('accentColor', colors.accentColor);
+    }
   };
+
+  const handleJsonFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    updateTokens('jsonFileName', file.name);
+
+    try {
+      const text = await file.text();
+      updateTokens('jsonContent', text);
+
+      const colors = parseJsonTokens(text);
+      if (colors.extracted) {
+        if (colors.primaryColor) {
+          updateBrand('primaryColor', colors.primaryColor);
+          update('color', colors.primaryColor);
+        }
+        if (colors.secondaryColor) updateBrand('secondaryColor', colors.secondaryColor);
+        if (colors.accentColor) updateBrand('accentColor', colors.accentColor);
+      }
+    } catch (err) {
+      console.error("Failed to read JSON file", err);
+      alert("Could not read JSON file.");
+    }
+  };
+
 
   const canAdvanceStep1 = data.title.trim().length > 0;
   const nextStep = () => {
-    if (step === 3) return handleCreate();
+    if (step === 2) {
+      navigate('/projects/generate', { state: { brandData: data } });
+      onClose();
+      return;
+    }
     setStep(s => s + 1);
   };
   const prevStep = () => setStep(s => s - 1);
 
-  const stepLabels = ['Project identity', 'Context intake', 'Final review'];
+  const stepLabels = ['Project identity', 'Context intake'];
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -105,7 +148,6 @@ export default function NewProjectModal({ onClose, onCreate }) {
             <p className="modal-subtitle">
               {step === 1 && 'Name your project and set the base style.'}
               {step === 2 && 'Provide any context you have—website, Figma, or brand assets.'}
-              {step === 3 && "Review the captured context before creating."}
             </p>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -125,7 +167,7 @@ export default function NewProjectModal({ onClose, onCreate }) {
                   <div className="step-dot">{isDone ? '✓' : n}</div>
                   <span className="step-label">{label}</span>
                 </div>
-                {i < 2 && <div className={`step-connector ${isDone ? 'done' : ''}`} />}
+                {i < stepLabels.length - 1 && <div className={`step-connector ${isDone ? 'done' : ''}`} />}
               </React.Fragment>
             );
           })}
@@ -158,28 +200,12 @@ export default function NewProjectModal({ onClose, onCreate }) {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Visibility</label>
-                  <select className="form-input" value={data.visibility} onChange={e => update('visibility', e.target.value)}>
-                    <option value="private">Private (Restricted)</option>
-                    <option value="public">Public (Open)</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Accent color</label>
-                  <div className="color-swatches" style={{ gap: '0.4rem' }}>
-                    {ACCENT_COLORS.map(c => (
-                      <button
-                        key={c}
-                        className={`color-swatch ${data.color === c ? 'selected' : ''}`}
-                        style={{ background: c, width: '20px', height: '20px' }}
-                        onClick={() => update('color', c)}
-                      />
-                    ))}
-                    <input type="color" value={data.color} onChange={e => update('color', e.target.value)} style={{ width: '20px', height: '20px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
-                  </div>
-                </div>
+              <div className="form-group">
+                <label className="form-label">Visibility</label>
+                <select className="form-input" value={data.visibility} onChange={e => update('visibility', e.target.value)}>
+                  <option value="private">Private (Restricted)</option>
+                  <option value="public">Public (Open)</option>
+                </select>
               </div>
             </div>
           )}
@@ -244,78 +270,88 @@ export default function NewProjectModal({ onClose, onCreate }) {
               </div>
 
               <div className="form-group">
-                <label className="form-label">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}><path d="M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h14a2 2 0 002-2zM7 10h4m-4 4h4m4-4h.01M15 14h.01"/></svg>
-                  JSON Tokens Context (Optional)
-                </label>
-                <textarea 
-                  className="form-textarea"
-                  placeholder='Paste tokens.json content here (e.g. { "color": { "primary": "#FC0694" } })'
-                  value={data.tokens.jsonContent}
-                  onChange={e => updateTokens('jsonContent', e.target.value)}
-                  style={{ height: '80px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Extracted colors (Review & adjust)</label>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  {['primaryColor', 'secondaryColor', 'accentColor'].map(key => (
-                    <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-tertiary)', padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                      <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: data.brand[key] }} />
-                      <input type="color" value={data.brand[key]} onChange={e => updateBrand(key, e.target.value)} style={{ width: '0', height: '0', visibility: 'hidden', position: 'absolute' }} id={key} />
-                      <label htmlFor={key} style={{ fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>{data.brand[key].toUpperCase()}</label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── STEP 3: Review ── */}
-          {step === 3 && (
-            <div className="modal-section">
-              <div style={{ background: 'var(--bg-tertiary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: data.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.5rem' }}>
-                    {data.title[0]}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2h14a2 2 0 002-2zM7 10h4m-4 4h4m4-4h.01M15 14h.01"/></svg>
+                    JSON Tokens Context (Optional)
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--bg-tertiary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                    <button
+                      type="button"
+                      onClick={() => updateTokens('importMethod', 'json')}
+                      style={{
+                        background: data.tokens.importMethod === 'json' ? 'var(--accent)' : 'none',
+                        color: data.tokens.importMethod === 'json' ? '#fff' : 'var(--text-secondary)',
+                        border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500
+                      }}
+                    >
+                      Paste Text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateTokens('importMethod', 'file')}
+                      style={{
+                        background: data.tokens.importMethod === 'file' ? 'var(--accent)' : 'none',
+                        color: data.tokens.importMethod === 'file' ? '#fff' : 'var(--text-secondary)',
+                        border: 'none', borderRadius: '4px', padding: '0.2rem 0.5rem', fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500
+                      }}
+                    >
+                      Upload File
+                    </button>
                   </div>
+                </div>
+
+                {data.tokens.importMethod === 'json' ? (
+                  <textarea 
+                    className="form-textarea"
+                    placeholder='Paste tokens.json content here (e.g. { "color": { "primary": "#FC0694" } })'
+                    value={data.tokens.jsonContent}
+                    onChange={e => handleJsonTextChange(e.target.value)}
+                    style={{ height: '80px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}
+                  />
+                ) : (
                   <div>
-                    <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{data.title}</h3>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{data.visibility.toUpperCase()} PROJECT</p>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div style={{ fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>Website</span>
-                    <span style={{ color: data.websiteUrl ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{data.websiteUrl || 'Not provided'}</span>
-                  </div>
-                  <div style={{ fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>Figma</span>
-                    <span style={{ color: data.figmaUrl ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{data.figmaUrl ? 'Connected' : 'Not provided'}</span>
-                  </div>
-                  <div style={{ fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>Assets</span>
-                    <span style={{ color: 'var(--text-primary)' }}>
-                      {[data.brand.logo && 'Logo', data.brand.guidelinesDoc && 'Guidelines', data.tokens.jsonContent && 'JSON Tokens'].filter(Boolean).join(', ') || 'None'}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.25rem' }}>Colors</span>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      {[data.brand.primaryColor, data.brand.secondaryColor, data.brand.accentColor].map((c, i) => (
-                        <div key={i} style={{ width: '12px', height: '12px', borderRadius: '2px', background: c }} />
-                      ))}
+                    <div 
+                      className="upload-zone compact" 
+                      onClick={() => jsonFileRef.current.click()} 
+                      style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed var(--border)', borderRadius: '8px', cursor: 'pointer' }}
+                    >
+                      <span className="upload-text" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        {data.tokens.jsonFileName ? `✓ ${data.tokens.jsonFileName}` : 'Click to upload tokens.json file'}
+                      </span>
                     </div>
+                    <input 
+                      ref={jsonFileRef} 
+                      type="file" 
+                      accept=".json" 
+                      style={{ display: 'none' }} 
+                      onChange={handleJsonFileChange} 
+                    />
+                  </div>
+                )}
+              </div>
+
+              {!!(data.brand.primaryColor || data.brand.secondaryColor || data.brand.accentColor) && (
+                <div className="form-group">
+                  <label className="form-label">Extracted colors (Review & adjust)</label>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    {['primaryColor', 'secondaryColor', 'accentColor'].map(key => {
+                      const val = data.brand[key];
+                      if (!val) return null;
+                      return (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--bg-tertiary)', padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: val }} />
+                          <input type="color" value={val} onChange={e => updateBrand(key, e.target.value)} style={{ width: '0', height: '0', visibility: 'hidden', position: 'absolute' }} id={key} />
+                          <label htmlFor={key} style={{ fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>{val.toUpperCase()}</label>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
-                Strata will now structure this context into your Brand Bible.
-              </p>
+              )}
             </div>
           )}
+
         </div>
 
         {/* Footer */}
@@ -330,7 +366,7 @@ export default function NewProjectModal({ onClose, onCreate }) {
             onClick={nextStep}
             disabled={step === 1 && !canAdvanceStep1}
           >
-            {step === 3 ? 'Create project' : 'Continue'}
+            {step === 2 ? 'Create & Generate' : 'Continue'}
           </button>
         </div>
       </div>

@@ -124,3 +124,47 @@ export function parseBrandText(text) {
   result.extracted = !!(hexes.length || result.headingFont || result.toneKeywords.length);
   return result;
 }
+
+/**
+ * Parse JSON tokens to extract primary, secondary, and accent colors.
+ */
+export function parseJsonTokens(text) {
+  const result = {
+    primaryColor: null,
+    secondaryColor: null,
+    accentColor: null,
+    extracted: false,
+  };
+
+  if (!text) return result;
+
+  try {
+    const data = JSON.parse(text);
+    
+    // Support Strata format: { Color: [ { name, value, type }, ... ] }
+    if (data && data.Color && Array.isArray(data.Color)) {
+      const primary = data.Color.find(t => t.name === 'color.primary')?.value;
+      const secondary = data.Color.find(t => t.name === 'color.secondary')?.value;
+      const accent = data.Color.find(t => t.name === 'color.accent')?.value;
+      if (primary) result.primaryColor = primary;
+      if (secondary) result.secondaryColor = secondary;
+      if (accent) result.accentColor = accent;
+    } else {
+      // General JSON recursive or regex search for hex colors
+      const hexes = [...new Set((text.match(/#[0-9A-Fa-f]{6}\b/g) || []))];
+      if (hexes[0]) result.primaryColor = hexes[0];
+      if (hexes[1]) result.secondaryColor = hexes[1];
+      if (hexes[2]) result.accentColor = hexes[2];
+    }
+    result.extracted = !!(result.primaryColor || result.secondaryColor || result.accentColor);
+  } catch (e) {
+    // Graceful fallback to regex parsing if JSON is malformed
+    const hexes = [...new Set((text.match(/#[0-9A-Fa-f]{6}\b/g) || []))];
+    if (hexes[0]) result.primaryColor = hexes[0];
+    if (hexes[1]) result.secondaryColor = hexes[1];
+    if (hexes[2]) result.accentColor = hexes[2];
+    result.extracted = hexes.length > 0;
+  }
+  return result;
+}
+

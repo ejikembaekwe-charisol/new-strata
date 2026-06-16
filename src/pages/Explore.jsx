@@ -57,7 +57,7 @@ const Explore = () => {
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Updated {sys.updated}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>8 formats: CSS, SCSS...</div>
                   </div>
-                  <Link to="#" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: '600' }}>View →</Link>
+                  <Link to={`/explore/${sys.id}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: '600' }}>View →</Link>
                 </div>
               </div>
             </div>

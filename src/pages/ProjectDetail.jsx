@@ -61,63 +61,148 @@ const actionBtnStyle = {
   color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit',
 };
 
-const MOCK_TOKEN_CATEGORIES = ['Color', 'Typography', 'Spacing', 'Border', 'Shadow', 'Motion'];
+// Sidebar shows token TYPES
+const TOKEN_TYPES = [
+  { id: 'Color', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg> },
+  { id: 'Typography', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg> },
+  { id: 'Spacing', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
+  { id: 'Border', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="4"/></svg> },
+  { id: 'Shadow', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="14" height="14" rx="2"/><rect x="7" y="7" width="14" height="14" rx="2" opacity="0.4"/></svg> },
+  { id: 'Motion', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> },
+];
 
+// Token LAYERS (for the pill switcher)
+const TOKEN_LAYERS = ['Brand', 'Semantic', 'Component'];
+
+// Flat token store: { Color: [{name, value, type, layer}, ...], Typography: [...], ... }
 const MOCK_TOKENS = {
   Color: [
-    { name: 'color.primary', value: '#FC0694', type: 'color' },
-    { name: 'color.secondary', value: '#1A1A24', type: 'color' },
-    { name: 'color.accent', value: '#3B82F6', type: 'color' },
-    { name: 'color.background', value: '#0D0D12', type: 'color' },
-    { name: 'color.surface', value: '#13131A', type: 'color' },
-    { name: 'color.text.primary', value: '#FFFFFF', type: 'color' },
-    { name: 'color.text.secondary', value: '#8C8CA1', type: 'color' },
+    { name: 'brand.color.primary',    value: '#FC0694', type: 'color', layer: 'Brand' },
+    { name: 'brand.color.secondary',  value: '#1A1A24', type: 'color', layer: 'Brand' },
+    { name: 'brand.color.accent',     value: '#3B82F6', type: 'color', layer: 'Brand' },
+    { name: 'brand.color.background', value: '#0D0D12', type: 'color', layer: 'Brand' },
+    { name: 'brand.color.surface',    value: '#13131A', type: 'color', layer: 'Brand' },
+    { name: 'brand.color.text',       value: '#FFFFFF', type: 'color', layer: 'Brand' },
+    { name: 'color.action',           value: '{brand.color.primary}',    type: 'color', layer: 'Semantic' },
+    { name: 'color.bg.primary',       value: '{brand.color.background}', type: 'color', layer: 'Semantic' },
+    { name: 'color.bg.surface',       value: '{brand.color.surface}',    type: 'color', layer: 'Semantic' },
+    { name: 'color.text.primary',     value: '{brand.color.text}',       type: 'color', layer: 'Semantic' },
+    { name: 'color.text.secondary',   value: '#8C8CA1',                  type: 'color', layer: 'Semantic' },
+    { name: 'button.bg',   value: '{color.action}',        type: 'color', layer: 'Component' },
+    { name: 'button.text', value: '{color.text.primary}',  type: 'color', layer: 'Component' },
+    { name: 'input.bg',    value: '{color.bg.surface}',    type: 'color', layer: 'Component' },
+    { name: 'input.text',  value: '{color.text.primary}',  type: 'color', layer: 'Component' },
   ],
   Typography: [
-    { name: 'font.heading', value: 'Outfit', type: 'fontFamily' },
-    { name: 'font.body', value: 'Inter', type: 'fontFamily' },
-    { name: 'font.size.xs', value: '0.75rem', type: 'fontSize' },
-    { name: 'font.size.sm', value: '0.875rem', type: 'fontSize' },
-    { name: 'font.size.base', value: '1rem', type: 'fontSize' },
-    { name: 'font.size.lg', value: '1.25rem', type: 'fontSize' },
-    { name: 'font.size.xl', value: '1.5rem', type: 'fontSize' },
+    { name: 'brand.font.heading', value: 'Outfit', type: 'fontFamily', layer: 'Brand' },
+    { name: 'brand.font.body',    value: 'Inter',  type: 'fontFamily', layer: 'Brand' },
+    { name: 'brand.font.size.xs',   value: '0.75rem',  type: 'fontSize', layer: 'Brand' },
+    { name: 'brand.font.size.sm',   value: '0.875rem', type: 'fontSize', layer: 'Brand' },
+    { name: 'brand.font.size.base', value: '1rem',     type: 'fontSize', layer: 'Brand' },
+    { name: 'brand.font.size.lg',   value: '1.25rem',  type: 'fontSize', layer: 'Brand' },
+    { name: 'brand.font.size.xl',   value: '1.5rem',   type: 'fontSize', layer: 'Brand' },
+    { name: 'text.heading',  value: '{brand.font.heading}',    type: 'fontFamily', layer: 'Semantic' },
+    { name: 'text.body',     value: '{brand.font.body}',       type: 'fontFamily', layer: 'Semantic' },
+    { name: 'text.size.ui',  value: '{brand.font.size.sm}',    type: 'fontSize',   layer: 'Semantic' },
+    { name: 'button.font-family', value: '{text.heading}', type: 'fontFamily', layer: 'Component' },
+    { name: 'button.font-size',   value: '{text.size.ui}', type: 'fontSize',   layer: 'Component' },
   ],
   Spacing: [
-    { name: 'spacing.1', value: '4px', type: 'spacing' },
-    { name: 'spacing.2', value: '8px', type: 'spacing' },
-    { name: 'spacing.3', value: '12px', type: 'spacing' },
-    { name: 'spacing.4', value: '16px', type: 'spacing' },
-    { name: 'spacing.6', value: '24px', type: 'spacing' },
-    { name: 'spacing.8', value: '32px', type: 'spacing' },
+    { name: 'brand.space.1', value: '4px',  type: 'spacing', layer: 'Brand' },
+    { name: 'brand.space.2', value: '8px',  type: 'spacing', layer: 'Brand' },
+    { name: 'brand.space.3', value: '12px', type: 'spacing', layer: 'Brand' },
+    { name: 'brand.space.4', value: '16px', type: 'spacing', layer: 'Brand' },
+    { name: 'brand.space.6', value: '24px', type: 'spacing', layer: 'Brand' },
+    { name: 'brand.space.8', value: '32px', type: 'spacing', layer: 'Brand' },
+    { name: 'space.tight',       value: '{brand.space.2}', type: 'spacing', layer: 'Semantic' },
+    { name: 'space.comfortable', value: '{brand.space.4}', type: 'spacing', layer: 'Semantic' },
+    { name: 'space.loose',       value: '{brand.space.8}', type: 'spacing', layer: 'Semantic' },
+    { name: 'button.padding-x', value: '{space.comfortable}', type: 'spacing', layer: 'Component' },
+    { name: 'button.padding-y', value: '{space.tight}',       type: 'spacing', layer: 'Component' },
+    { name: 'input.padding',    value: '{space.comfortable}', type: 'spacing', layer: 'Component' },
   ],
   Border: [
-    { name: 'border.radius.sm', value: '4px', type: 'borderRadius' },
-    { name: 'border.radius.md', value: '8px', type: 'borderRadius' },
-    { name: 'border.radius.lg', value: '16px', type: 'borderRadius' },
-    { name: 'border.radius.full', value: '9999px', type: 'borderRadius' },
+    { name: 'brand.radius.none', value: '0px',    type: 'borderRadius', layer: 'Brand' },
+    { name: 'brand.radius.sm',   value: '4px',    type: 'borderRadius', layer: 'Brand' },
+    { name: 'brand.radius.md',   value: '8px',    type: 'borderRadius', layer: 'Brand' },
+    { name: 'brand.radius.lg',   value: '16px',   type: 'borderRadius', layer: 'Brand' },
+    { name: 'brand.radius.full', value: '9999px', type: 'borderRadius', layer: 'Brand' },
+    { name: 'radius.interactive', value: '{brand.radius.md}',   type: 'borderRadius', layer: 'Semantic' },
+    { name: 'radius.container',   value: '{brand.radius.lg}',   type: 'borderRadius', layer: 'Semantic' },
+    { name: 'button.radius', value: '{radius.interactive}', type: 'borderRadius', layer: 'Component' },
+    { name: 'input.radius',  value: '{radius.interactive}', type: 'borderRadius', layer: 'Component' },
+    { name: 'card.radius',   value: '{radius.container}',   type: 'borderRadius', layer: 'Component' },
   ],
   Shadow: [
-    { name: 'shadow.sm', value: '0 1px 2px rgba(0,0,0,0.3)', type: 'shadow' },
-    { name: 'shadow.md', value: '0 4px 16px rgba(0,0,0,0.4)', type: 'shadow' },
-    { name: 'shadow.lg', value: '0 16px 48px rgba(0,0,0,0.5)', type: 'shadow' },
+    { name: 'brand.shadow.sm', value: '0 1px 2px rgba(0,0,0,0.3)',   type: 'shadow', layer: 'Brand' },
+    { name: 'brand.shadow.md', value: '0 4px 16px rgba(0,0,0,0.4)',  type: 'shadow', layer: 'Brand' },
+    { name: 'brand.shadow.lg', value: '0 16px 48px rgba(0,0,0,0.5)', type: 'shadow', layer: 'Brand' },
+    { name: 'shadow.subtle',  value: '{brand.shadow.sm}', type: 'shadow', layer: 'Semantic' },
+    { name: 'shadow.overlay', value: '{brand.shadow.lg}', type: 'shadow', layer: 'Semantic' },
+    { name: 'card.shadow',   value: '{shadow.subtle}',  type: 'shadow', layer: 'Component' },
+    { name: 'modal.shadow',  value: '{shadow.overlay}', type: 'shadow', layer: 'Component' },
   ],
   Motion: [
-    { name: 'duration.fast', value: '150ms', type: 'duration' },
-    { name: 'duration.base', value: '250ms', type: 'duration' },
-    { name: 'duration.slow', value: '500ms', type: 'duration' },
-    { name: 'easing.default', value: 'cubic-bezier(0.4,0,0.2,1)', type: 'easing' },
+    { name: 'brand.duration.fast',   value: '150ms', type: 'duration', layer: 'Brand' },
+    { name: 'brand.duration.base',   value: '250ms', type: 'duration', layer: 'Brand' },
+    { name: 'brand.duration.slow',   value: '500ms', type: 'duration', layer: 'Brand' },
+    { name: 'brand.easing.default',  value: 'cubic-bezier(0.4,0,0.2,1)', type: 'easing', layer: 'Brand' },
+    { name: 'duration.transition', value: '{brand.duration.base}',   type: 'duration', layer: 'Semantic' },
+    { name: 'easing.standard',     value: '{brand.easing.default}',  type: 'easing',   layer: 'Semantic' },
+    { name: 'button.transition-duration', value: '{duration.transition}', type: 'duration', layer: 'Component' },
+    { name: 'button.easing',             value: '{easing.standard}',      type: 'easing',   layer: 'Component' },
   ],
+};
+
+// Migrate old formats to the new flat-by-type structure
+const migrateTokensToLayers = (saved) => {
+  if (!saved) return MOCK_TOKENS;
+
+  // Already in new format if keys are type names
+  const typeKeys = ['Color', 'Typography', 'Spacing', 'Border', 'Shadow', 'Motion'];
+  const hasTypeKeys = typeKeys.some(k => Array.isArray(saved[k]));
+  if (hasTypeKeys) {
+    const result = {};
+    typeKeys.forEach(k => {
+      result[k] = Array.isArray(saved[k]) ? saved[k] : [...MOCK_TOKENS[k]];
+    });
+    return result;
+  }
+
+  // Old layer-keyed format — migrate by flattening into types with guessed layers
+  const result = {};
+  typeKeys.forEach(k => { result[k] = [...MOCK_TOKENS[k]]; });
+
+  const typeMap = { color: 'Color', fontFamily: 'Typography', fontSize: 'Typography', spacing: 'Spacing', borderRadius: 'Border', shadow: 'Shadow', duration: 'Motion', easing: 'Motion' };
+  const guessLayer = (name) => {
+    if (name.startsWith('brand.')) return 'Brand';
+    if (name.includes('.') && (name.startsWith('button.') || name.startsWith('input.') || name.startsWith('card.'))) return 'Component';
+    return 'Semantic';
+  };
+
+  for (const cat in saved) {
+    const list = saved[cat];
+    if (!Array.isArray(list)) continue;
+    list.forEach(t => {
+      const typeBucket = typeMap[t.type] || 'Color';
+      const layer = t.layer || guessLayer(t.name);
+      const exists = result[typeBucket]?.some(x => x.name === t.name);
+      if (!exists) result[typeBucket].push({ ...t, layer });
+    });
+  }
+
+  return result;
 };
 
 const TYPE_COLORS = {
   color: '#FC0694',
-  fontFamily: '#8B5CF6',
-  fontSize: '#8B5CF6',
-  spacing: '#22C55E',
-  borderRadius: '#F59E0B',
-  shadow: '#3B82F6',
-  duration: '#EF4444',
-  easing: '#EF4444',
+  fontFamily: '#10B981',
+  fontSize: '#3B82F6',
+  spacing: '#F59E0B',
+  borderRadius: '#8B5CF6',
+  shadow: '#EC4899',
+  duration: '#6366F1',
+  easing: '#14B8A6',
 };
 
 export default function ProjectDetail() {
@@ -138,32 +223,130 @@ function ProjectDetailInner() {
   const project = projects.find(p => String(p.id) === String(id));
 
   const [activeTab, setActiveTab] = useState('tokens');
-  const [activeCategory, setActiveCategory] = useState('Color');
+  const [activeCategory, setActiveCategory] = useState('Color');  // token type
+  const [activeLayer, setActiveLayer] = useState('Brand');          // Brand | Semantic | Component
+  const [activeComponentCategory, setActiveComponentCategory] = useState('Actions & Buttons');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [brandData, setBrandData] = useState(null);
   
-  // State from project — merge saved tokens with MOCK_TOKENS so no category is ever undefined
+  // Handoff state variables
+  const [expandedCard, setExpandedCard] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // State from project — migrated and merged into Brand / Semantic / Component layers
   const [activeTokens, setActiveTokens] = useState(() => {
-    const saved = project?.tokens;
-    if (!saved) return MOCK_TOKENS;
-    // Ensure every MOCK category exists and is always an array
-    const merged = { ...MOCK_TOKENS };
-    for (const cat in saved) {
-      merged[cat] = Array.isArray(saved[cat]) ? saved[cat] : (merged[cat] || []);
-    }
-    return merged;
+    return migrateTokensToLayers(project?.tokens);
   });
   const [components, setComponents] = useState(() => {
     return Array.isArray(project?.components) ? project.components : [];
   });
   const [suggestion, setSuggestion] = useState(null);
 
+  // Asset model states
+  const [uploadedAssets, setUploadedAssets] = useState([]);
+  const [brandBibleDirty, setBrandBibleDirty] = useState(false);
+  const [pendingChange, setPendingChange] = useState(null);
+  const [selectedImpacts, setSelectedImpacts] = useState({ tokens: {}, components: {} });
+  const [impactPanelTab, setImpactPanelTab] = useState('brandBible');
+  const [suggestionsModalData, setSuggestionsModalData] = useState(null);
+  const [isScanningDoc, setIsScanningDoc] = useState(false);
+  const [undoState, setUndoState] = useState(null);
+  const [showUndoToast, setShowUndoToast] = useState(false);
+
+  // Sync uploaded assets & dirty flag from project context
+  React.useEffect(() => {
+    if (project) {
+      if (Array.isArray(project.uploadedAssets)) {
+        setUploadedAssets(project.uploadedAssets);
+      } else {
+        const defaultAssets = [
+          { id: '1', name: 'Brandbook_v1.pdf', type: 'PDF Document', size: '2.4 MB', date: '2026-05-15', visibility: 'Team' },
+          { id: '2', name: 'logo_dark.svg', type: 'SVG Vector', size: '12 KB', date: '2026-05-16', visibility: 'Public link' }
+        ];
+        setUploadedAssets(defaultAssets);
+        updateProject(project.id, { uploadedAssets: defaultAssets });
+      }
+      if (project.brandBibleDirty !== undefined) {
+        setBrandBibleDirty(project.brandBibleDirty);
+      }
+    }
+  }, [project]);
+
+  const [generatedAssetsVisibility, setGeneratedAssetsVisibility] = useState(() => {
+    return project?.generatedAssetsVisibility || {
+      brandBible: 'Public link',
+      css: 'Public link',
+      json: 'Team',
+      react: 'Private'
+    };
+  });
+
+  const updateGeneratedAssetVisibility = (assetKey, val) => {
+    const updated = { ...generatedAssetsVisibility, [assetKey]: val };
+    setGeneratedAssetsVisibility(updated);
+    updateProject(id, { generatedAssetsVisibility: updated });
+  };
+
+  const updateUploadedAssets = (newAssets) => {
+    setUploadedAssets(newAssets);
+    updateProject(id, { uploadedAssets: newAssets });
+  };
+
+  const downloadTextFile = (filename, text) => {
+    const element = document.createElement("a");
+    const file = new Blob([text], {type: 'text/plain'});
+    element.href = URL.createObjectURL(file);
+    element.download = filename;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const getReactThemeText = () => {
+    return `import React, { createContext, useContext } from 'react';
+
+// Strata Generated Theme Provider
+const ThemeContext = createContext(null);
+
+export const useTheme = () => useContext(ThemeContext);
+
+export const ThemeProvider = ({ children }) => {
+  const theme = {
+    colors: {
+      primary: '${brandData?.primaryColor || '#FC0694'}',
+      secondary: '${brandData?.secondaryColor || '#1A1A24'}',
+      accent: '${brandData?.accentColor || '#3B82F6'}',
+      background: '${activeTokens.Color?.find(t => t.name === 'brand.color.background')?.value || '#0D0D12'}',
+      surface: '${activeTokens.Color?.find(t => t.name === 'brand.color.surface')?.value || '#13131A'}',
+    },
+    typography: {
+      headingFont: '${brandData?.headingFont || 'Outfit'}',
+      bodyFont: '${brandData?.bodyFont || 'Inter'}',
+    },
+    spacing: {
+      tight: '${activeTokens.Spacing?.find(t => t.name === 'space.tight')?.value || '8px'}',
+      comfortable: '${activeTokens.Spacing?.find(t => t.name === 'space.comfortable')?.value || '16px'}',
+      loose: '${activeTokens.Spacing?.find(t => t.name === 'space.loose')?.value || '32px'}',
+    }
+  };
+
+  return (
+    <ThemeContext.Provider value={theme}>
+      {children}
+    </ThemeContext.Provider>
+  );
+};
+`;
+  };
+
   // UI interaction states
   const [activeDropdown, setActiveDropdown] = useState(null); // token.name
   const [tokenModal, setTokenModal] = useState(null); // { mode: 'add'|'edit', token?, category }
-  const [showComponentModal, setShowComponentModal] = useState(false);
+  const [componentModal, setComponentModal] = useState(null); // { mode: 'add'|'edit', component? }
   const [editingTokenName, setEditingTokenName] = useState(null);
   const [editingTokenValue, setEditingTokenValue] = useState('');
+  const [presetsExpanded, setPresetsExpanded] = useState(true);
+  const [customExpanded, setCustomExpanded] = useState(true);
 
   // Initialize brandData once project is found
   React.useEffect(() => {
@@ -236,17 +419,29 @@ This document serves as our living source of truth.`
   };
 
   const handleEditToken = (category, originalName, updatedToken) => {
-    const originalCategory = getCategoryForType(activeTokens[category].find(t => t.name === originalName)?.type) || category;
-    const newCategory = getCategoryForType(updatedToken.type);
+    const originalToken = activeTokens[category]?.find(t => t.name === originalName);
+    
+    setPendingChange({
+      type: 'token',
+      category,
+      originalName,
+      updatedToken,
+      originalToken,
+      oldValue: originalToken?.value,
+      newValue: updatedToken.value
+    });
 
     let updated = { ...activeTokens };
+    const originalCategory = getCategoryForType(originalToken?.type) || category;
+    const newCategory = getCategoryForType(updatedToken.type);
+
     if (originalCategory === newCategory) {
       updated[category] = activeTokens[category].map(t => t.name === originalName ? updatedToken : t);
     } else {
       updated[originalCategory] = activeTokens[originalCategory].filter(t => t.name !== originalName);
       updated[newCategory] = [...(activeTokens[newCategory] || []), updatedToken];
     }
-    updateTokensState(updated);
+    setActiveTokens(updated);
   };
 
   const handleDeleteToken = (category, name) => {
@@ -274,18 +469,83 @@ This document serves as our living source of truth.`
     updateComponentsState([...components, newComp]);
   };
 
+  const handleEditComponent = (updatedComp) => {
+    updateComponentsState(components.map(c => c.id === updatedComp.id ? updatedComp : c));
+  };
+
   const handleDeleteComponent = (compId) => {
     updateComponentsState(components.filter(c => c.id !== compId));
   };
 
-  // Token value resolver for live component styles
-  const resolveTokenValue = (tokenName) => {
-    if (!tokenName) return '';
-    for (const cat in activeTokens) {
-      const found = activeTokens[cat]?.find(t => t.name === tokenName);
-      if (found) return found.value;
+  // Recursive token value resolver for references (e.g. {brand.color.primary})
+  const resolveTokenValue = (tokenValueOrName) => {
+    if (!tokenValueOrName) return '';
+    let val = String(tokenValueOrName).trim();
+    
+    // Check if it's a token name directly (legacy mappings)
+    if (!val.startsWith('{')) {
+      for (const cat in activeTokens) {
+        const found = activeTokens[cat]?.find(t => t.name === val);
+        if (found) return resolveTokenValue(found.value);
+      }
     }
-    return '';
+    
+    // Check if it's a bracketed reference
+    const match = val.match(/^\{(.+)\}$/);
+    if (match) {
+      const refName = match[1];
+      for (const cat in activeTokens) {
+        const found = activeTokens[cat]?.find(t => t.name === refName);
+        if (found) return resolveTokenValue(found.value);
+      }
+    }
+    
+    return val;
+  };
+
+  const getTokenInheritanceChain = (tokenNameOrValue) => {
+    const chain = [];
+    if (!tokenNameOrValue) return chain;
+    let currentVal = String(tokenNameOrValue).trim();
+    
+    // If it's a name, find the token first
+    if (!currentVal.startsWith('{') && !currentVal.startsWith('#') && !/^\d/.test(currentVal)) {
+      for (const cat in activeTokens) {
+        const found = activeTokens[cat]?.find(t => t.name === currentVal);
+        if (found) {
+          chain.push(found.name);
+          currentVal = found.value;
+          break;
+        }
+      }
+    }
+
+    let iterations = 0;
+    while (iterations < 10) { // prevent infinite loop
+      iterations++;
+      const match = currentVal.match(/^\{(.+)\}$/);
+      if (!match) {
+        chain.push(currentVal);
+        break;
+      }
+      
+      const refName = match[1];
+      chain.push(refName);
+      
+      let foundToken = null;
+      for (const cat in activeTokens) {
+        foundToken = activeTokens[cat]?.find(t => t.name === refName);
+        if (foundToken) break;
+      }
+      
+      if (foundToken) {
+        currentVal = foundToken.value;
+      } else {
+        chain.push(`Unresolved: ${refName}`);
+        break;
+      }
+    }
+    return chain;
   };
 
   // Live Component Preview Renderer
@@ -363,23 +623,215 @@ This document serves as our living source of truth.`
     return null;
   };
 
+  const handlePrintBrandBible = () => {
+    const printWindow = window.open('', '_blank', 'width=800,height=1000');
+    if (!printWindow) {
+      alert('Please allow popups to download the PDF preview.');
+      return;
+    }
+    
+    const toneBadges = (brandData?.toneKeywords || []).map(k => 
+      `<span style="background: #e2e8f0; color: #1e293b; padding: 4px 10px; border-radius: 100px; font-size: 13px; font-weight: 500; margin-right: 6px; display: inline-block;">${k}</span>`
+    ).join('');
+
+    const manifestoHtml = (brandData?.manifesto || '')
+      .replace(/^## (.*)$/gm, '<h2 style="font-size: 24px; color: #1e293b; margin-top: 24px; margin-bottom: 12px; font-family: ' + brandData?.headingFont + ', sans-serif;">$1</h2>')
+      .replace(/^### (.*)$/gm, '<h3 style="font-size: 18px; color: #334155; margin-top: 18px; margin-bottom: 8px; font-family: ' + brandData?.headingFont + ', sans-serif;">$1</h3>')
+      .replace(/^\* (.*)$/gm, '<li style="margin-bottom: 6px;">$1</li>')
+      .replace(/^\d\.\s\*\*(.*)\*\*:\s(.*)$/gm, '<li style="margin-bottom: 8px;"><strong>$1</strong>: $2</li>')
+      .replace(/\n\n/g, '</p><p style="line-height: 1.6; color: #475569; font-size: 15px; margin-bottom: 12px;">')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Brand Bible - ${project?.name || 'Strata'}</title>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;600;800;900&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+          <style>
+            body {
+              font-family: '${brandData?.bodyFont || 'Inter'}', 'Inter', sans-serif;
+              color: #1e293b;
+              background: #ffffff;
+              padding: 40px;
+              margin: 0;
+            }
+            h1, h2, h3 {
+              font-family: '${brandData?.headingFont || 'Outfit'}', 'Outfit', sans-serif;
+              font-weight: 700;
+            }
+            .header {
+              border-bottom: 2px solid #e2e8f0;
+              padding-bottom: 20px;
+              margin-bottom: 40px;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            .logo-box {
+              background: #000;
+              color: #fff;
+              font-family: '${brandData?.headingFont || 'Outfit'}', sans-serif;
+              font-weight: 900;
+              font-size: 32px;
+              width: 60px;
+              height: 60px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border-radius: 8px;
+            }
+            .section {
+              margin-bottom: 40px;
+              page-break-inside: avoid;
+            }
+            .color-grid {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 20px;
+              margin-top: 15px;
+            }
+            .color-card {
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              overflow: hidden;
+            }
+            .color-swatch {
+              height: 100px;
+            }
+            .color-info {
+              padding: 10px;
+              font-size: 13px;
+            }
+            .color-title {
+              font-weight: 600;
+              margin-bottom: 2px;
+            }
+            .color-hex {
+              color: #64748b;
+              font-family: monospace;
+            }
+            .font-preview {
+              padding: 15px;
+              border: 1px solid #e2e8f0;
+              border-radius: 8px;
+              margin-top: 10px;
+            }
+            @media print {
+              body { padding: 20px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h1 style="margin: 0; font-size: 28px;">Strata Brand Bible</h1>
+              <p style="margin: 5px 0 0 0; color: #64748b; font-size: 14px;">Generated on ${new Date().toLocaleDateString()}</p>
+            </div>
+            <div class="logo-box">S<span style="color: ${brandData?.primaryColor || '#FC0694'}">.</span></div>
+          </div>
+          
+          <div class="section">
+            ${manifestoHtml.startsWith('<h2') || manifestoHtml.startsWith('<p') ? manifestoHtml : '<p>' + manifestoHtml + '</p>'}
+          </div>
+
+          <div class="section">
+            <h2 style="font-size: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 15px;">Visual Identity</h2>
+            
+            <h3 style="font-size: 16px; color: #475569; margin-bottom: 10px;">Color Palette</h3>
+            <div class="color-grid">
+              <div class="color-card">
+                <div class="color-swatch" style="background: ${brandData?.primaryColor || '#FC0694'}"></div>
+                <div class="color-info">
+                  <div class="color-title">Primary Color</div>
+                  <div class="color-hex">${(brandData?.primaryColor || '#FC0694').toUpperCase()}</div>
+                </div>
+              </div>
+              <div class="color-card">
+                <div class="color-swatch" style="background: ${brandData?.secondaryColor || '#1A1A24'}"></div>
+                <div class="color-info">
+                  <div class="color-title">Secondary Color</div>
+                  <div class="color-hex">${(brandData?.secondaryColor || '#1A1A24').toUpperCase()}</div>
+                </div>
+              </div>
+              <div class="color-card">
+                <div class="color-swatch" style="background: ${brandData?.accentColor || '#3B82F6'}"></div>
+                <div class="color-info">
+                  <div class="color-title">Accent Color</div>
+                  <div class="color-hex">${(brandData?.accentColor || '#3B82F6').toUpperCase()}</div>
+                </div>
+              </div>
+            </div>
+
+            <h3 style="font-size: 16px; color: #475569; margin-top: 25px; margin-bottom: 10px;">Typography System</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+              <div class="font-preview">
+                <div style="font-size: 12px; color: #64748b; margin-bottom: 5px; text-transform: uppercase;">Headings Font</div>
+                <div style="font-family: '${brandData?.headingFont || 'Outfit'}', sans-serif; font-size: 24px; font-weight: 700;">${brandData?.headingFont || 'Outfit'}</div>
+                <div style="font-family: '${brandData?.headingFont || 'Outfit'}', sans-serif; font-size: 14px; color: #475569; margin-top: 5px;">The quick brown fox jumps over the lazy dog.</div>
+              </div>
+              <div class="font-preview">
+                <div style="font-size: 12px; color: #64748b; margin-bottom: 5px; text-transform: uppercase;">Body Font</div>
+                <div style="font-family: '${brandData?.bodyFont || 'Inter'}', sans-serif; font-size: 24px; font-weight: 400;">${brandData?.bodyFont || 'Inter'}</div>
+                <div style="font-family: '${brandData?.bodyFont || 'Inter'}', sans-serif; font-size: 14px; color: #475569; margin-top: 5px;">The quick brown fox jumps over the lazy dog.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2 style="font-size: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 15px;">Tone & Voice</h2>
+            <div style="margin-bottom: 15px;">
+              <span style="font-size: 12px; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 5px;">Keywords</span>
+              <div>${toneBadges}</div>
+            </div>
+            <div>
+              <span style="font-size: 12px; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 5px;">Voice Guidelines</span>
+              <p style="font-size: 15px; line-height: 1.6; margin: 0; color: #334155;">${brandData?.voice || ''}</p>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const handleBrandUpdate = (field, value) => {
+    const originalValue = brandData[field];
+    
+    setPendingChange({
+      type: 'brand',
+      field,
+      oldValue: originalValue,
+      newValue: value
+    });
+
+    // Update local state instantly so UI is responsive
     const newData = { ...brandData, [field]: value };
     setBrandData(newData);
-    
-    // Persist to global context
-    updateProject(id, { brand: newData });
 
-    // Sync to tokens
-    if (field === 'primaryColor') updateToken('Color', 'color.primary', value);
-    if (field === 'secondaryColor') updateToken('Color', 'color.secondary', value);
-    if (field === 'accentColor') updateToken('Color', 'color.accent', value);
-    if (field === 'headingFont') updateToken('Typography', 'font.heading', value);
-    if (field === 'bodyFont') updateToken('Typography', 'font.body', value);
+    // Sync to local activeTokens immediately for real-time visual feedback
+    const syncTokenLocally = (category, name, val) => {
+      setActiveTokens(prev => ({
+        ...prev,
+        [category]: prev[category]?.map(t => t.name === name ? { ...t, value: val } : t) || []
+      }));
+    };
+    if (field === 'primaryColor') syncTokenLocally('Color', 'brand.color.primary', value);
+    if (field === 'secondaryColor') syncTokenLocally('Color', 'brand.color.secondary', value);
+    if (field === 'accentColor') syncTokenLocally('Color', 'brand.color.accent', value);
+    if (field === 'headingFont') syncTokenLocally('Typography', 'brand.font.heading', value);
+    if (field === 'bodyFont') syncTokenLocally('Typography', 'brand.font.body', value);
 
     // --- Intelligent Suggestion Engine ---
-    
-    // 1. Color -> Tone
     if (field === 'primaryColor') {
       if (value.toLowerCase().includes('yellow') || value === '#FACC15') {
         setSuggestion({
@@ -390,7 +842,6 @@ This document serves as our living source of truth.`
       }
     }
 
-    // 2. Tone -> Color
     if (field === 'toneKeywords' && value.includes('Calm')) {
       setSuggestion({
         message: 'A "Calm" tone pairs well with soft blues. Update Primary Color to #60A5FA?',
@@ -399,7 +850,6 @@ This document serves as our living source of truth.`
       });
     }
 
-    // 3. Font -> Tone/Voice
     if (field === 'headingFont' && value === 'Roboto') {
       setSuggestion({
         message: 'Roboto is a neutral, technical font. Should we adjust the Brand Voice to be more "Systematic"?',
@@ -422,9 +872,354 @@ This document serves as our living source of truth.`
   const updateToken = (category, name, value) => {
     const updated = {
       ...activeTokens,
-      [category]: activeTokens[category].map(t => t.name === name ? { ...t, value } : t)
+      [category]: activeTokens[category]?.map(t => t.name === name ? { ...t, value } : t) || []
     };
     updateTokensState(updated);
+  };
+
+  // --- Downstream Impact Calculations ---
+
+  const getProposedState = (change) => {
+    let proposedBrand = { ...brandData };
+    let proposedTokens = JSON.parse(JSON.stringify(activeTokens));
+
+    if (!change) return { brandData: proposedBrand, tokens: proposedTokens };
+
+    if (change.type === 'brand') {
+      proposedBrand[change.field] = change.newValue;
+      
+      const field = change.field;
+      const value = change.newValue;
+      const updateTokenInProposed = (category, name, val) => {
+        if (proposedTokens[category]) {
+          proposedTokens[category] = proposedTokens[category].map(t => 
+            t.name === name ? { ...t, value: val } : t
+          );
+        }
+      };
+      if (field === 'primaryColor') updateTokenInProposed('Color', 'brand.color.primary', value);
+      if (field === 'secondaryColor') updateTokenInProposed('Color', 'brand.color.secondary', value);
+      if (field === 'accentColor') updateTokenInProposed('Color', 'brand.color.accent', value);
+      if (field === 'headingFont') updateTokenInProposed('Typography', 'brand.font.heading', value);
+      if (field === 'bodyFont') updateTokenInProposed('Typography', 'brand.font.body', value);
+    } else if (change.type === 'token') {
+      const { category, originalName, updatedToken } = change;
+      if (proposedTokens[category]) {
+        const originalCategory = getCategoryForType(proposedTokens[category].find(t => t.name === originalName)?.type) || category;
+        const newCategory = getCategoryForType(updatedToken.type) || originalCategory;
+
+        if (originalCategory === newCategory) {
+          proposedTokens[originalCategory] = proposedTokens[originalCategory].map(t => 
+            t.name === originalName ? updatedToken : t
+          );
+        } else {
+          proposedTokens[originalCategory] = proposedTokens[originalCategory].filter(t => t.name !== originalName);
+          proposedTokens[newCategory] = [...(proposedTokens[newCategory] || []), updatedToken];
+        }
+      }
+    }
+
+    return { brandData: proposedBrand, tokens: proposedTokens };
+  };
+
+  const getBrandBibleImpact = (change) => {
+    const sections = [];
+    if (!change) return sections;
+    
+    if (change.type === 'brand') {
+      const field = change.field;
+      if (field === 'manifesto') {
+        sections.push({ name: 'Brand Overview > Manifesto', description: 'Updates the brand mission statement.' });
+      } else if (field === 'toneKeywords' || field === 'voice') {
+        sections.push({ name: 'Tone & Voice Guidelines', description: 'Updates brand personality traits and speaking style.' });
+      } else if (field === 'primaryColor' || field === 'secondaryColor' || field === 'accentColor') {
+        sections.push({ name: 'Visual Identity > Color Palette', description: 'Regenerates brand color swatches and values.' });
+      } else if (field === 'headingFont' || field === 'bodyFont') {
+        sections.push({ name: 'Visual Identity > Typography Systems', description: 'Updates primary and secondary font families.' });
+      } else if (field === 'websiteUrl' || field === 'figmaUrl') {
+        sections.push({ name: 'Source References', description: 'Updates website or design file links in the Brand Bible.' });
+      }
+    } else if (change.type === 'token') {
+      const cat = change.category;
+      if (cat === 'Color') {
+        sections.push({ name: 'Visual Identity > Color Palette', description: 'Regenerates brand color swatches and values.' });
+        sections.push({ name: 'Component Tokens > Color Mappings', description: 'Updates component-level color mappings.' });
+      } else if (cat === 'Typography') {
+        sections.push({ name: 'Visual Identity > Typography Systems', description: 'Updates primary and secondary font families.' });
+        sections.push({ name: 'Component Tokens > Type Scales', description: 'Updates typography scale ranges.' });
+      } else if (cat === 'Spacing') {
+        sections.push({ name: 'Visual Identity > Spacing Scale', description: 'Updates grid spacing values.' });
+      } else if (cat === 'Border') {
+        sections.push({ name: 'Visual Identity > Shape & Borders', description: 'Updates border radius and line values.' });
+      } else if (cat === 'Shadow') {
+        sections.push({ name: 'Visual Identity > Shadow & Depth', description: 'Updates depth elevations.' });
+      } else if (cat === 'Motion') {
+        sections.push({ name: 'Visual Identity > Motion & Transitions', description: 'Updates animations and timing functions.' });
+      }
+    }
+    return sections;
+  };
+
+  const resolveValueInStore = (tokenValueOrName, store) => {
+    if (!tokenValueOrName) return '';
+    let val = String(tokenValueOrName).trim();
+    
+    if (!val.startsWith('{')) {
+      for (const cat in store) {
+        const found = store[cat]?.find(t => t.name === val);
+        if (found) return resolveValueInStore(found.value, store);
+      }
+    }
+    
+    const match = val.match(/^\{(.+)\}$/);
+    if (match) {
+      const refName = match[1];
+      for (const cat in store) {
+        const found = store[cat]?.find(t => t.name === refName);
+        if (found) return resolveValueInStore(found.value, store);
+      }
+    }
+    return val;
+  };
+
+  const computeImpact = (change) => {
+    if (!change) return { brandBible: [], tokens: [], components: [] };
+    
+    const brandBible = getBrandBibleImpact(change);
+    const { brandData: proposedBrand, tokens: proposedTokens } = getProposedState(change);
+    
+    const affectedTokens = [];
+    const affectedComponents = [];
+    
+    for (const cat in activeTokens) {
+      activeTokens[cat]?.forEach(t => {
+        if (change.type === 'token' && t.name === change.originalName) return;
+        
+        if (change.type === 'brand') {
+          if (change.field === 'primaryColor' && t.name === 'brand.color.primary') return;
+          if (change.field === 'secondaryColor' && t.name === 'brand.color.secondary') return;
+          if (change.field === 'accentColor' && t.name === 'brand.color.accent') return;
+          if (change.field === 'headingFont' && t.name === 'brand.font.heading') return;
+          if (change.field === 'bodyFont' && t.name === 'brand.font.body') return;
+        }
+        
+        const resolvedOld = resolveValueInStore(t.name, activeTokens);
+        const resolvedNew = resolveValueInStore(t.name, proposedTokens);
+        
+        if (resolvedOld !== resolvedNew) {
+          const path = [change.type === 'token' ? change.originalName : change.field, t.name];
+          affectedTokens.push({
+            name: t.name,
+            category: cat,
+            oldValue: resolvedOld,
+            newValue: resolvedNew,
+            path
+          });
+        }
+      });
+    }
+    
+    components.forEach(comp => {
+      const changedProps = [];
+      if (comp.tokens) {
+        for (const prop in comp.tokens) {
+          const val = comp.tokens[prop];
+          if (!val) continue;
+          const resolvedOld = resolveValueInStore(val, activeTokens);
+          const resolvedNew = resolveValueInStore(val, proposedTokens);
+          if (resolvedOld !== resolvedNew) {
+            changedProps.push({
+              prop,
+              oldValue: resolvedOld,
+              newValue: resolvedNew,
+              tokenRef: val
+            });
+          }
+        }
+      }
+      if (changedProps.length > 0) {
+        affectedComponents.push({
+          id: comp.id,
+          name: comp.label || comp.name,
+          template: comp.template,
+          changedProps
+        });
+      }
+    });
+    
+    return { brandBible, tokens: affectedTokens, components: affectedComponents };
+  };
+
+  const applyChange = (acceptedImpacts) => {
+    const oldBrand = JSON.parse(JSON.stringify(brandData));
+    const oldTokens = JSON.parse(JSON.stringify(activeTokens));
+    const oldComponents = JSON.parse(JSON.stringify(components));
+    setUndoState({ brand: oldBrand, tokens: oldTokens, components: oldComponents });
+    setShowUndoToast(true);
+    setTimeout(() => setShowUndoToast(false), 30000);
+
+    const { brandData: proposedBrand, tokens: proposedTokens } = getProposedState(pendingChange);
+    const impact = computeImpact(pendingChange);
+
+    let finalBrand = { ...proposedBrand };
+    
+    let finalTokens = JSON.parse(JSON.stringify(proposedTokens));
+    impact.tokens.forEach(tok => {
+      const isAccepted = acceptedImpacts?.tokens?.[tok.name] !== false;
+      if (!isAccepted) {
+        for (const cat in finalTokens) {
+          const index = finalTokens[cat]?.findIndex(t => t.name === tok.name);
+          if (index !== -1) {
+            finalTokens[cat][index].value = tok.oldValue;
+            break;
+          }
+        }
+      }
+    });
+
+    let finalComponents = JSON.parse(JSON.stringify(components));
+    impact.components.forEach(compImpact => {
+      const isAccepted = acceptedImpacts?.components?.[compImpact.id] !== false;
+      const compIndex = finalComponents.findIndex(c => c.id === compImpact.id);
+      if (compIndex !== -1) {
+        if (!isAccepted) {
+          compImpact.changedProps.forEach(propChange => {
+            if (finalComponents[compIndex].tokens) {
+              finalComponents[compIndex].tokens[propChange.prop] = propChange.oldValue;
+            }
+          });
+        }
+      }
+    });
+
+    setBrandData(finalBrand);
+    setActiveTokens(finalTokens);
+    setComponents(finalComponents);
+    
+    updateProject(id, {
+      brand: finalBrand,
+      tokens: finalTokens,
+      components: finalComponents
+    });
+
+    setBrandBibleDirty(true);
+    updateProject(id, { brandBibleDirty: true });
+
+    setPendingChange(null);
+  };
+
+  const cancelChange = () => {
+    if (!pendingChange) return;
+
+    if (pendingChange.type === 'brand') {
+      const field = pendingChange.field;
+      const oldVal = pendingChange.oldValue;
+      
+      setBrandData(prev => ({ ...prev, [field]: oldVal }));
+
+      const syncTokenLocally = (category, name, val) => {
+        setActiveTokens(prev => ({
+          ...prev,
+          [category]: prev[category]?.map(t => t.name === name ? { ...t, value: val } : t) || []
+        }));
+      };
+      if (field === 'primaryColor') syncTokenLocally('Color', 'brand.color.primary', oldVal);
+      if (field === 'secondaryColor') syncTokenLocally('Color', 'brand.color.secondary', oldVal);
+      if (field === 'accentColor') syncTokenLocally('Color', 'brand.color.accent', oldVal);
+      if (field === 'headingFont') syncTokenLocally('Typography', 'brand.font.heading', oldVal);
+      if (field === 'bodyFont') syncTokenLocally('Typography', 'brand.font.body', oldVal);
+      
+    } else if (pendingChange.type === 'token') {
+      let reverted = { ...activeTokens };
+      const currentCategory = getCategoryForType(pendingChange.updatedToken.type);
+      const originalCategory = getCategoryForType(pendingChange.originalToken.type) || pendingChange.category;
+
+      if (currentCategory === originalCategory) {
+        reverted[originalCategory] = reverted[originalCategory].map(t => 
+          t.name === pendingChange.updatedToken.name ? pendingChange.originalToken : t
+        );
+      } else {
+        reverted[currentCategory] = reverted[currentCategory].filter(t => t.name !== pendingChange.updatedToken.name);
+        reverted[originalCategory] = [...(reverted[originalCategory] || []), pendingChange.originalToken];
+      }
+      setActiveTokens(reverted);
+    }
+    
+    setPendingChange(null);
+  };
+
+  const handleUndo = () => {
+    if (undoState) {
+      setBrandData(undoState.brand);
+      setActiveTokens(undoState.tokens);
+      setComponents(undoState.components);
+      updateProject(id, {
+        brand: undoState.brand,
+        tokens: undoState.tokens,
+        components: undoState.components
+      });
+      setUndoState(null);
+      setShowUndoToast(false);
+    }
+  };
+
+  const getCSSVariablesText = () => {
+    let cssText = `:root {\n`;
+    for (const cat in activeTokens) {
+      activeTokens[cat]?.forEach(t => {
+        const varName = `--${t.name.replace(/\./g, '-')}`;
+        cssText += `  ${varName}: ${t.value};\n`;
+      });
+    }
+    cssText += `}`;
+    return cssText;
+  };
+
+  const getDTCGJsonText = () => {
+    const dtcg = {
+      "$schema": "https://tr.designtokens.org/format/",
+    };
+    for (const cat in activeTokens) {
+      const catKey = cat.toLowerCase();
+      dtcg[catKey] = {};
+      activeTokens[cat]?.forEach(t => {
+        const parts = t.name.split('.');
+        let current = dtcg;
+        parts.forEach((part, i) => {
+          if (i === parts.length - 1) {
+            current[part] = { "$value": t.value, "$type": t.type };
+          } else {
+            current[part] = current[part] || {};
+            current = current[part];
+          }
+        });
+      });
+    }
+    return JSON.stringify(dtcg, null, 2);
+  };
+
+  const getFigmaVariablesText = () => {
+    const variables = [];
+    for (const cat in activeTokens) {
+      activeTokens[cat]?.forEach(t => {
+        variables.push({
+          name: t.name.replace(/\./g, '/'),
+          type: t.type === 'color' ? 'COLOR' : 'FLOAT',
+          value: t.value
+        });
+      });
+    }
+    return `// Figma API Endpoint: POST /v1/files/file_key/variables\n` + 
+           JSON.stringify({
+             variableCollections: [
+               { name: "Global", modes: ["Default"] }
+             ],
+             variables: variables.map(v => ({
+               name: v.name,
+               type: v.type,
+               valuesByMode: { "Default": v.value }
+             }))
+           }, null, 2);
   };
 
   const handleExportJSON = () => {
@@ -441,7 +1236,8 @@ This document serves as our living source of truth.`
     alert('Downloading assets... (mock)');
   };
 
-  const tokens = activeTokens[activeCategory] || [];
+  // Filter tokens by both type (sidebar) and layer (pill)
+  const tokens = (activeTokens[activeCategory] || []).filter(t => t.layer === activeLayer);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -556,8 +1352,10 @@ This document serves as our living source of truth.`
           <div style={{ padding: '0 0.75rem', marginBottom: '1.5rem' }}>
             {[
               { id: 'brand', label: 'Brand Bible', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> },
+              { id: 'handoff', label: 'Handoff', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg> },
               { id: 'tokens', label: 'Tokens', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
               { id: 'components', label: 'Components', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+              { id: 'assets', label: 'Assets Hub', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
               { id: 'settings', label: 'Settings', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> },
             ].map(tab => (
               <button
@@ -579,31 +1377,85 @@ This document serves as our living source of truth.`
             ))}
           </div>
 
-          {/* Token categories */}
+          {/* Token TYPE categories in sidebar */}
           {activeTab === 'tokens' && (
+            <div style={{ padding: '0 0.75rem' }}>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
+                Token Type
+              </div>
+              {TOKEN_TYPES.map(({ id, icon }) => {
+                const total = (activeTokens[id] || []).length;
+                const layerCount = (activeTokens[id] || []).filter(t => t.layer === activeLayer).length;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActiveCategory(id)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%', background: activeCategory === id ? 'var(--accent-glow)' : 'none',
+                      border: activeCategory === id ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
+                      borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
+                      color: activeCategory === id ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                      <span style={{ opacity: 0.7 }}>{icon}</span>
+                      {id}
+                    </span>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+                      {layerCount}/{total}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Component categories */}
+          {activeTab === 'components' && (
             <div style={{ padding: '0 0.75rem' }}>
               <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
                 Categories
               </div>
-              {MOCK_TOKEN_CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    width: '100%', background: activeCategory === cat ? 'var(--accent-glow)' : 'none',
-                    border: activeCategory === cat ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
-                    borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-                    color: activeCategory === cat ? 'var(--accent)' : 'var(--text-secondary)',
-                    fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                  }}
-                >
-                  {cat}
-                  <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-                    {MOCK_TOKENS[cat]?.length || 0}
-                  </span>
-                </button>
-              ))}
+              {['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'].map(cat => {
+                const count = components.filter(comp => {
+                  let compCat = comp.category;
+                  if (compCat === 'Atom') {
+                    if (comp.template === 'button') compCat = 'Actions & Buttons';
+                    else if (comp.template === 'input') compCat = 'Form Inputs';
+                    else if (comp.template === 'badge') compCat = 'Feedback & Status';
+                    else compCat = 'Actions & Buttons';
+                  } else if (compCat === 'Molecule') {
+                    if (comp.template === 'card') compCat = 'Display & Data';
+                    else compCat = 'Display & Data';
+                  } else if (compCat === 'Organism') {
+                    compCat = 'Navigation';
+                  }
+                  return compCat === cat;
+                }).length;
+
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveComponentCategory(cat)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%', background: activeComponentCategory === cat ? 'var(--accent-glow)' : 'none',
+                      border: activeComponentCategory === cat ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
+                      borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
+                      color: activeComponentCategory === cat ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                    }}
+                  >
+                    {cat}
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </aside>
@@ -845,6 +1697,209 @@ This document serves as our living source of truth.`
                   </div>
                 </div>
               </div>
+
+              <hr style={{ border: 'none', height: '1px', background: 'var(--border)', margin: '3rem 0' }} />
+              
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Brand Documents & Bible</h2>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  Manage the generated Brand Bible summary or upload reference documents.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginBottom: '2rem' }}>
+                {/* Generated Brand Bible Card */}
+                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Generated Brand Bible</h3>
+                      {brandBibleDirty ? (
+                        <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '100px', background: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)', fontWeight: 600 }}>PENDING CHANGES</span>
+                      ) : (
+                        <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '100px', background: 'rgba(16,185,129,0.12)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600 }}>LIVE & SYNCED</span>
+                      )}
+                    </div>
+                    <button 
+                      onClick={handlePrintBrandBible}
+                      className="btn btn-secondary" 
+                      style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Download PDF
+                    </button>
+                  </div>
+
+                  {/* Styled Interactive Preview Card */}
+                  <div style={{ 
+                    background: 'var(--bg-tertiary)', 
+                    borderRadius: '16px', 
+                    border: '1px solid var(--border)', 
+                    height: '340px', 
+                    overflowY: 'auto', 
+                    padding: '1.5rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.5rem',
+                    fontSize: '0.85rem',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    {/* Document Cover Summary */}
+                    <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: '1.5rem', color: 'var(--text-primary)' }}>S<span style={{ color: brandData.primaryColor }}>.</span></span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Strata Generated Artifact</span>
+                      </div>
+                      <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0.5rem 0 0.25rem' }}>Core Brand Guidelines</h4>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0 }}>Always kept up-to-date with your design tokens.</p>
+                    </div>
+
+                    {/* Manifesto Excerpt */}
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Manifesto Excerpt</span>
+                      <p style={{ margin: 0, lineHeight: '1.5', fontStyle: 'italic' }}>
+                        {brandData.manifesto?.split('\n\n')?.[1]?.replace(/\*\*/g, '') || 'We believe in design that serves a purpose beyond aesthetics...'}
+                      </p>
+                    </div>
+
+                    {/* Visual Identity Section */}
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Color Palette Swatches</span>
+                      <div style={{ display: 'flex', gap: '1rem' }}>
+                        {[
+                          { name: 'Primary', color: brandData.primaryColor },
+                          { name: 'Secondary', color: brandData.secondaryColor },
+                          { name: 'Accent', color: brandData.accentColor }
+                        ].map(swatch => (
+                          <div key={swatch.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: swatch.color, border: '1px solid rgba(255,255,255,0.1)' }}></div>
+                            <div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontWeight: 600 }}>{swatch.name}</div>
+                              <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{swatch.color.toUpperCase()}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Typography Systems */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>Headings Font</span>
+                        <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <div style={{ fontFamily: brandData.headingFont, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{brandData.headingFont}</div>
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>Body Font</span>
+                        <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                          <div style={{ fontFamily: brandData.bodyFont, fontSize: '1.1rem', color: 'var(--text-primary)' }}>{brandData.bodyFont}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tone Keywords */}
+                    <div>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Tone keywords</span>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {brandData.toneKeywords?.map((k, idx) => (
+                          <span key={idx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '100px', padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--text-primary)' }}>{k}</span>
+                        )) || 'No keywords set'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Brand Document Upload Card */}
+                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Reference Documents</h3>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Upload files to serve as brand reference materials (e.g. guidelines, assets).</p>
+                  </div>
+
+                  {/* Drag and Drop File Input Area */}
+                  <div 
+                    onClick={() => document.getElementById('brand-bible-uploader').click()}
+                    style={{ 
+                      border: '2px dashed var(--border)', 
+                      borderRadius: '16px', 
+                      padding: '2.5rem 1.5rem', 
+                      textAlign: 'center', 
+                      cursor: 'pointer',
+                      background: isScanningDoc ? 'rgba(252,6,148,0.03)' : 'var(--bg-tertiary)',
+                      transition: 'background 0.2s, border-color 0.2s',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                  >
+                    <input 
+                      id="brand-bible-uploader" 
+                      type="file" 
+                      accept=".pdf,.docx,.doc" 
+                      style={{ display: 'none' }} 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setIsScanningDoc(true);
+                          setTimeout(() => {
+                            setIsScanningDoc(false);
+                            setSuggestionsModalData({
+                              fileName: file.name,
+                              fileSize: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
+                              primaryColor: '#1E3A8A',
+                              accentColor: '#10B981',
+                              headingFont: 'Outfit',
+                              bodyFont: 'Inter',
+                              toneKeywords: ['Innovative', 'Trustworthy', 'Sleek'],
+                              voice: 'Bold, user-centric, and technically detailed.'
+                            });
+                          }, 1800);
+                        }
+                      }}
+                    />
+                    
+                    {isScanningDoc ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                        <div className="loading-spinner" style={{ width: '28px', height: '28px', borderColor: 'var(--accent)', borderTopColor: 'transparent' }}></div>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 600 }}>AI Scan in Progress...</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Extracting colors, typography, tone & voice patterns</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" style={{ color: 'var(--text-tertiary)' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Upload reference document</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>PDF or DOCX (max 10MB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Uploaded Reference List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Uploaded Reference Files ({uploadedAssets.length})</span>
+                    {uploadedAssets.map(asset => (
+                      <div key={asset.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-tertiary)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ color: 'var(--accent)' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500 }}>{asset.name}</div>
+                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{asset.size} • Uploaded {asset.date}</div>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => alert(`Downloading ${asset.name}...`)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.25rem' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -852,231 +1907,358 @@ This document serves as our living source of truth.`
             <>
               {/* Token table header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {activeCategory} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({tokens.length})</span>
-                </h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                    {activeCategory} Tokens
+                  </h2>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                    {tokens.length} {activeLayer.toLowerCase()} token{tokens.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={() => setTokenModal({ mode: 'add', category: activeCategory })} style={actionBtnStyle}>+ Add token</button>
+                  <button onClick={() => setTokenModal({ mode: 'add', category: activeCategory, defaultLayer: activeLayer })} style={actionBtnStyle}>+ Add token</button>
                   <button style={actionBtnStyle} onClick={() => alert('Importing tokens... (mock)')}>Import</button>
                 </div>
               </div>
 
+              {/* ── Layer pill switcher ── */}
+              <div style={{
+                display: 'inline-flex',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                padding: '3px',
+                marginBottom: '1.25rem',
+                gap: '2px',
+                position: 'relative',
+              }}>
+                {TOKEN_LAYERS.map(layer => {
+                  const count = (activeTokens[activeCategory] || []).filter(t => t.layer === layer).length;
+                  const isActive = activeLayer === layer;
+                  const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
+                  return (
+                    <button
+                      key={layer}
+                      onClick={() => setActiveLayer(layer)}
+                      style={{
+                        position: 'relative',
+                        padding: '0.35rem 0.875rem',
+                        borderRadius: '5px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: isActive ? 600 : 400,
+                        fontFamily: 'inherit',
+                        transition: 'all 0.18s ease',
+                        background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                        color: isActive ? layerColor : 'var(--text-tertiary)',
+                        boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.25)' : 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                      }}
+                    >
+                      {/* Layer colour dot */}
+                      <span style={{
+                        width: '6px', height: '6px', borderRadius: '50%',
+                        background: isActive ? layerColor : 'var(--text-tertiary)',
+                        opacity: isActive ? 1 : 0.4,
+                        transition: 'all 0.18s',
+                        flexShrink: 0,
+                      }} />
+                      {layer}
+                      <span style={{
+                        fontSize: '0.65rem',
+                        background: isActive ? `${layerColor}20` : 'transparent',
+                        color: isActive ? layerColor : 'var(--text-tertiary)',
+                        padding: '0.05rem 0.35rem',
+                        borderRadius: '100px',
+                        transition: 'all 0.18s',
+                        minWidth: '18px',
+                        textAlign: 'center',
+                      }}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Column headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr auto', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
-                {['Name', 'Value', 'Type', ''].map(h => (
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr auto', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
+                {['Name', 'Value', 'Type', 'Visual Preview', ''].map(h => (
                   <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                 ))}
               </div>
 
               {/* Token rows */}
-              {tokens.map((token, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr auto',
-                    gap: '1rem', alignItems: 'center',
-                    padding: '0.625rem 0.875rem', borderRadius: '8px',
-                    transition: 'background 0.15s', cursor: 'default',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                    {token.name}
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {token.type === 'color' && (
-                      <div style={{ width: '14px', height: '14px', borderRadius: '3px', background: token.value, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
-                    )}
-                    {editingTokenName === token.name ? (
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editingTokenValue}
-                        onChange={(e) => setEditingTokenValue(e.target.value)}
-                        onBlur={() => {
-                          handleEditToken(activeCategory, token.name, { ...token, value: editingTokenValue });
-                          setEditingTokenName(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+              {tokens.map((token, i) => {
+                const displayValue = editingTokenName === token.name ? editingTokenValue : token.value;
+                const resolvedPreviewValue = resolveTokenValue(displayValue);
+                const previewToken = { ...token, value: resolvedPreviewValue };
+                const isAlias = String(displayValue).trim().startsWith('{');
+                const chain = getTokenInheritanceChain(displayValue);
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr auto',
+                      gap: '1rem', alignItems: 'center',
+                      padding: '0.625rem 0.875rem', borderRadius: '8px',
+                      transition: 'background 0.15s', cursor: 'default',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                      {token.name}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {editingTokenName === token.name ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingTokenValue}
+                          onChange={(e) => setEditingTokenValue(e.target.value)}
+                          onBlur={() => {
                             handleEditToken(activeCategory, token.name, { ...token, value: editingTokenValue });
                             setEditingTokenName(null);
-                          } else if (e.key === 'Escape') {
-                            setEditingTokenName(null);
-                          }
-                        }}
-                        style={{
-                          background: 'var(--bg-tertiary)',
-                          border: '1px solid var(--accent)',
-                          borderRadius: '4px',
-                          color: 'var(--text-primary)',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '0.8rem',
-                          padding: '0.1rem 0.3rem',
-                          width: '100%',
-                          outline: 'none',
-                        }}
-                      />
-                    ) : (
-                      <span
-                        onDoubleClick={() => {
-                          setEditingTokenName(token.name);
-                          setEditingTokenValue(token.value);
-                        }}
-                        title="Double click to edit value"
-                        style={{
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '0.8rem',
-                          color: 'var(--text-secondary)',
-                          cursor: 'pointer',
-                          borderBottom: '1px dashed transparent',
-                          transition: 'border-color 0.15s'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.borderBottom = '1px dashed var(--text-tertiary)'}
-                        onMouseLeave={e => e.currentTarget.style.borderBottom = '1px dashed transparent'}
-                      >
-                        {token.value}
-                      </span>
-                    )}
-                  </div>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center',
-                    fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
-                    background: `${TYPE_COLORS[token.type]}15`,
-                    color: TYPE_COLORS[token.type],
-                    border: `1px solid ${TYPE_COLORS[token.type]}30`,
-                    fontWeight: 500, letterSpacing: '0.03em',
-                  }}>
-                    {token.type}
-                  </span>
-                  
-                  {/* 3-Dot Action Dropdown */}
-                  <div style={{ position: 'relative' }}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveDropdown(activeDropdown === token.name ? null : token.name);
-                      }}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--text-tertiary)', padding: '0.2rem', borderRadius: '4px',
-                        display: 'flex', alignItems: 'center',
-                      }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                        <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
-                      </svg>
-                    </button>
-                    {activeDropdown === token.name && (
-                      <>
-                        <div
-                          onClick={() => setActiveDropdown(null)}
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleEditToken(activeCategory, token.name, { ...token, value: editingTokenValue });
+                              setEditingTokenName(null);
+                            } else if (e.key === 'Escape') {
+                              setEditingTokenName(null);
+                            }
+                          }}
                           style={{
-                            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                            zIndex: 100, background: 'transparent',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--accent)',
+                            borderRadius: '4px',
+                            color: 'var(--text-primary)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.8rem',
+                            padding: '0.1rem 0.3rem',
+                            width: '100%',
+                            outline: 'none',
                           }}
                         />
-                        <div style={{
-                          position: 'absolute', top: '100%', right: 0,
-                          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                          borderRadius: '8px', padding: '0.25rem', minWidth: '120px',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 101,
-                          display: 'flex', flexDirection: 'column', gap: '0.1rem',
-                        }}>
-                          <button
-                            onClick={() => {
-                              setTokenModal({ mode: 'edit', token, category: activeCategory });
-                              setActiveDropdown(null);
+                      ) : isAlias ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                          <span
+                            onDoubleClick={() => {
+                              setEditingTokenName(token.name);
+                              setEditingTokenValue(token.value);
                             }}
-                            style={menuItemStyle}
-                          >
-                            Edit Token
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleDuplicateToken(activeCategory, token);
-                              setActiveDropdown(null);
+                            title={`Inheritance Path: ${chain.join(' ➔ ')}\nDouble click to edit alias`}
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '0.8rem',
+                              color: 'var(--accent)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
                             }}
-                            style={menuItemStyle}
                           >
-                            Duplicate
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`Are you sure you want to delete "${token.name}"?`)) {
-                                handleDeleteToken(activeCategory, token.name);
-                              }
-                              setActiveDropdown(null);
-                            }}
-                            style={{ ...menuItemStyle, color: '#EF4444' }}
-                          >
-                            Delete
-                          </button>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.8 }}><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                            {token.value}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+                            Resolves to: <strong style={{ color: 'var(--text-secondary)' }}>{resolvedPreviewValue}</strong>
+                          </span>
                         </div>
-                      </>
-                    )}
+                      ) : (
+                        <span
+                          onDoubleClick={() => {
+                            setEditingTokenName(token.name);
+                            setEditingTokenValue(token.value);
+                          }}
+                          title="Double click to edit value"
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.8rem',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            borderBottom: '1px dashed transparent',
+                            transition: 'border-color 0.15s'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.borderBottom = '1px dashed var(--text-tertiary)'}
+                          onMouseLeave={e => e.currentTarget.style.borderBottom = '1px dashed transparent'}
+                        >
+                          {token.value}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
+                      background: `${TYPE_COLORS[token.type]}15`,
+                      color: TYPE_COLORS[token.type],
+                      border: `1px solid ${TYPE_COLORS[token.type]}30`,
+                      fontWeight: 500, letterSpacing: '0.03em',
+                    }}>
+                      {token.type}
+                    </span>
+                    
+                    {/* Live Visual Preview column */}
+                    <div>
+                      {renderTokenPreview(previewToken)}
+                    </div>
+                    
+                    {/* 3-Dot Action Dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveDropdown(activeDropdown === token.name ? null : token.name);
+                        }}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: 'var(--text-tertiary)', padding: '0.2rem', borderRadius: '4px',
+                          display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                          <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                        </svg>
+                      </button>
+                      {activeDropdown === token.name && (
+                        <>
+                          <div
+                            onClick={() => setActiveDropdown(null)}
+                            style={{
+                              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                              zIndex: 100, background: 'transparent',
+                            }}
+                          />
+                          <div style={{
+                            position: 'absolute', top: '100%', right: 0,
+                            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                            borderRadius: '8px', padding: '0.25rem', minWidth: '120px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 101,
+                            display: 'flex', flexDirection: 'column', gap: '0.1rem',
+                          }}>
+                            <button
+                              onClick={() => {
+                                setTokenModal({ mode: 'edit', token, category: activeCategory });
+                                setActiveDropdown(null);
+                              }}
+                              style={menuItemStyle}
+                            >
+                              Edit Token
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDuplicateToken(activeCategory, token);
+                                setActiveDropdown(null);
+                              }}
+                              style={menuItemStyle}
+                            >
+                              Duplicate
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete "${token.name}"?`)) {
+                                  handleDeleteToken(activeCategory, token.name);
+                                }
+                                setActiveDropdown(null);
+                              }}
+                              style={{ ...menuItemStyle, color: '#EF4444' }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </>
           )}
 
-          {activeTab === 'components' && components.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: 'var(--text-tertiary)' }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-              </div>
-              <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem' }}>No components yet</h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginBottom: '1.5rem' }}>
-                Add components that reference your tokens.
-              </p>
-              <button onClick={() => setShowComponentModal(true)} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                + Add component
-              </button>
-            </div>
-          )}
+          {activeTab === 'components' && (() => {
+            const categoriesList = ['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'];
+            
+            // Map legacy categories on-the-fly for backward compatibility
+            const mappedComponents = components.map(comp => {
+              let cat = comp.category;
+              if (cat === 'Atom') {
+                if (comp.template === 'button') cat = 'Actions & Buttons';
+                else if (comp.template === 'input') cat = 'Form Inputs';
+                else if (comp.template === 'badge') cat = 'Feedback & Status';
+                else cat = 'Actions & Buttons';
+              } else if (cat === 'Molecule') {
+                if (comp.template === 'card') cat = 'Display & Data';
+                else cat = 'Display & Data';
+              } else if (cat === 'Organism') {
+                cat = 'Navigation';
+              }
+              return { ...comp, category: cat };
+            });
 
-          {activeTab === 'components' && components.length > 0 && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Components <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({components.length})</span>
-                </h2>
-                <button onClick={() => setShowComponentModal(true)} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                  + Add component
-                </button>
-              </div>
+            const catComps = mappedComponents.filter(comp => comp.category === activeComponentCategory);
+            const presetComps = catComps.filter(comp => comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4');
+            const customComps = catComps.filter(comp => !comp.isPreset && !String(comp.id).startsWith('preset-') && comp.id !== '1' && comp.id !== '2' && comp.id !== '3' && comp.id !== '4');
 
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-                gap: '1.5rem',
+            const renderComponentCard = (comp) => (
+              <div key={comp.id} style={{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: '16px',
+                padding: '1.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.25rem',
+                position: 'relative',
               }}>
-                {components.map((comp) => (
-                  <div key={comp.id} style={{
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '16px',
-                    padding: '1.5rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '1.25rem',
-                    position: 'relative',
-                  }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>{comp.name}</h3>
-                          <span style={{
-                            fontSize: '0.65rem', padding: '0.15rem 0.45rem', borderRadius: '100px',
-                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                            color: 'var(--text-secondary)', fontWeight: 500
-                          }}>{comp.category}</span>
-                        </div>
-                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{comp.description}</p>
-                      </div>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>{comp.name}</h4>
+                      {(comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4') && (
+                        <span style={{
+                          fontSize: '0.65rem', background: 'var(--accent-glow)', color: 'var(--accent)',
+                          padding: '0.15rem 0.45rem', borderRadius: '4px', border: '1px solid rgba(252,6,148,0.2)',
+                          fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em'
+                        }}>
+                          Preset
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{comp.description}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                    <button
+                      onClick={() => setComponentModal({ mode: 'edit', component: comp })}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--text-secondary)', padding: '0.2rem',
+                        display: 'flex', alignItems: 'center',
+                      }}
+                      title="Edit component"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    {(comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4') ? (
+                      <button
+                        style={{
+                          background: 'none', border: 'none', cursor: 'not-allowed',
+                          color: 'var(--text-tertiary)', padding: '0.2rem',
+                          display: 'flex', alignItems: 'center', opacity: 0.3
+                        }}
+                        title="Preset components cannot be deleted"
+                        disabled
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                        </svg>
+                      </button>
+                    ) : (
                       <button
                         onClick={() => {
                           if (window.confirm(`Delete component "${comp.name}"?`)) {
@@ -1094,50 +2276,759 @@ This document serves as our living source of truth.`
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                         </svg>
                       </button>
-                    </div>
+                    )}
+                  </div>
+                </div>
 
-                    {/* Canvas/Preview Area */}
-                    <div style={{
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '10px',
-                      height: '140px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '1rem',
-                      overflow: 'hidden',
-                      position: 'relative',
-                    }}>
-                      <div style={{ position: 'absolute', top: '6px', left: '8px', fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Live Canvas
-                      </div>
-                      {renderLivePreview(comp)}
-                    </div>
+                {/* Canvas/Preview Area */}
+                <div style={{
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  height: '140px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  overflow: 'hidden',
+                  position: 'relative',
+                }}>
+                  <div style={{ position: 'absolute', top: '6px', left: '8px', fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Live Canvas
+                  </div>
+                  {renderLivePreview(comp)}
+                </div>
 
-                    {/* Mapped Tokens List */}
-                    <div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                        Mapped Tokens
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        {Object.entries(comp.tokens || {}).map(([prop, tokenName]) => {
-                          if (!tokenName) return null;
-                          return (
-                            <div key={prop} style={{
-                              display: 'flex', alignItems: 'center', gap: '0.35rem',
-                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                              padding: '0.25rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem'
+                {/* Mapped Tokens List */}
+                <div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                    Mapped Tokens
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    {Object.entries(comp.tokens || {}).map(([prop, tokenName]) => {
+                      if (!tokenName) return null;
+                      return (
+                        <div key={prop} style={{
+                          display: 'flex', alignItems: 'center', gap: '0.35rem',
+                          background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                          padding: '0.25rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem'
+                        }}>
+                          <span style={{ color: 'var(--text-tertiary)' }}>{prop}:</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 500 }}>{tokenName}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+
+            return (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {activeComponentCategory} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({catComps.length})</span>
+                  </h2>
+                  <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
+                    + Add component
+                  </button>
+                </div>
+
+                {catComps.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '1px dashed var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: 'var(--text-tertiary)' }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    </div>
+                    <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', fontWeight: 600 }}>No components in this category</h3>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginBottom: '1.5rem' }}>
+                      Add a component to {activeComponentCategory} to reference your tokens.
+                    </p>
+                    <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
+                      Create first {activeComponentCategory.toLowerCase().slice(0, -1)}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    {/* Presets Accordion */}
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        onClick={() => setPresetsExpanded(!presetsExpanded)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          width: '100%', padding: '1rem 1.25rem', background: 'var(--bg-tertiary)',
+                          border: 'none', borderBottom: presetsExpanded ? '1px solid var(--border)' : 'none',
+                          color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 600,
+                          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <svg
+                            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                            style={{ transform: presetsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-secondary)' }}
+                          >
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                          <span>System Presets</span>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '0.2rem 0.5rem', borderRadius: '100px', border: '1px solid var(--border)' }}>
+                          {presetComps.length}
+                        </span>
+                      </button>
+                      {presetsExpanded && (
+                        <div style={{ padding: '1.25rem' }}>
+                          {presetComps.length === 0 ? (
+                            <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', margin: 0, textAlign: 'center', padding: '1.5rem 0' }}>
+                              No presets in this category.
+                            </p>
+                          ) : (
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                              gap: '1.25rem',
                             }}>
-                              <span style={{ color: 'var(--text-tertiary)' }}>{prop}:</span>
-                              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 500 }}>{tokenName}</span>
+                              {presetComps.map(renderComponentCard)}
                             </div>
-                          );
-                        })}
-                      </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Custom Components Accordion */}
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        onClick={() => setCustomExpanded(!customExpanded)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          width: '100%', padding: '1rem 1.25rem', background: 'var(--bg-tertiary)',
+                          border: 'none', borderBottom: customExpanded ? '1px solid var(--border)' : 'none',
+                          color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 600,
+                          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <svg
+                            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                            style={{ transform: customExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-secondary)' }}
+                          >
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                          <span>Custom Components</span>
+                        </div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '0.2rem 0.5rem', borderRadius: '100px', border: '1px solid var(--border)' }}>
+                          {customComps.length}
+                        </span>
+                      </button>
+                      {customExpanded && (
+                        <div style={{ padding: '1.25rem' }}>
+                          {customComps.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-secondary)' }}>
+                              <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', margin: '0 0 1rem 0' }}>
+                                No custom components created in this category yet.
+                              </p>
+                              <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.4rem 1rem' }}>
+                                Create Custom Component
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+                              gap: '1.25rem',
+                            }}>
+                              {customComps.map(renderComponentCard)}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                )}
+              </div>
+            );
+          })()}
+
+          {activeTab === 'handoff' && (() => {
+            const formats = [
+              {
+                id: 'css',
+                badge: 'CSS',
+                badgeBg: 'rgba(59, 130, 246, 0.1)',
+                badgeColor: '#3B82F6',
+                filename: 'variables.css',
+                desc: 'For any website — paste into your stylesheet. Works everywhere with no build step required.',
+                recommended: true,
+                snippet: `@import url("https://strata.charisol.io/api/public/v1/projects/${project.id}/css");`
+              },
+              {
+                id: 'tailwind',
+                badge: 'TAILWIND',
+                badgeBg: 'rgba(6, 182, 212, 0.1)',
+                badgeColor: '#06B6D4',
+                filename: 'tailwind.config.json',
+                desc: 'For React/Next.js apps built with Tailwind CSS — merge the theme tokens into your tailwind.config.js.',
+                recommended: true,
+                snippet: `// tailwind.config.js\nconst strataTheme = require("./tailwind.config.json");\nmodule.exports = {\n  theme: {\n    extend: strataTheme\n  }\n}`
+              },
+              {
+                id: 'scss',
+                badge: 'SCSS',
+                badgeBg: 'rgba(236, 72, 153, 0.1)',
+                badgeColor: '#EC7299',
+                filename: 'variables.scss',
+                desc: 'For SASS/SCSS stylesheets — $variable-name syntax compatible with any Sass project.',
+                recommended: false,
+                snippet: `@import "https://strata.charisol.io/api/public/v1/projects/${project.id}/scss";`
+              },
+              {
+                id: 'ts',
+                badge: 'TS',
+                badgeBg: 'rgba(37, 99, 235, 0.1)',
+                badgeColor: '#2563EB',
+                filename: 'tokens.ts',
+                desc: 'For typed TypeScript projects — fully typed named constants with IDE autocomplete.',
+                recommended: false,
+                snippet: `import { tokens } from "./tokens";\n// Use tokens.Color.primary`
+              },
+              {
+                id: 'js',
+                badge: 'JS',
+                badgeBg: 'rgba(234, 179, 8, 0.1)',
+                badgeColor: '#EAB308',
+                filename: 'tokens.js',
+                desc: 'For JavaScript projects — ES Module with named exports, works with any modern bundler.',
+                recommended: false,
+                snippet: `import { tokens } from "./tokens.js";\nconsole.log(tokens.color.primary);`
+              },
+              {
+                id: 'swift',
+                badge: 'SWIFT',
+                badgeBg: 'rgba(249, 115, 22, 0.1)',
+                badgeColor: '#F97316',
+                filename: 'tokens.swift',
+                desc: 'For iOS and macOS apps — UIColor and CGFloat extensions ready to use in Xcode.',
+                recommended: false,
+                snippet: `import SwiftUI\nextension Color {\n    static let strataPrimary = Color(hex: "#FC0694")\n}`
+              },
+              {
+                id: 'dart',
+                badge: 'DART',
+                badgeBg: 'rgba(20, 184, 166, 0.1)',
+                badgeColor: '#14B8A6',
+                filename: 'tokens.dart',
+                desc: 'For Flutter apps — MaterialColor and constant definitions for Dart.',
+                recommended: false,
+                snippet: `import 'tokens.dart';\nfinal brandColor = StrataColors.primary;`
+              },
+              {
+                id: 'json',
+                badge: 'DTCG',
+                badgeBg: 'rgba(245, 158, 11, 0.1)',
+                badgeColor: '#F59E0B',
+                filename: 'tokens.json',
+                desc: 'For design tools like Figma Tokens plugin — W3C Design Token Community Group format compatible with Style Dictionary.',
+                recommended: false,
+                snippet: `{\n  "color": {\n    "primary": {\n      "$value": "#FC0694",\n      "$type": "color"\n    }\n  }\n}`
+              },
+              {
+                id: 'strata',
+                badge: 'STRATA',
+                badgeBg: 'rgba(139, 92, 246, 0.1)',
+                badgeColor: '#8B5CF6',
+                filename: 'strata.json',
+                desc: 'For Strata SDK integration — full token hierarchy with component metadata and schema version.',
+                recommended: false,
+                snippet: `{\n  "projectId": "${project.id}",\n  "version": "1.0.0"\n}`
+              }
+            ];
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', maxWidth: '1200px' }}>
+                
+                {/* Connect your app section */}
+                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                  <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                      Connect your app
+                    </h3>
+                  </div>
+                  
+                  {/* Project ID copy card */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.875rem 1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Project ID:</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500 }}>{project.id}</span>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(project.id);
+                        alert('Project ID copied!');
+                      }}
+                      className="btn btn-secondary"
+                      style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)', padding: '0.35rem 0.875rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+
+                  {/* Install & configure */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Install & configure</h4>
+                    
+                    {/* Code box */}
+                    <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto', marginBottom: '1rem' }}>
+                      <button
+                        onClick={() => {
+                          const code = `import { StrataProvider } from "@strata-ds/core";\n\nexport default function RootLayout({ children }) {\n  return (\n    <StrataProvider\n      syncEnabled={true}\n      projectId="${project.id}"\n      snapshotCdnBase="snapshot.strata.charisol.io/snapshot"\n      syncToken="pt_live_your_token_here"\n      syncInterval={5000}\n    >\n      {children}\n    </StrataProvider>\n  );\n}`;
+                          navigator.clipboard.writeText(code);
+                          alert('Configuration code copied!');
+                        }}
+                        style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '0.3rem 0.6rem', color: '#fff', fontSize: '0.7rem', cursor: 'pointer' }}
+                      >
+                        Copy
+                      </button>
+                      <pre style={{ margin: 0, lineHeight: 1.5, color: '#F1F1F4' }}>
+{`import { StrataProvider } from "@strata-ds/core";
+
+export default function RootLayout({ children }) {
+  return (
+    <StrataProvider
+      syncEnabled={true}
+      projectId="${project.id}"
+      snapshotCdnBase="snapshot.strata.charisol.io/snapshot"
+      syncToken="pt_live_your_token_here"
+      syncInterval={5000}
+    >
+      {children}
+    </StrataProvider>
+  );
+}`}
+                      </pre>
+                    </div>
+
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
+                      Install <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '4px', color: 'var(--text-primary)' }}>@strata-ds/core</code> from npm, then wrap your app root with <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '4px', color: 'var(--text-primary)' }}>StrataProvider</code>. Pass your <code style={{ fontFamily: 'var(--font-mono)' }}>projectId</code>, <code style={{ fontFamily: 'var(--font-mono)' }}>snapshotCdnBase</code>, and <code style={{ fontFamily: 'var(--font-mono)' }}>syncToken</code> from the <strong>Publish & Sync</strong> tab.
+                    </p>
+                    
+                    <a href="#integration-guide" onClick={(e) => { e.preventDefault(); alert('Redirecting to full integration guide...'); }} style={{ fontSize: '0.82rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>
+                      Read full integration guide →
+                    </a>
+                  </div>
+                </div>
+
+                {/* Publish & Sync Formats Grid */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                      Publish & Sync
+                    </h3>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                    {formats.map(fmt => {
+                      const isExpanded = expandedCard === fmt.id;
+                      const url = `https://strata.charisol.io/api/public/v1/projects/${project.id}/${fmt.id}`;
+                      return (
+                        <div key={fmt.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Header Row */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ 
+                                fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
+                                background: fmt.badgeBg, color: fmt.badgeColor, letterSpacing: '0.05em' 
+                              }}>
+                                {fmt.badge}
+                              </span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {fmt.filename}
+                              </span>
+                            </div>
+                            {fmt.recommended && (
+                              <span style={{ 
+                                fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px',
+                                background: 'rgba(34, 197, 94, 0.1)', color: '#22C55E', letterSpacing: '0.05em'
+                              }}>
+                                RECOMMENDED
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, minHeight: '3rem', lineHeight: 1.4 }}>
+                            {fmt.desc}
+                          </p>
+
+                          {/* URL box */}
+                          <div style={{ display: 'flex', position: 'relative', width: '100%' }}>
+                            <input 
+                              readOnly 
+                              className="form-input" 
+                              value={url} 
+                              style={{ 
+                                fontSize: '0.72rem', height: '36px', padding: '0 50px 0 0.75rem', 
+                                background: 'var(--bg-tertiary)', border: '1px solid var(--border)', 
+                                color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)',
+                                textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%',
+                                borderRadius: '6px'
+                              }} 
+                            />
+                            <button 
+                              onClick={() => {
+                                navigator.clipboard.writeText(url);
+                                alert(`${fmt.filename} sync URL copied!`);
+                              }}
+                              style={{ 
+                                position: 'absolute', right: '4px', top: '4px', height: '28px', 
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border)', 
+                                color: 'var(--text-primary)', padding: '0 0.5rem', fontSize: '0.7rem', 
+                                borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' 
+                              }}
+                            >
+                              Copy
+                            </button>
+                          </div>
+
+                          {/* Toggler */}
+                          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
+                            <button 
+                              onClick={() => setExpandedCard(isExpanded ? null : fmt.id)}
+                              style={{ 
+                                background: 'none', border: 'none', color: 'var(--accent)', 
+                                fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer', 
+                                display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 
+                              }}
+                            >
+                              <span>Show usage snippets</span>
+                              <span style={{ 
+                                display: 'inline-block', transition: 'transform 0.2s', 
+                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' 
+                              }}>
+                                ▼
+                              </span>
+                            </button>
+
+                            {/* Expanded Code Snippet */}
+                            {isExpanded && (
+                              <div style={{ 
+                                marginTop: '0.75rem', background: '#09090C', border: '1px solid #1A1A24', 
+                                borderRadius: '8px', padding: '0.75rem', fontFamily: 'var(--font-mono)', 
+                                fontSize: '0.72rem', color: '#A3A3B8', overflowX: 'auto', position: 'relative'
+                              }}>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(fmt.snippet);
+                                    alert('Usage snippet copied!');
+                                  }}
+                                  style={{ 
+                                    position: 'absolute', top: '6px', right: '6px', background: 'rgba(255,255,255,0.05)', 
+                                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', 
+                                    padding: '0.2rem 0.4rem', color: '#fff', fontSize: '0.6rem', cursor: 'pointer' 
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                                <pre style={{ margin: 0, lineHeight: 1.4, color: '#E1E1E6' }}>{fmt.snippet}</pre>
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Unified Token Dictionary */}
+                <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Unified Token Dictionary</h3>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Search tokens (name, value, type)..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      style={{ maxWidth: '240px', fontSize: '0.8rem', padding: '0.4rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px' }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                    {['Token Key', 'Value', 'Type'].map(h => (
+                      <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto' }}>
+                    {Object.keys(activeTokens).flatMap(cat => activeTokens[cat] || []).filter(t => {
+                      const q = searchQuery.toLowerCase();
+                      return t.name.toLowerCase().includes(q) || t.value.toLowerCase().includes(q) || t.type.toLowerCase().includes(q);
+                    }).map((token, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr',
+                          gap: '1rem', alignItems: 'center',
+                          padding: '0.625rem 0.875rem', borderBottom: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>{token.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {token.type === 'color' && (
+                            <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: token.value, border: '1px solid rgba(255,255,255,0.1)' }} />
+                          )}
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{token.value}</span>
+                        </div>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'fit-content',
+                          fontSize: '0.6rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
+                          background: `${TYPE_COLORS[token.type]}12`,
+                          color: TYPE_COLORS[token.type],
+                          border: `1px solid ${TYPE_COLORS[token.type]}22`,
+                          fontWeight: 500
+                        }}>{token.type}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {activeTab === 'assets' && (
+            <div style={{ maxWidth: '1200px' }}>
+              <div style={{ marginBottom: '2.5rem' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                  Assets Download Hub
+                </h2>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                  Export generated production tokens and assets, or manage uploaded brand guidelines and resources.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem' }}>
+                
+                {/* Column 1: Generated Assets */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                    System Generated Assets
+                  </h3>
+
+                  {[
+                    {
+                      key: 'brandBible',
+                      name: 'Brand Bible PDF',
+                      desc: 'Fully compiled style guide containing colors, fonts, voice & tone guidelines.',
+                      type: 'PDF Document',
+                      format: 'PDF',
+                      lastUpdated: brandBibleDirty ? 'Pending changes' : 'Synced',
+                      onDownload: handlePrintBrandBible
+                    },
+                    {
+                      key: 'css',
+                      name: 'CSS Custom Properties',
+                      desc: 'Production-ready CSS variables mapping token names directly to CSS root variables.',
+                      type: 'variables.css',
+                      format: 'CSS',
+                      lastUpdated: 'Synced',
+                      onDownload: () => downloadTextFile(`${project?.name || 'strata'}-variables.css`, getCSSVariablesText())
+                    },
+                    {
+                      key: 'json',
+                      name: 'Design Tokens JSON (DTCG)',
+                      desc: 'Standard Design Tokens Community Group JSON format, ideal for cross-platform pipelines.',
+                      type: 'tokens.json',
+                      format: 'JSON',
+                      lastUpdated: 'Synced',
+                      onDownload: () => downloadTextFile(`${project?.name || 'strata'}-tokens.json`, getDTCGJsonText())
+                    },
+                    {
+                      key: 'react',
+                      name: 'React Theme Provider',
+                      desc: 'Ready-to-use React Context Provider preconfigured with your typography, colors, and layout scale.',
+                      type: 'ThemeProvider.jsx',
+                      format: 'React',
+                      lastUpdated: 'Synced',
+                      onDownload: () => downloadTextFile('ThemeProvider.jsx', getReactThemeText())
+                    }
+                  ].map(asset => (
+                    <div 
+                      key={asset.key} 
+                      style={{ 
+                        background: 'var(--bg-secondary)', 
+                        padding: '1.5rem', 
+                        borderRadius: '20px', 
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1.25rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.5rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{asset.name}</span>
+                            <span style={{ 
+                              fontSize: '0.625rem', 
+                              padding: '0.15rem 0.4rem', 
+                              borderRadius: '4px',
+                              background: asset.format === 'PDF' ? '#EF444420' : asset.format === 'CSS' ? '#3B82F620' : asset.format === 'JSON' ? '#F59E0B20' : '#10B98120',
+                              color: asset.format === 'PDF' ? '#EF4444' : asset.format === 'CSS' ? '#3B82F6' : asset.format === 'JSON' ? '#F59E0B' : '#10B981',
+                              fontWeight: 700
+                            }}>{asset.format}</span>
+                          </div>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.4' }}>{asset.desc}</p>
+                        </div>
+                        <button 
+                          onClick={asset.onDownload}
+                          className="btn btn-secondary"
+                          style={{ 
+                            fontSize: '0.75rem', 
+                            padding: '0.45rem 1rem', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.4rem',
+                            flexShrink: 0
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          Download
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '0.75rem', fontSize: '0.75rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-tertiary)' }}>
+                          <span style={{ 
+                            width: '6px', 
+                            height: '6px', 
+                            borderRadius: '50%', 
+                            background: asset.lastUpdated.includes('Pending') ? '#F59E0B' : '#10B981'
+                          }}></span>
+                          {asset.lastUpdated}
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ color: 'var(--text-tertiary)' }}>Visibility:</span>
+                          <select 
+                            value={generatedAssetsVisibility[asset.key]} 
+                            onChange={(e) => updateGeneratedAssetVisibility(asset.key, e.target.value)}
+                            style={{ 
+                              background: 'var(--bg-tertiary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '6px', 
+                              padding: '0.2rem 0.5rem', 
+                              color: 'var(--text-primary)', 
+                              fontSize: '0.75rem', 
+                              cursor: 'pointer' 
+                            }}
+                          >
+                            <option>Private</option>
+                            <option>Team</option>
+                            <option>Public link</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Column 2: Uploaded Assets */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: 0 }}>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
+                      Uploaded Reference Materials
+                    </h3>
+                    <button 
+                      onClick={() => document.getElementById('brand-bible-uploader').click()}
+                      style={actionBtnStyle}
+                    >
+                      + Add Material
+                    </button>
+                  </div>
+
+                  {uploadedAssets.map(asset => (
+                    <div 
+                      key={asset.id} 
+                      style={{ 
+                        background: 'var(--bg-secondary)', 
+                        padding: '1.5rem', 
+                        borderRadius: '20px', 
+                        border: '1px solid var(--border)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1.25rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.5rem' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                          <div style={{ color: 'var(--accent)', marginTop: '0.2rem' }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{asset.name}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{asset.type} • {asset.size}</div>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                          <button 
+                            onClick={() => alert(`Downloading ${asset.name}...`)}
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem' }}
+                          >
+                            Download
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to remove ${asset.name}?`)) {
+                                updateUploadedAssets(uploadedAssets.filter(a => a.id !== asset.id));
+                              }
+                            }}
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', color: '#EF4444', borderColor: 'rgba(239,68,68,0.2)' }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '0.75rem', fontSize: '0.75rem' }}>
+                        <div style={{ color: 'var(--text-tertiary)' }}>
+                          Uploaded {asset.date}
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ color: 'var(--text-tertiary)' }}>Visibility:</span>
+                          <select 
+                            value={asset.visibility} 
+                            onChange={(e) => {
+                              const updated = uploadedAssets.map(a => a.id === asset.id ? { ...a, visibility: e.target.value } : a);
+                              updateUploadedAssets(updated);
+                            }}
+                            style={{ 
+                              background: 'var(--bg-tertiary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '6px', 
+                              padding: '0.2rem 0.5rem', 
+                              color: 'var(--text-primary)', 
+                              fontSize: '0.75rem', 
+                              cursor: 'pointer' 
+                            }}
+                          >
+                            <option>Private</option>
+                            <option>Team</option>
+                            <option>Public link</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {uploadedAssets.length === 0 && (
+                    <div style={{ textAlign: 'center', padding: '3rem 1.5rem', background: 'var(--bg-secondary)', borderRadius: '20px', border: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: '0.75rem' }}>📂</span>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No uploaded reference materials yet.</div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1185,15 +3076,367 @@ This document serves as our living source of truth.`
         />
       )}
 
-      {showComponentModal && (
+      {componentModal && (
         <ComponentModal
           activeTokens={activeTokens}
-          onClose={() => setShowComponentModal(false)}
+          componentToEdit={componentModal.component}
+          onClose={() => setComponentModal(null)}
           onSave={(compData) => {
-            handleAddComponent(compData);
-            setShowComponentModal(false);
+            if (componentModal.mode === 'add') {
+              handleAddComponent(compData);
+            } else {
+              handleEditComponent({ ...componentModal.component, ...compData });
+            }
+            setComponentModal(null);
           }}
         />
+      )}
+
+      {/* ── Downstream Impact Review Bottom Panel ── */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: '360px',
+        background: 'rgba(19, 19, 26, 0.95)',
+        backdropFilter: 'blur(24px)',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        zIndex: 1000,
+        transform: pendingChange ? 'translateY(0)' : 'translateY(100%)',
+        transition: 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+        boxShadow: '0 -10px 40px rgba(0,0,0,0.5)',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'inherit'
+      }}>
+        {pendingChange && (() => {
+          const impact = computeImpact(pendingChange);
+          const totalImpacts = impact.brandBible.length + impact.tokens.length + impact.components.length;
+          
+          return (
+            <>
+              {/* Header */}
+              <div style={{ 
+                padding: '1rem 2rem', 
+                borderBottom: '1px solid var(--border)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                background: 'rgba(255,255,255,0.01)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ color: 'var(--accent)', fontSize: '1.2rem' }}>⚡</span>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Downstream Impact Review
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>
+                      {pendingChange.type === 'token' ? (
+                        <>Modified token <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{pendingChange.originalName}</span> ({pendingChange.oldValue} → {pendingChange.newValue})</>
+                      ) : (
+                        <>Updated brand attribute <span style={{ color: 'var(--text-secondary)' }}>{pendingChange.field}</span></>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button 
+                    onClick={cancelChange} 
+                    style={{ 
+                      background: 'none', 
+                      border: '1px solid var(--border)', 
+                      color: 'var(--text-secondary)', 
+                      padding: '0.5rem 1.25rem', 
+                      borderRadius: '8px', 
+                      fontSize: '0.82rem', 
+                      cursor: 'pointer',
+                      fontFamily: 'inherit'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => applyChange(selectedImpacts)} 
+                    className="btn btn-secondary"
+                    style={{ 
+                      padding: '0.5rem 1.25rem', 
+                      borderRadius: '8px', 
+                      fontSize: '0.82rem', 
+                      borderColor: 'var(--accent)',
+                      color: 'var(--accent)',
+                      background: 'transparent'
+                    }}
+                  >
+                    Accept Selected
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const allTokens = {};
+                      impact.tokens.forEach(t => allTokens[t.name] = true);
+                      const allComps = {};
+                      impact.components.forEach(c => allComps[c.id] = true);
+                      applyChange({ tokens: allTokens, components: allComps });
+                    }} 
+                    className="btn btn-primary"
+                    style={{ 
+                      padding: '0.5rem 1.5rem', 
+                      borderRadius: '8px', 
+                      fontSize: '0.82rem'
+                    }}
+                  >
+                    Accept All ({totalImpacts} change{totalImpacts !== 1 ? 's' : ''})
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                {/* Tab selector */}
+                <div style={{ 
+                  width: '220px', 
+                  borderRight: '1px solid var(--border)', 
+                  background: 'rgba(0,0,0,0.15)', 
+                  padding: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem'
+                }}>
+                  {[
+                    { id: 'brandBible', label: 'Brand Bible', count: impact.brandBible.length },
+                    { id: 'tokens', label: 'Downstream Tokens', count: impact.tokens.length },
+                    { id: 'components', label: 'Components Affected', count: impact.components.length }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setImpactPanelTab(tab.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                        background: impactPanelTab === tab.id ? 'var(--bg-tertiary)' : 'none',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '0.6rem 0.75rem',
+                        color: impactPanelTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontFamily: 'inherit',
+                        fontWeight: impactPanelTab === tab.id ? 500 : 400
+                      }}
+                    >
+                      <span>{tab.label}</span>
+                      <span style={{ 
+                        fontSize: '0.7rem', 
+                        padding: '0.1rem 0.4rem', 
+                        borderRadius: '10px', 
+                        background: tab.count > 0 ? 'var(--accent-glow)' : 'rgba(255,255,255,0.04)', 
+                        color: tab.count > 0 ? 'var(--accent)' : 'var(--text-tertiary)',
+                        fontWeight: 600
+                      }}>{tab.count}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab Content */}
+                <div style={{ flex: 1, padding: '1.5rem 2rem', overflowY: 'auto' }}>
+                  
+                  {/* Brand Bible Tab */}
+                  {impactPanelTab === 'brandBible' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {impact.brandBible.map((sec, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: 'var(--bg-tertiary)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                          <span style={{ fontSize: '1.25rem' }}>📄</span>
+                          <div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{sec.name}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.2rem' }}>{sec.description}</div>
+                          </div>
+                        </div>
+                      ))}
+                      {impact.brandBible.length === 0 && (
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', textAlign: 'center', padding: '2rem' }}>No Brand Bible sections are affected by this change.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Downstream Tokens Tab */}
+                  {impactPanelTab === 'tokens' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {impact.tokens.map((tok, i) => {
+                        const isChecked = selectedImpacts.tokens?.[tok.name] !== false;
+                        return (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between', background: 'var(--bg-tertiary)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked} 
+                                onChange={() => {
+                                  setSelectedImpacts(prev => ({
+                                    ...prev,
+                                    tokens: {
+                                      ...prev.tokens,
+                                      [tok.name]: !isChecked
+                                    }
+                                  }));
+                                }}
+                                style={{ accentColor: 'var(--accent)' }}
+                              />
+                              <div>
+                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: isChecked ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{tok.name}</span>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginTop: '0.15rem' }}>
+                                  Path: {tok.path.join(' → ')}
+                                </div>
+                              </div>
+                            </label>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
+                              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', textDecoration: isChecked ? 'none' : 'line-through' }}>{tok.oldValue}</span>
+                              <span style={{ color: 'var(--text-tertiary)' }}>→</span>
+                              <span style={{ fontFamily: 'var(--font-mono)', color: isChecked ? 'var(--accent)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                                {isChecked ? tok.newValue : tok.oldValue + ' (Detached)'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {impact.tokens.length === 0 && (
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', textAlign: 'center', padding: '2rem' }}>No downstream tokens reference this token.</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Components Tab */}
+                  {impactPanelTab === 'components' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      {impact.components.map((comp, i) => {
+                        const isChecked = selectedImpacts.components?.[comp.id] !== false;
+                        const origComp = components.find(c => c.id === comp.id);
+                        const previewComp = isChecked ? {
+                          ...origComp,
+                          tokens: origComp?.tokens ? (() => {
+                            const tCopy = { ...origComp.tokens };
+                            comp.changedProps.forEach(cp => {
+                              tCopy[cp.prop] = cp.newValue;
+                            });
+                            return tCopy;
+                          })() : null
+                        } : origComp;
+
+                        return (
+                          <div key={i} style={{ display: 'flex', flexDirection: 'column', justifyItems: 'space-between', background: 'var(--bg-tertiary)', padding: '1rem', borderRadius: '16px', border: '1px solid var(--border)', gap: '1rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, cursor: 'pointer' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isChecked} 
+                                  onChange={() => {
+                                    setSelectedImpacts(prev => ({
+                                      ...prev,
+                                      components: {
+                                        ...prev.components,
+                                        [comp.id]: !isChecked
+                                      }
+                                    }));
+                                  }}
+                                  style={{ accentColor: 'var(--accent)' }}
+                                />
+                                <div>
+                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isChecked ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{comp.name}</span>
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', display: 'block', textTransform: 'capitalize' }}>Template: {comp.template}</span>
+                                </div>
+                              </label>
+                            </div>
+
+                            <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingLeft: '1.75rem' }}>
+                              {comp.changedProps.map((p, idx) => (
+                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ color: 'var(--text-secondary)' }}>{p.prop}:</span>
+                                  <span style={{ color: isChecked ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                                    {p.oldValue} → {isChecked ? p.newValue : p.oldValue + ' (Detached)'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div style={{ 
+                              background: 'var(--bg-secondary)', 
+                              borderRadius: '8px', 
+                              padding: '0.75rem', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center',
+                              minHeight: '60px',
+                              border: '1px solid var(--border)',
+                              opacity: isChecked ? 1 : 0.4,
+                              transition: 'opacity 0.2s'
+                            }}>
+                              {previewComp && renderLivePreview(previewComp)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {impact.components.length === 0 && (
+                        <div style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', textAlign: 'center', padding: '2rem', gridColumn: 'span 2' }}>No components are affected by this change.</div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </>
+          );
+        })()}
+      </div>
+
+      {/* ── Brand Bible AI Suggestions Modal ── */}
+      {suggestionsModalData && (
+        <BrandBibleSuggestionsModal 
+          suggestions={suggestionsModalData}
+          onClose={() => setSuggestionsModalData(null)}
+          onApply={handleApplySuggestions}
+        />
+      )}
+
+      {/* ── Undo Toast Alert ── */}
+      {showUndoToast && (
+        <div style={{
+          position: 'fixed',
+          bottom: pendingChange ? '380px' : '24px',
+          right: '24px',
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--accent)',
+          padding: '1rem 1.5rem',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1.5rem',
+          zIndex: 1050,
+          animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+        }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+            Changes applied successfully.
+          </span>
+          <button 
+            onClick={handleUndo}
+            style={{
+              background: 'var(--accent-glow)',
+              border: '1px solid rgba(252,6,148,0.2)',
+              borderRadius: '6px',
+              padding: '0.4rem 1rem',
+              color: 'var(--accent)',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: 'inherit'
+            }}
+          >
+            Undo
+          </button>
+        </div>
       )}
 
     </div>
@@ -1221,12 +3464,126 @@ const getDefaultTypeForCategory = (category) => {
   return 'color';
 };
 
+/* ── Visual token preview helper ── */
+const renderTokenPreview = (token) => {
+  const { type, value } = token;
+  if (!value) return <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>-</span>;
+
+  let cleanValue = String(value).trim();
+
+  switch (type) {
+    case 'color':
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{
+            width: '24px', height: '24px', borderRadius: '4px',
+            background: cleanValue, border: '1px solid rgba(255,255,255,0.15)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)', flexShrink: 0
+          }} />
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {cleanValue}
+          </span>
+        </div>
+      );
+      
+    case 'fontSize':
+      let sizeVal = cleanValue;
+      if (/^\d+$/.test(sizeVal)) sizeVal += 'px';
+      return (
+        <span style={{ fontSize: sizeVal, color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
+          Aa
+        </span>
+      );
+      
+    case 'fontFamily':
+      return (
+        <span style={{ fontFamily: cleanValue, fontSize: '0.85rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
+          Aa Bb Cc
+        </span>
+      );
+      
+    case 'spacing':
+      let spacingVal = cleanValue;
+      if (/^\d+$/.test(spacingVal)) spacingVal += 'px';
+      return (
+        <div style={{
+          height: '10px',
+          width: spacingVal,
+          maxWidth: '100px',
+          minWidth: '4px',
+          background: 'var(--accent)',
+          borderRadius: '3px',
+          opacity: 0.8
+        }} title={value} />
+      );
+      
+    case 'borderRadius':
+      let radiusVal = cleanValue;
+      if (/^\d+$/.test(radiusVal)) radiusVal += 'px';
+      return (
+        <div style={{
+          width: '32px', height: '32px',
+          border: '2px solid var(--accent)',
+          borderRadius: radiusVal,
+          background: 'var(--accent-glow)'
+        }} />
+      );
+      
+    case 'shadow':
+      return (
+        <div style={{
+          width: '32px', height: '32px',
+          background: 'var(--bg-secondary)',
+          borderRadius: '6px',
+          boxShadow: cleanValue,
+          border: '1px solid var(--border)'
+        }} />
+      );
+      
+    case 'duration':
+    case 'easing':
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div 
+            className="motion-preview-box"
+            style={{
+              width: '16px', height: '16px',
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              transition: `transform 400ms cubic-bezier(0.4, 0, 0.2, 1)`,
+            }}
+            onMouseEnter={e => {
+              const animDuration = type === 'duration' ? cleanValue : '300ms';
+              const animEasing = type === 'easing' ? cleanValue : 'ease';
+              e.currentTarget.style.transition = `transform ${animDuration} ${animEasing}`;
+              e.currentTarget.style.transform = 'translateX(12px)';
+            }}
+            onMouseLeave={e => {
+              const animDuration = type === 'duration' ? cleanValue : '300ms';
+              const animEasing = type === 'easing' ? cleanValue : 'ease';
+              e.currentTarget.style.transition = `transform ${animDuration} ${animEasing}`;
+              e.currentTarget.style.transform = 'translateX(0)';
+            }}
+            title="Hover to test transition"
+          />
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', userSelect: 'none' }}>Hover</span>
+        </div>
+      );
+      
+    default:
+      return <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{value}</span>;
+  }
+};
+
 /* ── Token Add/Edit Dialog Component ── */
 function TokenModal({ modal, onClose, onSave }) {
   const isEdit = modal.mode === 'edit';
   const [name, setName] = useState(isEdit ? modal.token.name : '');
   const [value, setValue] = useState(isEdit ? modal.token.value : '');
   const [type, setType] = useState(isEdit ? modal.token.type : getDefaultTypeForCategory(modal.category));
+  const [layer, setLayer] = useState(isEdit ? (modal.token.layer || 'Brand') : (modal.defaultLayer || 'Brand'));
+
+  const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1234,8 +3591,9 @@ function TokenModal({ modal, onClose, onSave }) {
       alert('Please fill in all fields');
       return;
     }
-    onSave({ name: name.trim(), value: value.trim(), type });
+    onSave({ name: name.trim(), value: value.trim(), type, layer });
   };
+
 
   return (
     <div style={{
@@ -1289,6 +3647,35 @@ function TokenModal({ modal, onClose, onSave }) {
             </select>
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Layer</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {TOKEN_LAYERS.map(l => {
+                const lColor = l === 'Brand' ? '#F59E0B' : l === 'Semantic' ? '#3B82F6' : '#10B981';
+                const isActive = layer === l;
+                return (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => setLayer(l)}
+                    style={{
+                      flex: 1, padding: '0.45rem 0', borderRadius: '6px', cursor: 'pointer',
+                      border: isActive ? `1px solid ${lColor}50` : '1px solid var(--border)',
+                      background: isActive ? `${lColor}15` : 'var(--bg-tertiary)',
+                      color: isActive ? lColor : 'var(--text-secondary)',
+                      fontSize: '0.78rem', fontWeight: isActive ? 600 : 400,
+                      fontFamily: 'inherit', transition: 'all 0.15s',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
+                    }}
+                  >
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isActive ? lColor : 'var(--text-tertiary)', flexShrink: 0 }} />
+                    {l}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Token Value</label>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <input
@@ -1310,6 +3697,28 @@ function TokenModal({ modal, onClose, onSave }) {
               )}
             </div>
           </div>
+          <div style={{
+            borderTop: '1px solid var(--border)',
+            paddingTop: '1rem',
+            marginTop: '0.25rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem'
+          }}>
+            <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>Visual Preview</span>
+            <div style={{
+              background: 'var(--bg-tertiary)',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              padding: '0.75rem 1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '48px'
+            }}>
+              {renderTokenPreview({ type, value })}
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
             <button type="button" onClick={onClose} style={actionBtnStyle}>Cancel</button>
             <button type="submit" className="btn btn-primary" style={{ padding: '0.4rem 1.25rem' }}>
@@ -1323,26 +3732,108 @@ function TokenModal({ modal, onClose, onSave }) {
 }
 
 /* ── Component Wizard dialog ── */
-function ComponentModal({ onClose, onSave, activeTokens }) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Atom');
-  const [template, setTemplate] = useState('button');
+function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
+  const isEdit = !!componentToEdit;
 
-  // Token mappings
-  const [bg, setBg] = useState('');
-  const [textColor, setTextColor] = useState('');
-  const [padding, setPadding] = useState('');
-  const [borderRadius, setBorderRadius] = useState('');
-  const [fontFamily, setFontFamily] = useState('');
-  const [fontSize, setFontSize] = useState('');
+  // Preset component templates
+  const PRESET_COMPONENTS = [
+    {
+      id: 'custom',
+      name: '',
+      label: 'Custom Component (Blank)',
+      category: 'Actions & Buttons',
+      description: '',
+      template: 'button',
+      tokens: { bg: '', textColor: '', padding: '', borderRadius: '', fontFamily: '', fontSize: '' }
+    },
+    {
+      id: 'primary-button',
+      name: 'PrimaryButton',
+      label: 'Primary Button',
+      category: 'Actions & Buttons',
+      description: 'Standard brand action button',
+      template: 'button',
+      tokens: {
+        bg: ['button.bg', 'color.action', 'brand.color.primary'],
+        textColor: ['button.text', 'color.text.primary', 'brand.color.text'],
+        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
+        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
+        fontFamily: ['brand.font.body', 'brand.font.heading'],
+        fontSize: ['font.size.base', 'font.size.md']
+      }
+    },
+    {
+      id: 'secondary-button',
+      name: 'SecondaryButton',
+      label: 'Secondary Button',
+      category: 'Actions & Buttons',
+      description: 'Secondary action button for auxiliary choices',
+      template: 'button',
+      tokens: {
+        bg: ['color.background.surface', 'brand.color.surface'],
+        textColor: ['color.text.primary', 'brand.color.text'],
+        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
+        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
+        fontFamily: ['brand.font.body', 'brand.font.heading'],
+        fontSize: ['font.size.base', 'font.size.md']
+      }
+    },
+    {
+      id: 'input-field',
+      name: 'InputField',
+      label: 'Text Input Field',
+      category: 'Form Inputs',
+      description: 'Standard text input field component',
+      template: 'input',
+      tokens: {
+        bg: ['input.bg', 'color.background.surface', 'brand.color.surface'],
+        textColor: ['input.text', 'color.text.primary', 'brand.color.text'],
+        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
+        borderRadius: ['input.radius', 'radius.component', 'brand.radius.base'],
+        fontFamily: ['brand.font.body', 'brand.font.heading'],
+        fontSize: ['font.size.base', 'font.size.md']
+      }
+    },
+    {
+      id: 'brand-badge',
+      name: 'BrandBadge',
+      label: 'Status/Brand Badge',
+      category: 'Feedback & Status',
+      description: 'Decorative badge or label tag',
+      template: 'badge',
+      tokens: {
+        bg: ['color.action', 'brand.color.accent'],
+        textColor: ['color.text.primary', 'brand.color.text'],
+        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
+        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
+        fontFamily: ['brand.font.body', 'brand.font.heading'],
+        fontSize: ['font.size.xs', 'font.size.sm']
+      }
+    },
+    {
+      id: 'info-card',
+      name: 'InformationCard',
+      label: 'Information Card',
+      category: 'Display & Data',
+      description: 'Card container block for structured content display',
+      template: 'card',
+      tokens: {
+        bg: ['input.bg', 'color.background.surface', 'brand.color.surface'],
+        textColor: ['color.text.primary', 'brand.color.text'],
+        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
+        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
+        fontFamily: ['brand.font.body', 'brand.font.heading'],
+        fontSize: ['font.size.base', 'font.size.md']
+      }
+    }
+  ];
 
   const getTokensOfType = (type) => {
     const list = [];
     if (!activeTokens || typeof activeTokens !== 'object') return list;
     for (const cat in activeTokens) {
       const catTokens = activeTokens[cat];
-      if (!Array.isArray(catTokens)) continue; // skip null/undefined/non-array categories
+      if (!Array.isArray(catTokens)) continue;
       catTokens.forEach(t => {
         if (t && t.type === type) {
           list.push(t.name);
@@ -1350,6 +3841,71 @@ function ComponentModal({ onClose, onSave, activeTokens }) {
       });
     }
     return list;
+  };
+
+  const findToken = (type, preferredNames) => {
+    const available = getTokensOfType(type);
+    for (const pref of preferredNames) {
+      if (available.includes(pref)) return pref;
+    }
+    return available[0] || '';
+  };
+
+  const getInitialCategory = () => {
+    if (!isEdit) return 'Actions & Buttons';
+    let cat = componentToEdit.category;
+    if (cat === 'Atom') {
+      if (componentToEdit.template === 'button') return 'Actions & Buttons';
+      else if (componentToEdit.template === 'input') return 'Form Inputs';
+      else if (componentToEdit.template === 'badge') return 'Feedback & Status';
+      else return 'Actions & Buttons';
+    } else if (cat === 'Molecule') {
+      if (componentToEdit.template === 'card') return 'Display & Data';
+      else return 'Display & Data';
+    } else if (cat === 'Organism') {
+      return 'Navigation';
+    }
+    return cat || 'Actions & Buttons';
+  };
+
+  const [selectedPreset, setSelectedPreset] = useState('custom');
+  const [name, setName] = useState(isEdit ? componentToEdit.name : '');
+  const [description, setDescription] = useState(isEdit ? componentToEdit.description : '');
+  const [category, setCategory] = useState(getInitialCategory());
+  const [template, setTemplate] = useState(isEdit ? componentToEdit.template : 'button');
+
+  // Token mappings
+  const [bg, setBg] = useState(isEdit ? componentToEdit.tokens?.bg || '' : '');
+  const [textColor, setTextColor] = useState(isEdit ? componentToEdit.tokens?.textColor || '' : '');
+  const [padding, setPadding] = useState(isEdit ? componentToEdit.tokens?.padding || '' : '');
+  const [borderRadius, setBorderRadius] = useState(isEdit ? componentToEdit.tokens?.borderRadius || '' : '');
+  const [fontFamily, setFontFamily] = useState(isEdit ? componentToEdit.tokens?.fontFamily || '' : '');
+  const [fontSize, setFontSize] = useState(isEdit ? componentToEdit.tokens?.fontSize || '' : '');
+
+  const handlePresetChange = (presetId) => {
+    setSelectedPreset(presetId);
+    const preset = PRESET_COMPONENTS.find(p => p.id === presetId);
+    if (preset) {
+      setName(preset.name);
+      setDescription(preset.description);
+      setCategory(preset.category);
+      setTemplate(preset.template);
+      if (preset.id === 'custom') {
+        setBg('');
+        setTextColor('');
+        setPadding('');
+        setBorderRadius('');
+        setFontFamily('');
+        setFontSize('');
+      } else {
+        setBg(findToken('color', preset.tokens.bg));
+        setTextColor(findToken('color', preset.tokens.textColor));
+        setPadding(findToken('spacing', preset.tokens.padding));
+        setBorderRadius(findToken('borderRadius', preset.tokens.borderRadius));
+        setFontFamily(findToken('fontFamily', preset.tokens.fontFamily));
+        setFontSize(findToken('fontSize', preset.tokens.fontSize));
+      }
+    }
   };
 
   const handleSubmit = (e) => {
@@ -1390,12 +3946,28 @@ function ComponentModal({ onClose, onSave, activeTokens }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-            Create New Component
+            {isEdit ? 'Edit Component' : 'Create New Component'}
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem' }}>×</button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {!isEdit && (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Choose Preset Template</label>
+              <select
+                className="form-input"
+                value={selectedPreset}
+                onChange={(e) => handlePresetChange(e.target.value)}
+                style={{ cursor: 'pointer', borderColor: 'var(--accent)' }}
+              >
+                {PRESET_COMPONENTS.map(p => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Component Name</label>
@@ -1416,9 +3988,13 @@ function ComponentModal({ onClose, onSave, activeTokens }) {
                 onChange={(e) => setCategory(e.target.value)}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="Atom">Atom</option>
-                <option value="Molecule">Molecule</option>
-                <option value="Organism">Organism</option>
+                <option value="Actions & Buttons">Actions & Buttons</option>
+                <option value="Form Inputs">Form Inputs</option>
+                <option value="Display & Data">Display & Data</option>
+                <option value="Feedback & Status">Feedback & Status</option>
+                <option value="Navigation">Navigation</option>
+                <option value="Overlays">Overlays</option>
+                <option value="Layout Primitives">Layout Primitives</option>
               </select>
             </div>
           </div>
@@ -1500,10 +4076,123 @@ function ComponentModal({ onClose, onSave, activeTokens }) {
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
             <button type="button" onClick={onClose} style={actionBtnStyle}>Cancel</button>
             <button type="submit" className="btn btn-primary" style={{ padding: '0.4rem 1.25rem' }}>
-              Create Component
+              {isEdit ? 'Save Changes' : 'Create Component'}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function BrandBibleSuggestionsModal({ suggestions, onClose, onApply }) {
+  const [selected, setSelected] = useState({
+    primaryColor: true,
+    accentColor: true,
+    headingFont: true,
+    bodyFont: true,
+    toneKeywords: true,
+    voice: true,
+  });
+
+  const handleToggle = (key) => {
+    setSelected(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 1100 }}>
+      <div className="modal-content" style={{ maxWidth: '560px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
+          <span style={{ color: 'var(--accent)' }}>✨</span> AI Brand Bible Analyzer
+        </h2>
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.4' }}>
+          We scanned your uploaded document <strong style={{ color: 'var(--text-primary)' }}>{suggestions.fileName}</strong> and extracted the following brand styles. Check the values you want to apply to your project.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '350px', overflowY: 'auto', paddingRight: '0.5rem', marginBottom: '1.5rem' }}>
+          {/* Colors */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem', background: 'var(--bg-tertiary)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.75rem' }}>Brand Colors</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selected.primaryColor} onChange={() => handleToggle('primaryColor')} style={{ accentColor: 'var(--accent)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Primary Color:</span>
+                  <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: suggestions.primaryColor, border: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{suggestions.primaryColor}</span>
+                </div>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selected.accentColor} onChange={() => handleToggle('accentColor')} style={{ accentColor: 'var(--accent)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Accent Color:</span>
+                  <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: suggestions.accentColor, border: '1px solid rgba(255,255,255,0.1)' }}></div>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{suggestions.accentColor}</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Typography */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem', background: 'var(--bg-tertiary)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.75rem' }}>Typography</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selected.headingFont} onChange={() => handleToggle('headingFont')} style={{ accentColor: 'var(--accent)' }} />
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Headings Font:</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', fontFamily: suggestions.headingFont }}>{suggestions.headingFont}</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selected.bodyFont} onChange={() => handleToggle('bodyFont')} style={{ accentColor: 'var(--accent)' }} />
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Body Font:</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', fontFamily: suggestions.bodyFont }}>{suggestions.bodyFont}</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Tone & Voice */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem', background: 'var(--bg-tertiary)' }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.75rem' }}>Tone & Voice</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selected.toneKeywords} onChange={() => handleToggle('toneKeywords')} style={{ accentColor: 'var(--accent)', marginTop: '3px' }} />
+                <div>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.25rem' }}>Keywords:</span>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    {suggestions.toneKeywords.map(k => (
+                      <span key={k} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '100px', padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-primary)' }}>{k}</span>
+                    ))}
+                  </div>
+                </div>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                <input type="checkbox" checked={selected.voice} onChange={() => handleToggle('voice')} style={{ accentColor: 'var(--accent)', marginTop: '3px' }} />
+                <div>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', display: 'block' }}>Voice Guidelines:</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontStyle: 'italic' }}>"{suggestions.voice}"</span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <button onClick={onClose} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '0.5rem 1.25rem', borderRadius: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>Discard</button>
+          <button 
+            onClick={() => {
+              const applied = {};
+              for (const k in selected) {
+                if (selected[k]) applied[k] = suggestions[k];
+              }
+              onApply(applied);
+            }} 
+            className="btn btn-primary" 
+            style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
+          >
+            Apply Suggestions
+          </button>
+        </div>
       </div>
     </div>
   );

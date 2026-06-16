@@ -97,7 +97,7 @@ const Login = () => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <label style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--text-primary)' }}>Password</label>
-              <Link to="#" style={{ fontSize: '0.85rem', color: 'var(--accent)', textDecoration: 'none' }}>Forgot password?</Link>
+              <Link to="/forgot-password" style={{ fontSize: '0.85rem', color: 'var(--accent)', textDecoration: 'none' }}>Forgot password?</Link>
             </div>
             <input 
               type="password" 
