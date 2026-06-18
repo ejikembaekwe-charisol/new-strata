@@ -233,6 +233,24 @@ function ProjectDetailInner() {
   const [expandedCard, setExpandedCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Handoff dynamic states
+  const [activeHandoffSubTab, setActiveHandoffSubTab] = useState('connect');
+  const [activeBrandSubTab, setActiveBrandSubTab] = useState('identity');
+  const [projectVisibility, setProjectVisibility] = useState(project?.visibility || 'Private');
+  const [syncToken, setSyncToken] = useState(project?.syncToken || 'pt_live_' + Math.random().toString(36).substring(2, 18) + Math.random().toString(36).substring(2, 18));
+
+  const handleVisibilityChange = (visibility) => {
+    setProjectVisibility(visibility);
+    updateProject(id, { visibility });
+  };
+
+  const handleGenerateSyncToken = () => {
+    const newToken = 'pt_live_' + Math.random().toString(36).substring(2, 18) + Math.random().toString(36).substring(2, 18);
+    setSyncToken(newToken);
+    updateProject(id, { syncToken: newToken });
+    alert('New sync token generated successfully! Remember to update your downstream environments.');
+  };
+  
   // State from project — migrated and merged into Brand / Semantic / Component layers
   const [activeTokens, setActiveTokens] = useState(() => {
     return migrateTokensToLayers(project?.tokens);
@@ -1355,7 +1373,6 @@ This document serves as our living source of truth.`
               { id: 'handoff', label: 'Handoff', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg> },
               { id: 'tokens', label: 'Tokens', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
               { id: 'components', label: 'Components', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
-              { id: 'assets', label: 'Assets Hub', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> },
               { id: 'settings', label: 'Settings', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> },
             ].map(tab => (
               <button
@@ -1487,418 +1504,551 @@ This document serves as our living source of truth.`
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '3rem' }}>
-                  {/* Manifesto Section */}
-                  <section>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Holistic Design Manifesto</h2>
-                        <span style={{ 
-                          fontSize: '0.65rem', padding: '0.2rem 0.6rem', borderRadius: '100px', 
-                          background: 'var(--accent-glow)', color: 'var(--accent)', 
-                          border: '1px solid rgba(252,6,148,0.2)', fontWeight: 600 
-                        }}>AI GENERATED</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.75rem' }}>
-                        <button style={actionBtnStyle}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                          Export PDF
-                        </button>
-                        <button style={actionBtnStyle} onClick={() => alert('Manifesto copied to clipboard for Engineering Handoff!')}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                          Copy for Handoff
-                        </button>
-                      </div>
-                    </div>
-                    <div style={{ 
-                      background: 'var(--bg-secondary)', padding: '2.5rem', borderRadius: '20px', 
-                      border: '1px solid var(--border)', lineHeight: '1.8', color: 'var(--text-secondary)',
-                      fontSize: '1rem', position: 'relative', overflow: 'hidden'
-                    }}>
-                      <div style={{ 
-                        position: 'absolute', top: '-100px', right: '-100px', width: '300px', height: '300px',
-                        background: 'radial-gradient(circle, rgba(252,6,148,0.05) 0%, transparent 70%)',
-                        pointerEvents: 'none'
-                      }} />
-                      <textarea 
-                        className="manifesto-view" 
-                        style={{ 
-                          whiteSpace: 'pre-wrap', 
-                          width: '100%', 
-                          minHeight: '300px', 
-                          background: 'transparent', 
-                          border: 'none', 
-                          color: 'inherit',
-                          fontSize: 'inherit',
-                          lineHeight: 'inherit',
-                          fontFamily: 'inherit',
-                          resize: 'vertical',
-                          outline: 'none',
-                          padding: 0
-                        }}
-                        value={brandData.manifesto}
-                        onChange={(e) => handleBrandUpdate('manifesto', e.target.value)}
-                      />
-                    </div>
-                  </section>
+              {/* Sub-tab Switcher */}
+              <div style={{
+                display: 'inline-flex',
+                background: 'var(--bg-tertiary)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                padding: '3px',
+                marginBottom: '2rem',
+                gap: '4px',
+              }}>
+                {[
+                  { id: 'identity', label: 'Visual Identity' },
+                  { id: 'voice', label: 'Manifesto & Voice' },
+                  { id: 'assets', label: 'Brand Assets & Documents' }
+                ].map(subTab => (
+                  <button
+                    key={subTab.id}
+                    onClick={() => setActiveBrandSubTab(subTab.id)}
+                    style={{
+                      padding: '0.5rem 1.25rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: activeBrandSubTab === subTab.id ? 600 : 400,
+                      background: activeBrandSubTab === subTab.id ? 'var(--bg-secondary)' : 'none',
+                      color: activeBrandSubTab === subTab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      boxShadow: activeBrandSubTab === subTab.id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {subTab.label}
+                  </button>
+                ))}
+              </div>
 
-                  {/* Tone & Voice Section */}
-                  <section>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                      <h2 style={{ fontSize: '1rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', margin: 0 }}>Tone & Voice</h2>
-                      <button 
-                        onClick={() => {
-                          const val = prompt('Add tone keyword (e.g. Playful, Professional):');
-                          if (val) handleBrandUpdate('toneKeywords', [...brandData.toneKeywords, val]);
-                        }}
-                        style={actionBtnStyle}
-                      >+ Add keyword</button>
+              {/* Sub-tab 1: Visual Identity */}
+              {activeBrandSubTab === 'identity' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    
+                    {/* Brand Colors card */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem 2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Brand Colors</h3>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+                        Configure the core brand colors. Changes here will propagate to your design tokens.
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        {[
+                          { label: 'Primary Color', field: 'primaryColor' },
+                          { label: 'Secondary Color', field: 'secondaryColor' },
+                          { label: 'Accent Color', field: 'accentColor' },
+                        ].map(c => (
+                          <div key={c.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.75rem 1.25rem', borderRadius: '8px' }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>{c.label}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <input 
+                                type="color" 
+                                value={brandData[c.field]} 
+                                onChange={(e) => handleBrandUpdate(c.field, e.target.value)}
+                                style={{ width: '32px', height: '32px', border: 'none', borderRadius: '6px', background: 'none', cursor: 'pointer' }}
+                              />
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600 }}>{brandData[c.field].toUpperCase()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+
+                    {/* Typography Card */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem 2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Typography</h3>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
+                        Select heading and body fonts used throughout the design system.
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem 1.25rem', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Headings</span>
+                          <select 
+                            value={brandData.headingFont} 
+                            onChange={(e) => handleBrandUpdate('headingFont', e.target.value)}
+                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer' }}
+                          >
+                            <option>Outfit</option>
+                            <option>Inter</option>
+                            <option>Roboto</option>
+                          </select>
+                        </div>
+                        <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem 1.25rem', borderRadius: '8px' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Body Font</span>
+                          <select 
+                            value={brandData.bodyFont} 
+                            onChange={(e) => handleBrandUpdate('bodyFont', e.target.value)}
+                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer' }}
+                          >
+                            <option>Inter</option>
+                            <option>Roboto</option>
+                            <option>Outfit</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Sidebar column: Logo & references */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    
+                    {/* Logo Card */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', textAlign: 'center' }}>
+                      <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '120px' }}>
+                        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: '2.5rem', color: '#000' }}>S<span style={{ color: brandData.primaryColor }}>.</span></span>
+                      </div>
+                      <h3 style={{ fontSize: '0.9rem', marginBottom: '0.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>Main Brandmark</h3>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '1.5rem' }}>SVG, PNG, WebP available</p>
+                      <button 
+                        onClick={handleDownloadLogo}
+                        className="btn btn-secondary" 
+                        style={{ width: '100%', fontSize: '0.8rem', padding: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Download Assets
+                      </button>
+                    </div>
+
+                    {/* Source References */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <h3 style={{ fontSize: '0.85rem', margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>Source of Truth</h3>
+                        <button 
+                          onClick={handleExportJSON}
+                          style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
+                        >Export JSON</button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Figma URL</label>
+                          <input 
+                            className="form-input" 
+                            style={{ fontSize: '0.8rem', padding: '0.4rem' }} 
+                            value={brandData.figmaUrl} 
+                            onChange={(e) => handleBrandUpdate('figmaUrl', e.target.value)}
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Website URL</label>
+                          <input 
+                            className="form-input" 
+                            style={{ fontSize: '0.8rem', padding: '0.4rem' }} 
+                            value={brandData.websiteUrl} 
+                            onChange={(e) => handleBrandUpdate('websiteUrl', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tab 2: Manifesto & Voice */}
+              {activeBrandSubTab === 'voice' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    
+                    {/* Manifesto Section */}
+                    <section>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Holistic Design Manifesto</h2>
+                          <span style={{ 
+                            fontSize: '0.65rem', padding: '0.2rem 0.6rem', borderRadius: '100px', 
+                            background: 'var(--accent-glow)', color: 'var(--accent)', 
+                            border: '1px solid rgba(252,6,148,0.2)', fontWeight: 600 
+                          }}>AI GENERATED</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                          <button style={actionBtnStyle} onClick={() => handlePrintBrandBible()}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export PDF
+                          </button>
+                          <button style={actionBtnStyle} onClick={() => {
+                            navigator.clipboard.writeText(brandData.manifesto);
+                            alert('Manifesto copied to clipboard for Engineering Handoff!');
+                          }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                            Copy for Handoff
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ 
+                        background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', 
+                        border: '1px solid var(--border)', lineHeight: '1.8', color: 'var(--text-secondary)',
+                        fontSize: '0.95rem', position: 'relative', overflow: 'hidden'
+                      }}>
+                        <div style={{ 
+                          position: 'absolute', top: '-100px', right: '-100px', width: '300px', height: '300px',
+                          background: 'radial-gradient(circle, rgba(252,6,148,0.05) 0%, transparent 70%)',
+                          pointerEvents: 'none'
+                        }} />
+                        <textarea 
+                          className="manifesto-view" 
+                          style={{ 
+                            whiteSpace: 'pre-wrap', 
+                            width: '100%', 
+                            minHeight: '280px', 
+                            background: 'transparent', 
+                            border: 'none', 
+                            color: 'inherit',
+                            fontSize: 'inherit',
+                            lineHeight: 'inherit',
+                            fontFamily: 'inherit',
+                            resize: 'vertical',
+                            outline: 'none',
+                            padding: 0
+                          }}
+                          value={brandData.manifesto}
+                          onChange={(e) => handleBrandUpdate('manifesto', e.target.value)}
+                        />
+                      </div>
+                    </section>
+
+                  </div>
+
+                  {/* Side column: Tone keywords and voice */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                    
+                    {/* Tone Keywords */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <h3 style={{ fontSize: '0.85rem', margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>Tone Keywords</h3>
+                        <button 
+                          onClick={() => {
+                            const val = prompt('Add tone keyword (e.g. Playful, Professional):');
+                            if (val) handleBrandUpdate('toneKeywords', [...brandData.toneKeywords, val]);
+                          }}
+                          style={{ ...actionBtnStyle, fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        >+ Add</button>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                         {brandData.toneKeywords.map((keyword, i) => (
                           <div key={i} style={{ 
-                            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                            padding: '0.5rem 1rem', borderRadius: '100px', display: 'flex', alignItems: 'center', gap: '0.5rem',
-                            color: 'var(--text-primary)', fontSize: '0.9rem'
+                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                            padding: '0.3rem 0.75rem', borderRadius: '100px', display: 'flex', alignItems: 'center', gap: '0.4rem',
+                            color: 'var(--text-primary)', fontSize: '0.78rem'
                           }}>
                             {keyword}
                             <button 
                               onClick={() => handleBrandUpdate('toneKeywords', brandData.toneKeywords.filter((_, idx) => idx !== i))}
                               style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 0, display: 'flex' }}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                           </div>
                         ))}
+                        {brandData.toneKeywords.length === 0 && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>No keywords set</span>
+                        )}
                       </div>
-                      <div className="form-group">
-                        <label className="form-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Brand Voice Description</label>
+                    </div>
+
+                    {/* Brand Voice Description */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                      <h3 style={{ fontSize: '0.85rem', margin: '0 0 1rem 0', fontWeight: 600, color: 'var(--text-primary)' }}>Brand Voice</h3>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
                         <textarea 
                           className="form-textarea"
-                          style={{ height: '80px', fontSize: '0.9rem' }}
+                          style={{ height: '120px', fontSize: '0.85rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px', width: '100%', padding: '0.5rem' }}
                           value={brandData.voice}
                           onChange={(e) => handleBrandUpdate('voice', e.target.value)}
                           placeholder="Describe how the brand speaks..."
                         />
                       </div>
                     </div>
-                  </section>
 
-                  {/* Identity Grid */}
-                  <section>
-                    <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>Visual Identity</h2>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                      <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                        <h3 style={{ fontSize: '0.85rem', marginBottom: '1.25rem', color: 'var(--text-primary)' }}>Brand Colors</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                          {[
-                            { label: 'Primary', field: 'primaryColor' },
-                            { label: 'Secondary', field: 'secondaryColor' },
-                            { label: 'Accent', field: 'accentColor' },
-                          ].map(c => (
-                            <div key={c.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{c.label}</span>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                <input 
-                                  type="color" 
-                                  value={brandData[c.field]} 
-                                  onChange={(e) => handleBrandUpdate(c.field, e.target.value)}
-                                  style={{ width: '28px', height: '28px', border: 'none', borderRadius: '4px', background: 'none', cursor: 'pointer' }}
-                                />
-                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>{brandData[c.field].toUpperCase()}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Sub-tab 3: Brand Assets & Documents */}
+              {activeBrandSubTab === 'assets' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+                  
+                  {/* Generated Assets List & PDF Bible Preview */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem' }}>
+                    
+                    {/* Generated Brand Bible PDF Preview Card */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Compiled Brand Bible</h3>
+                          {brandBibleDirty ? (
+                            <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '100px', background: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)', fontWeight: 600 }}>PENDING CHANGES</span>
+                          ) : (
+                            <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '100px', background: 'rgba(16,185,129,0.12)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600 }}>LIVE & SYNCED</span>
+                          )}
+                        </div>
+                        <button 
+                          onClick={handlePrintBrandBible}
+                          className="btn btn-secondary" 
+                          style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          Download PDF
+                        </button>
+                      </div>
+
+                      {/* Preview Card */}
+                      <div style={{ 
+                        background: 'var(--bg-tertiary)', 
+                        borderRadius: '16px', 
+                        border: '1px solid var(--border)', 
+                        height: '340px', 
+                        overflowY: 'auto', 
+                        padding: '1.5rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '1.5rem',
+                        fontSize: '0.85rem',
+                        color: 'var(--text-secondary)'
+                      }}>
+                        {/* Cover details */}
+                        <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: '1.5rem', color: 'var(--text-primary)' }}>S<span style={{ color: brandData.primaryColor }}>.</span></span>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Strata Generated Artifact</span>
+                          </div>
+                          <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0.5rem 0 0.25rem' }}>Core Brand Guidelines</h4>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0 }}>Always kept up-to-date with your design tokens.</p>
+                        </div>
+                        {/* Manifesto excerpt */}
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Manifesto Excerpt</span>
+                          <p style={{ margin: 0, lineHeight: '1.5', fontStyle: 'italic' }}>
+                            {brandData.manifesto?.split('\n\n')?.[1]?.replace(/\*\*/g, '') || 'We believe in design that serves a purpose beyond aesthetics...'}
+                          </p>
+                        </div>
+                        {/* Swatches */}
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Color Palette Swatches</span>
+                          <div style={{ display: 'flex', gap: '1rem' }}>
+                            {[
+                              { name: 'Primary', color: brandData.primaryColor },
+                              { name: 'Secondary', color: brandData.secondaryColor },
+                              { name: 'Accent', color: brandData.accentColor }
+                            ].map(swatch => (
+                              <div key={swatch.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: swatch.color, border: '1px solid rgba(255,255,255,0.1)' }}></div>
+                                <div>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontWeight: 600 }}>{swatch.name}</div>
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{swatch.color.toUpperCase()}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Fonts */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>Headings Font</span>
+                            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <div style={{ fontFamily: brandData.headingFont, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{brandData.headingFont}</div>
+                            </div>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>Body Font</span>
+                            <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <div style={{ fontFamily: brandData.bodyFont, fontSize: '1.1rem', color: 'var(--text-primary)' }}>{brandData.bodyFont}</div>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Keywords */}
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Tone keywords</span>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            {brandData.toneKeywords?.map((k, idx) => (
+                              <span key={idx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '100px', padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--text-primary)' }}>{k}</span>
+                            )) || 'No keywords set'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Reference Document Upload Card (from original assets sidebar) */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                      <div>
+                        <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Reference Documents</h3>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Upload files to serve as brand reference materials (e.g. guidelines, assets).</p>
+                      </div>
+
+                      {/* Drag and Drop File Input Area */}
+                      <div 
+                        onClick={() => document.getElementById('brand-bible-uploader').click()}
+                        style={{ 
+                          border: '2px dashed var(--border)', 
+                          borderRadius: '16px', 
+                          padding: '2.5rem 1.5rem', 
+                          textAlign: 'center', 
+                          cursor: 'pointer',
+                          background: isScanningDoc ? 'rgba(252,6,148,0.03)' : 'var(--bg-tertiary)',
+                          transition: 'background 0.2s, border-color 0.2s',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+                      >
+                        <input 
+                          id="brand-bible-uploader" 
+                          type="file" 
+                          accept=".pdf,.docx,.doc" 
+                          style={{ display: 'none' }} 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setIsScanningDoc(true);
+                              setTimeout(() => {
+                                setIsScanningDoc(false);
+                                setSuggestionsModalData({
+                                  fileName: file.name,
+                                  fileSize: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
+                                  primaryColor: '#1E3A8A',
+                                  accentColor: '#10B981',
+                                  headingFont: 'Outfit',
+                                  bodyFont: 'Inter',
+                                  toneKeywords: ['Innovative', 'Trustworthy', 'Sleek'],
+                                  voice: 'Bold, user-centric, and technically detailed.'
+                                });
+                              }, 1800);
+                            }
+                          }}
+                        />
+                        
+                        {isScanningDoc ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                            <div className="loading-spinner" style={{ width: '28px', height: '28px', borderColor: 'var(--accent)', borderTopColor: 'transparent' }}></div>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 600 }}>AI Scan in Progress...</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Extracting colors, typography, tone & voice patterns</span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" style={{ color: 'var(--text-tertiary)' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Upload reference document</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>PDF or DOCX (max 10MB)</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Uploaded Reference List */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Uploaded Reference Files ({uploadedAssets.length})</span>
+                        {uploadedAssets.map(asset => (
+                          <div key={asset.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-tertiary)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                              <div style={{ color: 'var(--accent)' }}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                              </div>
+                              <div>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500 }}>{asset.name}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{asset.size} • Uploaded {asset.date}</div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                        <h3 style={{ fontSize: '0.85rem', marginBottom: '1.25rem', color: 'var(--text-primary)' }}>Typography</h3>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Headings</span>
-                            <select 
-                              value={brandData.headingFont} 
-                              onChange={(e) => handleBrandUpdate('headingFont', e.target.value)}
-                              style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.4rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem' }}
-                            >
-                              <option>Outfit</option>
-                              <option>Inter</option>
-                              <option>Roboto</option>
-                            </select>
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Body</span>
-                            <select 
-                              value={brandData.bodyFont} 
-                              onChange={(e) => handleBrandUpdate('bodyFont', e.target.value)}
-                              style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.4rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem' }}
-                            >
-                              <option>Inter</option>
-                              <option>Roboto</option>
-                              <option>Outfit</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                </div>
-
-                {/* Sidebar: Assets & Refs */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                  {/* Logo Card */}
-                  <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', textAlign: 'center' }}>
-                    <div style={{ background: '#fff', padding: '1.5rem', borderRadius: '12px', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', height: '120px' }}>
-                      <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: '2.5rem', color: '#000' }}>S<span style={{ color: brandData.primaryColor }}>.</span></span>
-                    </div>
-                    <h3 style={{ fontSize: '0.9rem', marginBottom: '0.25rem' }}>Main Brandmark</h3>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '1.5rem' }}>SVG, PNG, WebP available</p>
-                    <button 
-                      onClick={handleDownloadLogo}
-                      className="btn btn-secondary" 
-                      style={{ width: '100%', fontSize: '0.8rem', padding: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                      Download Assets
-                    </button>
-                  </div>
-
-                  {/* Source References */}
-                  <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                      <h3 style={{ fontSize: '0.85rem', margin: 0 }}>Source of Truth</h3>
-                      <button 
-                        onClick={handleExportJSON}
-                        style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
-                      >Export JSON</button>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Figma URL</label>
-                        <input 
-                          className="form-input" 
-                          style={{ fontSize: '0.8rem', padding: '0.4rem' }} 
-                          value={brandData.figmaUrl} 
-                          onChange={(e) => handleBrandUpdate('figmaUrl', e.target.value)}
-                        />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Website URL</label>
-                        <input 
-                          className="form-input" 
-                          style={{ fontSize: '0.8rem', padding: '0.4rem' }} 
-                          value={brandData.websiteUrl} 
-                          onChange={(e) => handleBrandUpdate('websiteUrl', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <hr style={{ border: 'none', height: '1px', background: 'var(--border)', margin: '3rem 0' }} />
-              
-              <div style={{ marginBottom: '1.5rem' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Brand Documents & Bible</h2>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  Manage the generated Brand Bible summary or upload reference documents.
-                </p>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3rem', marginBottom: '2rem' }}>
-                {/* Generated Brand Bible Card */}
-                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem', position: 'relative' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Generated Brand Bible</h3>
-                      {brandBibleDirty ? (
-                        <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '100px', background: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.2)', fontWeight: 600 }}>PENDING CHANGES</span>
-                      ) : (
-                        <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '100px', background: 'rgba(16,185,129,0.12)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600 }}>LIVE & SYNCED</span>
-                      )}
-                    </div>
-                    <button 
-                      onClick={handlePrintBrandBible}
-                      className="btn btn-secondary" 
-                      style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                      Download PDF
-                    </button>
-                  </div>
-
-                  {/* Styled Interactive Preview Card */}
-                  <div style={{ 
-                    background: 'var(--bg-tertiary)', 
-                    borderRadius: '16px', 
-                    border: '1px solid var(--border)', 
-                    height: '340px', 
-                    overflowY: 'auto', 
-                    padding: '1.5rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '1.5rem',
-                    fontSize: '0.85rem',
-                    color: 'var(--text-secondary)'
-                  }}>
-                    {/* Document Cover Summary */}
-                    <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: '1.5rem', color: 'var(--text-primary)' }}>S<span style={{ color: brandData.primaryColor }}>.</span></span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Strata Generated Artifact</span>
-                      </div>
-                      <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0.5rem 0 0.25rem' }}>Core Brand Guidelines</h4>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0 }}>Always kept up-to-date with your design tokens.</p>
-                    </div>
-
-                    {/* Manifesto Excerpt */}
-                    <div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Manifesto Excerpt</span>
-                      <p style={{ margin: 0, lineHeight: '1.5', fontStyle: 'italic' }}>
-                        {brandData.manifesto?.split('\n\n')?.[1]?.replace(/\*\*/g, '') || 'We believe in design that serves a purpose beyond aesthetics...'}
-                      </p>
-                    </div>
-
-                    {/* Visual Identity Section */}
-                    <div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Color Palette Swatches</span>
-                      <div style={{ display: 'flex', gap: '1rem' }}>
-                        {[
-                          { name: 'Primary', color: brandData.primaryColor },
-                          { name: 'Secondary', color: brandData.secondaryColor },
-                          { name: 'Accent', color: brandData.accentColor }
-                        ].map(swatch => (
-                          <div key={swatch.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                            <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: swatch.color, border: '1px solid rgba(255,255,255,0.1)' }}></div>
-                            <div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontWeight: 600 }}>{swatch.name}</div>
-                              <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{swatch.color.toUpperCase()}</div>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button 
+                                onClick={() => alert(`Downloading ${asset.name}...`)}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem' }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to remove ${asset.name}?`)) {
+                                    updateUploadedAssets(uploadedAssets.filter(a => a.id !== asset.id));
+                                  }
+                                }}
+                                style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0.25rem' }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    {/* Typography Systems */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                      <div>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>Headings Font</span>
-                        <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                          <div style={{ fontFamily: brandData.headingFont, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{brandData.headingFont}</div>
-                        </div>
-                      </div>
-                      <div>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>Body Font</span>
-                        <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                          <div style={{ fontFamily: brandData.bodyFont, fontSize: '1.1rem', color: 'var(--text-primary)' }}>{brandData.bodyFont}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Tone Keywords */}
-                    <div>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Tone keywords</span>
-                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        {brandData.toneKeywords?.map((k, idx) => (
-                          <span key={idx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '100px', padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--text-primary)' }}>{k}</span>
-                        )) || 'No keywords set'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Brand Document Upload Card */}
-                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Reference Documents</h3>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Upload files to serve as brand reference materials (e.g. guidelines, assets).</p>
                   </div>
 
-                  {/* Drag and Drop File Input Area */}
-                  <div 
-                    onClick={() => document.getElementById('brand-bible-uploader').click()}
-                    style={{ 
-                      border: '2px dashed var(--border)', 
-                      borderRadius: '16px', 
-                      padding: '2.5rem 1.5rem', 
-                      textAlign: 'center', 
-                      cursor: 'pointer',
-                      background: isScanningDoc ? 'rgba(252,6,148,0.03)' : 'var(--bg-tertiary)',
-                      transition: 'background 0.2s, border-color 0.2s',
-                      position: 'relative',
-                      overflow: 'hidden'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
-                  >
-                    <input 
-                      id="brand-bible-uploader" 
-                      type="file" 
-                      accept=".pdf,.docx,.doc" 
-                      style={{ display: 'none' }} 
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setIsScanningDoc(true);
-                          setTimeout(() => {
-                            setIsScanningDoc(false);
-                            setSuggestionsModalData({
-                              fileName: file.name,
-                              fileSize: (file.size / (1024 * 1024)).toFixed(1) + ' MB',
-                              primaryColor: '#1E3A8A',
-                              accentColor: '#10B981',
-                              headingFont: 'Outfit',
-                              bodyFont: 'Inter',
-                              toneKeywords: ['Innovative', 'Trustworthy', 'Sleek'],
-                              voice: 'Bold, user-centric, and technically detailed.'
-                            });
-                          }, 1800);
+                  {/* System Generated Production Assets List (Infused from original Assets Hub) */}
+                  <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)' }}>
+                    <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>System Generated Code Assets</h3>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Download pre-compiled design token distribution files direct for integration.</p>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                      {[
+                        {
+                          key: 'css',
+                          name: 'CSS Custom Properties',
+                          desc: 'CSS variables mapping tokens directly to root.',
+                          filename: 'variables.css',
+                          badge: 'CSS',
+                          onDownload: () => downloadTextFile(`${project?.name || 'strata'}-variables.css`, getCSSVariablesText())
+                        },
+                        {
+                          key: 'json',
+                          name: 'Design Tokens JSON',
+                          desc: 'DTCG JSON format, compatible with standard style dictionaries.',
+                          filename: 'tokens.json',
+                          badge: 'JSON',
+                          onDownload: () => downloadTextFile(`${project?.name || 'strata'}-tokens.json`, getDTCGJsonText())
+                        },
+                        {
+                          key: 'react',
+                          name: 'React Theme Provider',
+                          desc: 'React Context Provider containing active token scales.',
+                          filename: 'ThemeProvider.jsx',
+                          badge: 'REACT',
+                          onDownload: () => downloadTextFile('ThemeProvider.jsx', getReactThemeText())
                         }
-                      }}
-                    />
-                    
-                    {isScanningDoc ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-                        <div className="loading-spinner" style={{ width: '28px', height: '28px', borderColor: 'var(--accent)', borderTopColor: 'transparent' }}></div>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 600 }}>AI Scan in Progress...</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Extracting colors, typography, tone & voice patterns</span>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" style={{ color: 'var(--text-tertiary)' }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Upload reference document</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>PDF or DOCX (max 10MB)</span>
-                      </div>
-                    )}
+                      ].map(asset => (
+                        <div key={asset.key} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>{asset.badge}</span>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{asset.filename}</span>
+                            </div>
+                            <h4 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', margin: '0.5rem 0 0.25rem' }}>{asset.name}</h4>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0, lineHeight: 1.3 }}>{asset.desc}</p>
+                          </div>
+                          <button 
+                            onClick={asset.onDownload}
+                            className="btn btn-secondary"
+                            style={{ width: '100%', fontSize: '0.78rem', padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', marginTop: '0.5rem' }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Download
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Uploaded Reference List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Uploaded Reference Files ({uploadedAssets.length})</span>
-                    {uploadedAssets.map(asset => (
-                      <div key={asset.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-tertiary)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <div style={{ color: 'var(--accent)' }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500 }}>{asset.name}</div>
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{asset.size} • Uploaded {asset.date}</div>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => alert(`Downloading ${asset.name}...`)}
-                          style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.25rem' }}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
                 </div>
-              </div>
+              )}
 
             </div>
           )}
@@ -2544,51 +2694,439 @@ This document serves as our living source of truth.`
             ];
 
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', maxWidth: '1200px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px' }}>
                 
-                {/* Connect your app section */}
-                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                  <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
-                      Connect your app
-                    </h3>
-                  </div>
-                  
-                  {/* Project ID copy card */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.875rem 1.25rem', borderRadius: '8px', marginBottom: '1.5rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Project ID:</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500 }}>{project.id}</span>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(project.id);
-                        alert('Project ID copied!');
+                {/* Sub-tab Switcher */}
+                <div style={{
+                  display: 'inline-flex',
+                  alignSelf: 'flex-start',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '3px',
+                  marginBottom: '1rem',
+                  gap: '4px',
+                }}>
+                  {[
+                    { id: 'connect', label: 'Connect your app' },
+                    { id: 'sync', label: 'Publish & Sync' }
+                  ].map(subTab => (
+                    <button
+                      key={subTab.id}
+                      onClick={() => setActiveHandoffSubTab(subTab.id)}
+                      style={{
+                        padding: '0.5rem 1.25rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: activeHandoffSubTab === subTab.id ? 600 : 400,
+                        background: activeHandoffSubTab === subTab.id ? 'var(--bg-secondary)' : 'none',
+                        color: activeHandoffSubTab === subTab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        boxShadow: activeHandoffSubTab === subTab.id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                        transition: 'all 0.2s',
                       }}
-                      className="btn btn-secondary"
-                      style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)', padding: '0.35rem 0.875rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}
                     >
-                      Copy
+                      {subTab.label}
                     </button>
-                  </div>
+                  ))}
+                </div>
 
-                  {/* Install & configure */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Install & configure</h4>
+                {/* Sub-tab Content: Connect your app */}
+                {activeHandoffSubTab === 'connect' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
                     
-                    {/* Code box */}
-                    <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto', marginBottom: '1rem' }}>
-                      <button
-                        onClick={() => {
-                          const code = `import { StrataProvider } from "@strata-ds/core";\n\nexport default function RootLayout({ children }) {\n  return (\n    <StrataProvider\n      syncEnabled={true}\n      projectId="${project.id}"\n      snapshotCdnBase="snapshot.strata.charisol.io/snapshot"\n      syncToken="pt_live_your_token_here"\n      syncInterval={5000}\n    >\n      {children}\n    </StrataProvider>\n  );\n}`;
-                          navigator.clipboard.writeText(code);
-                          alert('Configuration code copied!');
-                        }}
-                        style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '0.3rem 0.6rem', color: '#fff', fontSize: '0.7rem', cursor: 'pointer' }}
-                      >
-                        Copy
-                      </button>
-                      <pre style={{ margin: 0, lineHeight: 1.5, color: '#F1F1F4' }}>
+                    {/* Project ID copy card */}
+                    <div style={{ 
+                      background: 'var(--bg-secondary)', 
+                      padding: '1.5rem 2rem', 
+                      borderRadius: '16px', 
+                      border: '1px solid var(--border)',
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center' 
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Project Integration ID</span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Use this ID to reference this project in your local configs and CLI tools.</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.85rem' }}>{project.id}</span>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(project.id);
+                            alert('Project ID copied!');
+                          }}
+                          className="btn btn-secondary"
+                          style={{ 
+                            background: 'var(--bg-secondary)', 
+                            borderColor: 'var(--border)', 
+                            color: 'var(--text-primary)', 
+                            padding: '0.3rem 0.75rem', 
+                            borderRadius: '6px', 
+                            cursor: 'pointer', 
+                            fontSize: '0.75rem' 
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Install and Configure CLI Block */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                      <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
+                        <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                          Install & configure
+                        </h3>
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                          Install the Strata CLI or packages from npm to automatically compile design system tokens into your workspace build step.
+                        </p>
+                        
+                        {/* CLI commands box */}
+                        <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto' }}>
+                          <button
+                            onClick={() => {
+                              const code = `npm i -D @strata-ds/cli && npx strata sync --project ${project.id}`;
+                              navigator.clipboard.writeText(code);
+                              alert('Command copied!');
+                            }}
+                            style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '0.3rem 0.6rem', color: '#fff', fontSize: '0.7rem', cursor: 'pointer' }}
+                          >
+                            Copy
+                          </button>
+                          <pre style={{ margin: 0, lineHeight: 1.5, color: '#F1F1F4' }}>
+{`# Install CLI & developer utilities
+npm i -D @strata-ds/cli
+
+# Sync latest tokens dynamically
+npx strata sync --project ${project.id}`}
+                          </pre>
+                        </div>
+                        
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.5rem 0 0 0', lineHeight: 1.5 }}>
+                          Alternatively, configure a dynamic hot-reload synchronization in the **Publish & Sync** panel to keep the design system aligned without requiring redeployments.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Exporters / Formats Grid */}
+                    <div>
+                      <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1.25rem' }}>
+                        Available Formats & Exporters
+                      </h3>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                        {formats.map(fmt => {
+                          const isExpanded = expandedCard === fmt.id;
+                          const url = `https://strata.charisol.io/api/public/v1/projects/${project.id}/${fmt.id}`;
+                          return (
+                            <div key={fmt.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                              {/* Header Row */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ 
+                                    fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
+                                    background: fmt.badgeBg, color: fmt.badgeColor, letterSpacing: '0.05em' 
+                                  }}>
+                                    {fmt.badge}
+                                  </span>
+                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                    {fmt.filename}
+                                  </span>
+                                </div>
+                                {fmt.recommended && (
+                                  <span style={{ 
+                                    fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px',
+                                    background: 'rgba(34, 197, 94, 0.1)', color: '#22C55E', letterSpacing: '0.05em'
+                                  }}>
+                                    RECOMMENDED
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Description */}
+                              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, minHeight: '3rem', lineHeight: 1.4 }}>
+                                {fmt.desc}
+                              </p>
+
+                              {/* URL box */}
+                              <div style={{ display: 'flex', position: 'relative', width: '100%' }}>
+                                <input 
+                                  readOnly 
+                                  className="form-input" 
+                                  value={url} 
+                                  style={{ 
+                                    fontSize: '0.72rem', height: '36px', padding: '0 50px 0 0.75rem', 
+                                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)', 
+                                    color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)',
+                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%',
+                                    borderRadius: '6px'
+                                  }} 
+                                />
+                                <button 
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(url);
+                                    alert(`${fmt.filename} sync URL copied!`);
+                                  }}
+                                  style={{ 
+                                    position: 'absolute', right: '4px', top: '4px', height: '28px', 
+                                    background: 'var(--bg-secondary)', border: '1px solid var(--border)', 
+                                    color: 'var(--text-primary)', padding: '0 0.5rem', fontSize: '0.7rem', 
+                                    borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' 
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                              </div>
+
+                              {/* Toggler */}
+                              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
+                                <button 
+                                  onClick={() => setExpandedCard(isExpanded ? null : fmt.id)}
+                                  style={{ 
+                                    background: 'none', border: 'none', color: 'var(--accent)', 
+                                    fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer', 
+                                    display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 
+                                  }}
+                                >
+                                  <span>Show usage snippets</span>
+                                  <span style={{ 
+                                    display: 'inline-block', transition: 'transform 0.2s', 
+                                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' 
+                                  }}>
+                                    ▼
+                                  </span>
+                                </button>
+
+                                {/* Expanded Code Snippet */}
+                                {isExpanded && (
+                                  <div style={{ 
+                                    marginTop: '0.75rem', background: '#09090C', border: '1px solid #1A1A24', 
+                                    borderRadius: '8px', padding: '0.75rem', fontFamily: 'var(--font-mono)', 
+                                    fontSize: '0.72rem', color: '#A3A3B8', overflowX: 'auto', position: 'relative'
+                                  }}>
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(fmt.snippet);
+                                        alert('Usage snippet copied!');
+                                      }}
+                                      style={{ 
+                                        position: 'absolute', top: '6px', right: '6px', background: 'rgba(255,255,255,0.05)', 
+                                        border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', 
+                                        padding: '0.2rem 0.4rem', color: '#fff', fontSize: '0.6rem', cursor: 'pointer' 
+                                      }}
+                                    >
+                                      Copy
+                                    </button>
+                                    <pre style={{ margin: 0, lineHeight: 1.4, color: '#E1E1E6' }}>{fmt.snippet}</pre>
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Unified Token Dictionary */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Unified Token Dictionary</h3>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Search tokens (name, value, type)..."
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          style={{ maxWidth: '240px', fontSize: '0.8rem', padding: '0.4rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px' }}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                        {['Token Key', 'Value', 'Type'].map(h => (
+                          <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto' }}>
+                        {Object.keys(activeTokens).flatMap(cat => activeTokens[cat] || []).filter(t => {
+                          const q = searchQuery.toLowerCase();
+                          return t.name.toLowerCase().includes(q) || t.value.toLowerCase().includes(q) || t.type.toLowerCase().includes(q);
+                        }).map((token, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr',
+                              gap: '1rem', alignItems: 'center',
+                              padding: '0.625rem 0.875rem', borderBottom: '1px solid var(--border-subtle)',
+                            }}
+                          >
+                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>{token.name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              {token.type === 'color' && (
+                                <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: token.value, border: '1px solid rgba(255,255,255,0.1)' }} />
+                              )}
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{token.value}</span>
+                            </div>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'fit-content',
+                              fontSize: '0.6rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
+                              background: `${TYPE_COLORS[token.type]}12`,
+                              color: TYPE_COLORS[token.type],
+                              border: `1px solid ${TYPE_COLORS[token.type]}22`,
+                              fontWeight: 500
+                            }}>{token.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* Sub-tab Content: Publish & Sync */}
+                {activeHandoffSubTab === 'sync' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                      {/* Project Visibility Toggle */}
+                      <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        <div>
+                          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>Project Visibility</h3>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Control authorization requirements for token fetching endpoints.</p>
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                          {[
+                            { id: 'Private', title: 'Private Sync Access', desc: 'Sync API requires a valid sync token parameter. Unauthenticated API calls return 401 Unauthorized.' },
+                            { id: 'Public', title: 'Public Sync / CDN Access', desc: 'Make endpoints publicly readable. Ideal for fetching style guides or loading CSS without API tokens.' }
+                          ].map(opt => {
+                            const isSelected = projectVisibility === opt.id;
+                            return (
+                              <div 
+                                key={opt.id}
+                                onClick={() => handleVisibilityChange(opt.id)}
+                                style={{
+                                  padding: '1rem 1.25rem',
+                                  borderRadius: '10px',
+                                  border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                                  background: isSelected ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  display: 'flex',
+                                  gap: '1rem',
+                                  alignItems: 'flex-start'
+                                }}
+                              >
+                                <div style={{ 
+                                  width: '16px', height: '16px', borderRadius: '50%', 
+                                  border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--text-tertiary)'}`,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  marginTop: '0.1rem', flexShrink: 0
+                                }}>
+                                  {isSelected && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)' }} />}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{opt.title}</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>{opt.desc}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Sync Token Manager */}
+                      <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                        <div>
+                          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>API Sync Token</h3>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Authentication credential used by applications or bundlers to sync project resources securely.</p>
+                        </div>
+                        
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', width: '100%', position: 'relative' }}>
+                            <input
+                              type="text"
+                              readOnly
+                              value={syncToken}
+                              style={{
+                                flex: 1,
+                                height: '40px',
+                                padding: '0 4rem 0 0.75rem',
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '0.8rem',
+                                color: 'var(--text-primary)',
+                                background: 'var(--bg-tertiary)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '8px',
+                              }}
+                            />
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(syncToken);
+                                alert('Sync Token copied!');
+                              }}
+                              className="btn btn-secondary"
+                              style={{
+                                position: 'absolute', right: '6px', top: '6px', height: '28px',
+                                fontSize: '0.72rem', padding: '0 0.75rem', borderRadius: '6px', cursor: 'pointer'
+                              }}
+                            >
+                              Copy
+                            </button>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <button 
+                              onClick={handleGenerateSyncToken}
+                              className="btn btn-primary"
+                              style={{ width: '100%', padding: '0.65rem 1rem', fontSize: '0.85rem' }}
+                            >
+                              Regenerate API Token
+                            </button>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>
+                              ⚠️ Invalidate current credential immediately. Any project workflows using this token must be updated with the newly generated token.
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CDN Integration React Provider Snippet */}
+                    <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                      <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                          CDN Live Integration Provider
+                        </h3>
+                        <span style={{ 
+                          fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
+                          background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', letterSpacing: '0.05em' 
+                        }}>
+                          LIVE AUTO-SYNC
+                        </span>
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                          Inject Strata Live CDN provider into your application root. The snippet below contains the active <strong>Project ID</strong> and <strong>Sync Token</strong> dynamically generated for your current config environment:
+                        </p>
+                        
+                        {/* Interactive dynamic code block */}
+                        <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto' }}>
+                          <button
+                            onClick={() => {
+                              const code = `import { StrataProvider } from "@strata-ds/core";\n\nexport default function RootLayout({ children }) {\n  return (\n    <StrataProvider\n      syncEnabled={true}\n      projectId="${project.id}"\n      snapshotCdnBase="snapshot.strata.charisol.io/snapshot"\n      syncToken="${syncToken}"\n      syncInterval={5000}\n    >\n      {children}\n    </StrataProvider>\n  );\n}`;
+                              navigator.clipboard.writeText(code);
+                              alert('CDN integration code copied!');
+                            }}
+                            style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '0.3rem 0.6rem', color: '#fff', fontSize: '0.7rem', cursor: 'pointer' }}
+                          >
+                            Copy
+                          </button>
+                          <pre style={{ margin: 0, lineHeight: 1.5, color: '#F1F1F4' }}>
 {`import { StrataProvider } from "@strata-ds/core";
 
 export default function RootLayout({ children }) {
@@ -2597,441 +3135,28 @@ export default function RootLayout({ children }) {
       syncEnabled={true}
       projectId="${project.id}"
       snapshotCdnBase="snapshot.strata.charisol.io/snapshot"
-      syncToken="pt_live_your_token_here"
+      syncToken="${syncToken}"
       syncInterval={5000}
     >
       {children}
     </StrataProvider>
   );
 }`}
-                      </pre>
+                          </pre>
+                        </div>
+                        
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.5rem 0 0 0', lineHeight: 1.5 }}>
+                          With this provider configured, changes made in your Strata dashboard propagate automatically to your web app in production and staging without requiring redeployment or CLI syncs.
+                        </p>
+                      </div>
                     </div>
 
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
-                      Install <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '4px', color: 'var(--text-primary)' }}>@strata-ds/core</code> from npm, then wrap your app root with <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '4px', color: 'var(--text-primary)' }}>StrataProvider</code>. Pass your <code style={{ fontFamily: 'var(--font-mono)' }}>projectId</code>, <code style={{ fontFamily: 'var(--font-mono)' }}>snapshotCdnBase</code>, and <code style={{ fontFamily: 'var(--font-mono)' }}>syncToken</code> from the <strong>Publish & Sync</strong> tab.
-                    </p>
-                    
-                    <a href="#integration-guide" onClick={(e) => { e.preventDefault(); alert('Redirecting to full integration guide...'); }} style={{ fontSize: '0.82rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>
-                      Read full integration guide →
-                    </a>
                   </div>
-                </div>
+                )}
 
-                {/* Publish & Sync Formats Grid */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '0.5rem' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
-                      Publish & Sync
-                    </h3>
-                  </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-                    {formats.map(fmt => {
-                      const isExpanded = expandedCard === fmt.id;
-                      const url = `https://strata.charisol.io/api/public/v1/projects/${project.id}/${fmt.id}`;
-                      return (
-                        <div key={fmt.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                          {/* Header Row */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ 
-                                fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
-                                background: fmt.badgeBg, color: fmt.badgeColor, letterSpacing: '0.05em' 
-                              }}>
-                                {fmt.badge}
-                              </span>
-                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                {fmt.filename}
-                              </span>
-                            </div>
-                            {fmt.recommended && (
-                              <span style={{ 
-                                fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px',
-                                background: 'rgba(34, 197, 94, 0.1)', color: '#22C55E', letterSpacing: '0.05em'
-                              }}>
-                                RECOMMENDED
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Description */}
-                          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, minHeight: '3rem', lineHeight: 1.4 }}>
-                            {fmt.desc}
-                          </p>
-
-                          {/* URL box */}
-                          <div style={{ display: 'flex', position: 'relative', width: '100%' }}>
-                            <input 
-                              readOnly 
-                              className="form-input" 
-                              value={url} 
-                              style={{ 
-                                fontSize: '0.72rem', height: '36px', padding: '0 50px 0 0.75rem', 
-                                background: 'var(--bg-tertiary)', border: '1px solid var(--border)', 
-                                color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)',
-                                textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%',
-                                borderRadius: '6px'
-                              }} 
-                            />
-                            <button 
-                              onClick={() => {
-                                navigator.clipboard.writeText(url);
-                                alert(`${fmt.filename} sync URL copied!`);
-                              }}
-                              style={{ 
-                                position: 'absolute', right: '4px', top: '4px', height: '28px', 
-                                background: 'var(--bg-secondary)', border: '1px solid var(--border)', 
-                                color: 'var(--text-primary)', padding: '0 0.5rem', fontSize: '0.7rem', 
-                                borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' 
-                              }}
-                            >
-                              Copy
-                            </button>
-                          </div>
-
-                          {/* Toggler */}
-                          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
-                            <button 
-                              onClick={() => setExpandedCard(isExpanded ? null : fmt.id)}
-                              style={{ 
-                                background: 'none', border: 'none', color: 'var(--accent)', 
-                                fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer', 
-                                display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 
-                              }}
-                            >
-                              <span>Show usage snippets</span>
-                              <span style={{ 
-                                display: 'inline-block', transition: 'transform 0.2s', 
-                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' 
-                              }}>
-                                ▼
-                              </span>
-                            </button>
-
-                            {/* Expanded Code Snippet */}
-                            {isExpanded && (
-                              <div style={{ 
-                                marginTop: '0.75rem', background: '#09090C', border: '1px solid #1A1A24', 
-                                borderRadius: '8px', padding: '0.75rem', fontFamily: 'var(--font-mono)', 
-                                fontSize: '0.72rem', color: '#A3A3B8', overflowX: 'auto', position: 'relative'
-                              }}>
-                                <button
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(fmt.snippet);
-                                    alert('Usage snippet copied!');
-                                  }}
-                                  style={{ 
-                                    position: 'absolute', top: '6px', right: '6px', background: 'rgba(255,255,255,0.05)', 
-                                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', 
-                                    padding: '0.2rem 0.4rem', color: '#fff', fontSize: '0.6rem', cursor: 'pointer' 
-                                  }}
-                                >
-                                  Copy
-                                </button>
-                                <pre style={{ margin: 0, lineHeight: 1.4, color: '#E1E1E6' }}>{fmt.snippet}</pre>
-                              </div>
-                            )}
-                          </div>
-
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Unified Token Dictionary */}
-                <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Unified Token Dictionary</h3>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Search tokens (name, value, type)..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      style={{ maxWidth: '240px', fontSize: '0.8rem', padding: '0.4rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px' }}
-                    />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-                    {['Token Key', 'Value', 'Type'].map(h => (
-                      <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto' }}>
-                    {Object.keys(activeTokens).flatMap(cat => activeTokens[cat] || []).filter(t => {
-                      const q = searchQuery.toLowerCase();
-                      return t.name.toLowerCase().includes(q) || t.value.toLowerCase().includes(q) || t.type.toLowerCase().includes(q);
-                    }).map((token, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr',
-                          gap: '1rem', alignItems: 'center',
-                          padding: '0.625rem 0.875rem', borderBottom: '1px solid var(--border-subtle)',
-                        }}
-                      >
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>{token.name}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          {token.type === 'color' && (
-                            <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: token.value, border: '1px solid rgba(255,255,255,0.1)' }} />
-                          )}
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{token.value}</span>
-                        </div>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'fit-content',
-                          fontSize: '0.6rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
-                          background: `${TYPE_COLORS[token.type]}12`,
-                          color: TYPE_COLORS[token.type],
-                          border: `1px solid ${TYPE_COLORS[token.type]}22`,
-                          fontWeight: 500
-                        }}>{token.type}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             );
           })()}
-
-          {activeTab === 'assets' && (
-            <div style={{ maxWidth: '1200px' }}>
-              <div style={{ marginBottom: '2.5rem' }}>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                  Assets Download Hub
-                </h2>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                  Export generated production tokens and assets, or manage uploaded brand guidelines and resources.
-                </p>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '3rem' }}>
-                
-                {/* Column 1: Generated Assets */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                    System Generated Assets
-                  </h3>
-
-                  {[
-                    {
-                      key: 'brandBible',
-                      name: 'Brand Bible PDF',
-                      desc: 'Fully compiled style guide containing colors, fonts, voice & tone guidelines.',
-                      type: 'PDF Document',
-                      format: 'PDF',
-                      lastUpdated: brandBibleDirty ? 'Pending changes' : 'Synced',
-                      onDownload: handlePrintBrandBible
-                    },
-                    {
-                      key: 'css',
-                      name: 'CSS Custom Properties',
-                      desc: 'Production-ready CSS variables mapping token names directly to CSS root variables.',
-                      type: 'variables.css',
-                      format: 'CSS',
-                      lastUpdated: 'Synced',
-                      onDownload: () => downloadTextFile(`${project?.name || 'strata'}-variables.css`, getCSSVariablesText())
-                    },
-                    {
-                      key: 'json',
-                      name: 'Design Tokens JSON (DTCG)',
-                      desc: 'Standard Design Tokens Community Group JSON format, ideal for cross-platform pipelines.',
-                      type: 'tokens.json',
-                      format: 'JSON',
-                      lastUpdated: 'Synced',
-                      onDownload: () => downloadTextFile(`${project?.name || 'strata'}-tokens.json`, getDTCGJsonText())
-                    },
-                    {
-                      key: 'react',
-                      name: 'React Theme Provider',
-                      desc: 'Ready-to-use React Context Provider preconfigured with your typography, colors, and layout scale.',
-                      type: 'ThemeProvider.jsx',
-                      format: 'React',
-                      lastUpdated: 'Synced',
-                      onDownload: () => downloadTextFile('ThemeProvider.jsx', getReactThemeText())
-                    }
-                  ].map(asset => (
-                    <div 
-                      key={asset.key} 
-                      style={{ 
-                        background: 'var(--bg-secondary)', 
-                        padding: '1.5rem', 
-                        borderRadius: '20px', 
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1.25rem'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.5rem' }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{asset.name}</span>
-                            <span style={{ 
-                              fontSize: '0.625rem', 
-                              padding: '0.15rem 0.4rem', 
-                              borderRadius: '4px',
-                              background: asset.format === 'PDF' ? '#EF444420' : asset.format === 'CSS' ? '#3B82F620' : asset.format === 'JSON' ? '#F59E0B20' : '#10B98120',
-                              color: asset.format === 'PDF' ? '#EF4444' : asset.format === 'CSS' ? '#3B82F6' : asset.format === 'JSON' ? '#F59E0B' : '#10B981',
-                              fontWeight: 700
-                            }}>{asset.format}</span>
-                          </div>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.4' }}>{asset.desc}</p>
-                        </div>
-                        <button 
-                          onClick={asset.onDownload}
-                          className="btn btn-secondary"
-                          style={{ 
-                            fontSize: '0.75rem', 
-                            padding: '0.45rem 1rem', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '0.4rem',
-                            flexShrink: 0
-                          }}
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                          Download
-                        </button>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '0.75rem', fontSize: '0.75rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-tertiary)' }}>
-                          <span style={{ 
-                            width: '6px', 
-                            height: '6px', 
-                            borderRadius: '50%', 
-                            background: asset.lastUpdated.includes('Pending') ? '#F59E0B' : '#10B981'
-                          }}></span>
-                          {asset.lastUpdated}
-                        </div>
-                        
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ color: 'var(--text-tertiary)' }}>Visibility:</span>
-                          <select 
-                            value={generatedAssetsVisibility[asset.key]} 
-                            onChange={(e) => updateGeneratedAssetVisibility(asset.key, e.target.value)}
-                            style={{ 
-                              background: 'var(--bg-tertiary)', 
-                              border: '1px solid var(--border)', 
-                              borderRadius: '6px', 
-                              padding: '0.2rem 0.5rem', 
-                              color: 'var(--text-primary)', 
-                              fontSize: '0.75rem', 
-                              cursor: 'pointer' 
-                            }}
-                          >
-                            <option>Private</option>
-                            <option>Team</option>
-                            <option>Public link</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Column 2: Uploaded Assets */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: 0 }}>
-                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>
-                      Uploaded Reference Materials
-                    </h3>
-                    <button 
-                      onClick={() => document.getElementById('brand-bible-uploader').click()}
-                      style={actionBtnStyle}
-                    >
-                      + Add Material
-                    </button>
-                  </div>
-
-                  {uploadedAssets.map(asset => (
-                    <div 
-                      key={asset.id} 
-                      style={{ 
-                        background: 'var(--bg-secondary)', 
-                        padding: '1.5rem', 
-                        borderRadius: '20px', 
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '1.25rem'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1.5rem' }}>
-                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                          <div style={{ color: 'var(--accent)', marginTop: '0.2rem' }}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{asset.name}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{asset.type} • {asset.size}</div>
-                          </div>
-                        </div>
-                        
-                        <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                          <button 
-                            onClick={() => alert(`Downloading ${asset.name}...`)}
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem' }}
-                          >
-                            Download
-                          </button>
-                          <button 
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to remove ${asset.name}?`)) {
-                                updateUploadedAssets(uploadedAssets.filter(a => a.id !== asset.id));
-                              }
-                            }}
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', color: '#EF4444', borderColor: 'rgba(239,68,68,0.2)' }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: '0.75rem', fontSize: '0.75rem' }}>
-                        <div style={{ color: 'var(--text-tertiary)' }}>
-                          Uploaded {asset.date}
-                        </div>
-                        
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ color: 'var(--text-tertiary)' }}>Visibility:</span>
-                          <select 
-                            value={asset.visibility} 
-                            onChange={(e) => {
-                              const updated = uploadedAssets.map(a => a.id === asset.id ? { ...a, visibility: e.target.value } : a);
-                              updateUploadedAssets(updated);
-                            }}
-                            style={{ 
-                              background: 'var(--bg-tertiary)', 
-                              border: '1px solid var(--border)', 
-                              borderRadius: '6px', 
-                              padding: '0.2rem 0.5rem', 
-                              color: 'var(--text-primary)', 
-                              fontSize: '0.75rem', 
-                              cursor: 'pointer' 
-                            }}
-                          >
-                            <option>Private</option>
-                            <option>Team</option>
-                            <option>Public link</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {uploadedAssets.length === 0 && (
-                    <div style={{ textAlign: 'center', padding: '3rem 1.5rem', background: 'var(--bg-secondary)', borderRadius: '20px', border: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: '0.75rem' }}>📂</span>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>No uploaded reference materials yet.</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           {activeTab === 'settings' && (
             <div style={{ maxWidth: '480px' }}>
@@ -3057,7 +3182,6 @@ export default function RootLayout({ children }) {
             </div>
           )}
         </main>
-
       </div>
 
       {/* ── Modals ── */}
@@ -3133,7 +3257,7 @@ export default function RootLayout({ children }) {
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>
                       {pendingChange.type === 'token' ? (
-                        <>Modified token <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{pendingChange.originalName}</span> ({pendingChange.oldValue} → {pendingChange.newValue})</>
+                        <>Modified token <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{pendingChange.originalName}</span> ({pendingChange.oldValue} &rarr; {pendingChange.newValue})</>
                       ) : (
                         <>Updated brand attribute <span style={{ color: 'var(--text-secondary)' }}>{pendingChange.field}</span></>
                       )}

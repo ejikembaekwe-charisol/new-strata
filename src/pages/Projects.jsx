@@ -8,6 +8,11 @@ const Projects = () => {
   const { projects, isLoaded, addProject, updateProject, deleteProject } = useProjects();
   const [showModal, setShowModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredProjects = projects.filter(project =>
+    project.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   if (!isLoaded) return <div className="loading-screen"><div className="loading-spinner"></div></div>;
 
@@ -34,18 +39,30 @@ const Projects = () => {
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', textAlign: 'left', maxWidth: '100%', padding: '6rem 0 3rem' }}>
         <div>
           <h1 style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>Your projects</h1>
-          <p style={{ color: 'var(--text-secondary)' }}>Manage your design systems and propagation settings.</p>
+          <p style={{ color: 'var(--text-secondary)' }}>Manage your design systems and brand tokens.</p>
         </div>
         {projects.length > 0 && (
-          <button
-            id="new-project-btn"
-            className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}
-            onClick={() => setShowModal(true)}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New project
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+            <div className="search-bar" style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '100px', padding: '0.5rem 1.25rem', width: '260px' }}>
+              <span style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>🔍</span>
+              <input 
+                type="text" 
+                placeholder="Search projects..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ border: 'none', background: 'transparent', width: '100%', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem' }} 
+              />
+            </div>
+            <button
+              id="new-project-btn"
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}
+              onClick={() => setShowModal(true)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New project
+            </button>
+          </div>
         )}
       </div>
 
@@ -77,11 +94,11 @@ const Projects = () => {
         ) : (
           <>
             <h2 style={{ fontSize: '1rem', marginBottom: '1.5rem', color: 'var(--text-secondary)', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-              {projects.length} {projects.length === 1 ? 'project' : 'projects'}
+              {filteredProjects.length} {filteredProjects.length === 1 ? 'project' : 'projects'}
             </h2>
 
             <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
-              {projects.map(project => (
+              {filteredProjects.map(project => (
                 <div key={project.id} className="card project-card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
@@ -143,10 +160,6 @@ const Projects = () => {
                       <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.2rem', letterSpacing: '0.05em' }}>Last synced</div>
                       <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{project.updated}</div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.2rem', letterSpacing: '0.05em' }}>Propagation</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{project.formats}</div>
-                    </div>
                   </div>
 
                   <div style={{ marginTop: '0.25rem' }}>
@@ -187,24 +200,6 @@ const Projects = () => {
             </div>
           </>
         )}
-      </div>
-
-      {/* Propagation status */}
-      <div className="page-section">
-        <div style={{ background: 'var(--bg-secondary)', borderRadius: '20px', padding: '3rem', textAlign: 'center', border: '1px solid var(--border)' }}>
-          <h2 style={{ marginBottom: '1rem' }}>Propagation status</h2>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto 2rem' }}>
-            All systems operational. Average propagation time is ~2.8s.
-          </p>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem' }}>
-            {[['99.99%', 'Uptime'], ['2.8s', 'Avg. sync'], ['14', 'Endpoints']].map(([val, label]) => (
-              <div key={label} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--accent)', fontFamily: 'var(--font-heading)' }}>{val}</div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '0.25rem' }}>{label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Modal */}

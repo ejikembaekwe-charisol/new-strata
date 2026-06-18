@@ -42,9 +42,9 @@ const Explore = () => {
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
           {systems.map((sys) => (
             <div key={sys.id} className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-              <div style={{ position: 'relative', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', width: '150%', height: '150%', background: `radial-gradient(circle at center, ${sys.color} 0%, transparent 70%)`, opacity: 0.6, filter: 'blur(20px)', animation: 'pulse 8s infinite alternate ease-in-out', transform: `translate(0, -20%)` }}></div>
-                <div style={{ position: 'relative', color: 'white', fontSize: '3.5rem', fontWeight: 'bold', textShadow: '0 2px 10px rgba(0,0,0,0.5)', zIndex: 1 }}>
+              <div style={{ position: 'relative', height: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: sys.color }}>
+                <div style={{ position: 'absolute', width: '150%', height: '150%', background: `radial-gradient(circle at center, rgba(255, 255, 255, 0.2) 0%, transparent 70%)`, opacity: 0.6, filter: 'blur(10px)' }}></div>
+                <div style={{ position: 'relative', color: '#FFFFFF', fontSize: '3.5rem', fontWeight: 'bold', textShadow: '0 2px 10px rgba(0,0,0,0.25)', zIndex: 1 }}>
                   {sys.letter}
                 </div>
                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40px', background: 'linear-gradient(to top, var(--bg-secondary) 0%, transparent 100%)', zIndex: 2 }}></div>

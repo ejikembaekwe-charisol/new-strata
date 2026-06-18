@@ -343,16 +343,16 @@
 
 :root:has(.light-theme) .card,
 .light-theme .card {
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(0, 0, 0, 0.05);
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03);
 }
 
 :root:has(.light-theme) .card:hover,
 .light-theme .card:hover {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: rgba(252, 6, 148, 0.3);
-    box-shadow: 0 10px 40px rgba(252, 6, 148, 0.05);
+    background: var(--bg-secondary);
+    border-color: var(--accent);
+    box-shadow: 0 12px 40px rgba(252, 6, 148, 0.08);
 }
 
 .card h3 {
