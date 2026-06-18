@@ -2694,428 +2694,227 @@ This document serves as our living source of truth.`
             ];
 
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', maxWidth: '1200px' }}>
                 
-                {/* Sub-tab Switcher */}
-                <div style={{
-                  display: 'inline-flex',
-                  alignSelf: 'flex-start',
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  padding: '3px',
-                  marginBottom: '1rem',
-                  gap: '4px',
-                }}>
-                  {[
-                    { id: 'connect', label: 'Connect your app' },
-                    { id: 'sync', label: 'Publish & Sync' }
-                  ].map(subTab => (
-                    <button
-                      key={subTab.id}
-                      onClick={() => setActiveHandoffSubTab(subTab.id)}
-                      style={{
-                        padding: '0.5rem 1.25rem',
-                        borderRadius: '6px',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                        fontWeight: activeHandoffSubTab === subTab.id ? 600 : 400,
-                        background: activeHandoffSubTab === subTab.id ? 'var(--bg-secondary)' : 'none',
-                        color: activeHandoffSubTab === subTab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        boxShadow: activeHandoffSubTab === subTab.id ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      {subTab.label}
-                    </button>
-                  ))}
-                </div>
+                {/* Integration Card */}
+                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                  
+                  {/* Tab Selector */}
+                  <div style={{
+                    display: 'flex',
+                    borderBottom: '1px solid var(--border)',
+                    paddingBottom: '0.75rem',
+                    marginBottom: '2rem',
+                    gap: '1rem',
+                  }}>
+                    {[
+                      { id: 'connect', label: 'Connect your app' },
+                      { id: 'sync', label: 'Publish & Sync' }
+                    ].map(subTab => {
+                      const isActive = activeHandoffSubTab === subTab.id;
+                      return (
+                        <button
+                          key={subTab.id}
+                          onClick={() => setActiveHandoffSubTab(subTab.id)}
+                          style={{
+                            padding: '0.5rem 1.25rem',
+                            borderRadius: '6px',
+                            border: `1.5px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                            background: 'none',
+                            color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                            fontWeight: isActive ? 600 : 500,
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontFamily: 'inherit',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {subTab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                {/* Sub-tab Content: Connect your app */}
-                {activeHandoffSubTab === 'connect' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
-                    
-                    {/* Project ID copy card */}
-                    <div style={{ 
-                      background: 'var(--bg-secondary)', 
-                      padding: '1.5rem 2rem', 
-                      borderRadius: '16px', 
-                      border: '1px solid var(--border)',
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center' 
-                    }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Project Integration ID</span>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Use this ID to reference this project in your local configs and CLI tools.</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.5rem 1rem', borderRadius: '8px' }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500, fontSize: '0.85rem' }}>{project.id}</span>
+                  {/* Connect your app Content */}
+                  {activeHandoffSubTab === 'connect' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                      {/* Project ID copy card */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.875rem 1.25rem', borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Project ID:</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500 }}>{project.id}</span>
+                        </div>
                         <button 
                           onClick={() => {
                             navigator.clipboard.writeText(project.id);
                             alert('Project ID copied!');
                           }}
                           className="btn btn-secondary"
-                          style={{ 
-                            background: 'var(--bg-secondary)', 
-                            borderColor: 'var(--border)', 
-                            color: 'var(--text-primary)', 
-                            padding: '0.3rem 0.75rem', 
-                            borderRadius: '6px', 
-                            cursor: 'pointer', 
-                            fontSize: '0.75rem' 
-                          }}
+                          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)', padding: '0.35rem 0.875rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}
                         >
                           Copy
                         </button>
                       </div>
-                    </div>
 
-                    {/* Install and Configure CLI Block */}
-                    <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                      <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
-                        <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
-                          Install & configure
-                        </h3>
-                      </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                          Install the Strata CLI or packages from npm to automatically compile design system tokens into your workspace build step.
-                        </p>
+                      {/* Install & configure */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Install & configure</h4>
                         
-                        {/* CLI commands box */}
-                        <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto' }}>
+                        {/* Code box */}
+                        <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto', marginBottom: '1rem' }}>
                           <button
                             onClick={() => {
-                              const code = `npm i -D @strata-ds/cli && npx strata sync --project ${project.id}`;
+                              const code = `import { StrataProvider } from "@strata-ds/core";\n\nexport default function RootLayout({ children }) {\n  return (\n    <StrataProvider\n      syncEnabled={true}\n      projectId="${project.id}"\n      snapshotCdnBase="snapshot.strata.charisol.io/snapshot"\n      syncToken="pt_live_your_token_here"\n      syncInterval={5000}\n    >\n      {children}\n    </StrataProvider>\n  );\n}`;
                               navigator.clipboard.writeText(code);
-                              alert('Command copied!');
+                              alert('Configuration code copied!');
                             }}
                             style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', padding: '0.3rem 0.6rem', color: '#fff', fontSize: '0.7rem', cursor: 'pointer' }}
                           >
                             Copy
                           </button>
                           <pre style={{ margin: 0, lineHeight: 1.5, color: '#F1F1F4' }}>
-{`# Install CLI & developer utilities
-npm i -D @strata-ds/cli
+{`import { StrataProvider } from "@strata-ds/core";
 
-# Sync latest tokens dynamically
-npx strata sync --project ${project.id}`}
+export default function RootLayout({ children }) {
+  return (
+    <StrataProvider
+      syncEnabled={true}
+      projectId="${project.id}"
+      snapshotCdnBase="snapshot.strata.charisol.io/snapshot"
+      syncToken="pt_live_your_token_here"
+      syncInterval={5000}
+    >
+      {children}
+    </StrataProvider>
+  );
+}`}
                           </pre>
                         </div>
-                        
-                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.5rem 0 0 0', lineHeight: 1.5 }}>
-                          Alternatively, configure a dynamic hot-reload synchronization in the **Publish & Sync** panel to keep the design system aligned without requiring redeployments.
+
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 0.5rem 0', lineHeight: 1.5 }}>
+                          Install <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '4px', color: 'var(--text-primary)' }}>@strata-ds/core</code> from npm, then wrap your app root with <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--bg-tertiary)', padding: '2px 4px', borderRadius: '4px', color: 'var(--text-primary)' }}>StrataProvider</code>. Pass your <code style={{ fontFamily: 'var(--font-mono)' }}>projectId</code>, <code style={{ fontFamily: 'var(--font-mono)' }}>snapshotCdnBase</code>, and <code style={{ fontFamily: 'var(--font-mono)' }}>syncToken</code> from the <strong>Publish & Sync</strong> tab.
                         </p>
+
+                        <a 
+                          href="#/docs/integration" 
+                          style={{ 
+                            fontSize: '0.82rem', 
+                            color: 'var(--accent)', 
+                            textDecoration: 'none', 
+                            fontWeight: 600, 
+                            marginTop: '0.5rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            alert('Opening full integration guide...');
+                          }}
+                        >
+                          Read full integration guide &rarr;
+                        </a>
                       </div>
                     </div>
+                  )}
 
-                    {/* Exporters / Formats Grid */}
-                    <div>
-                      <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1.25rem' }}>
-                        Available Formats & Exporters
-                      </h3>
+                  {/* Publish & Sync Content */}
+                  {activeHandoffSubTab === 'sync' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
                       
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
-                        {formats.map(fmt => {
-                          const isExpanded = expandedCard === fmt.id;
-                          const url = `https://strata.charisol.io/api/public/v1/projects/${project.id}/${fmt.id}`;
-                          return (
-                            <div key={fmt.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                              {/* Header Row */}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                  <span style={{ 
-                                    fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
-                                    background: fmt.badgeBg, color: fmt.badgeColor, letterSpacing: '0.05em' 
-                                  }}>
-                                    {fmt.badge}
-                                  </span>
-                                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                    {fmt.filename}
-                                  </span>
-                                </div>
-                                {fmt.recommended && (
-                                  <span style={{ 
-                                    fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px',
-                                    background: 'rgba(34, 197, 94, 0.1)', color: '#22C55E', letterSpacing: '0.05em'
-                                  }}>
-                                    RECOMMENDED
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Description */}
-                              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, minHeight: '3rem', lineHeight: 1.4 }}>
-                                {fmt.desc}
-                              </p>
-
-                              {/* URL box */}
-                              <div style={{ display: 'flex', position: 'relative', width: '100%' }}>
-                                <input 
-                                  readOnly 
-                                  className="form-input" 
-                                  value={url} 
-                                  style={{ 
-                                    fontSize: '0.72rem', height: '36px', padding: '0 50px 0 0.75rem', 
-                                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)', 
-                                    color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)',
-                                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%',
-                                    borderRadius: '6px'
-                                  }} 
-                                />
-                                <button 
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(url);
-                                    alert(`${fmt.filename} sync URL copied!`);
-                                  }}
-                                  style={{ 
-                                    position: 'absolute', right: '4px', top: '4px', height: '28px', 
-                                    background: 'var(--bg-secondary)', border: '1px solid var(--border)', 
-                                    color: 'var(--text-primary)', padding: '0 0.5rem', fontSize: '0.7rem', 
-                                    borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' 
+                      {/* Project Visibility */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Project visibility</h4>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Public projects are discoverable and readable without a token. Private projects require a sync token for read access.</p>
+                        
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', alignItems: 'center' }}>
+                          <div style={{
+                            display: 'inline-flex',
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '20px',
+                            padding: '3px',
+                            gap: '2px'
+                          }}>
+                            {['Public', 'Private'].map(visibility => {
+                              const isSelected = projectVisibility === visibility;
+                              return (
+                                <button
+                                  key={visibility}
+                                  onClick={() => handleVisibilityChange(visibility)}
+                                  style={{
+                                    padding: '0.4rem 1.25rem',
+                                    borderRadius: '18px',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: isSelected ? 600 : 400,
+                                    background: isSelected ? 'var(--bg-secondary)' : 'none',
+                                    color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    boxShadow: isSelected ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+                                    transition: 'all 0.15s ease'
                                   }}
                                 >
-                                  Copy
+                                  {visibility}
                                 </button>
-                              </div>
-
-                              {/* Toggler */}
-                              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
-                                <button 
-                                  onClick={() => setExpandedCard(isExpanded ? null : fmt.id)}
-                                  style={{ 
-                                    background: 'none', border: 'none', color: 'var(--accent)', 
-                                    fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer', 
-                                    display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 
-                                  }}
-                                >
-                                  <span>Show usage snippets</span>
-                                  <span style={{ 
-                                    display: 'inline-block', transition: 'transform 0.2s', 
-                                    transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' 
-                                  }}>
-                                    ▼
-                                  </span>
-                                </button>
-
-                                {/* Expanded Code Snippet */}
-                                {isExpanded && (
-                                  <div style={{ 
-                                    marginTop: '0.75rem', background: '#09090C', border: '1px solid #1A1A24', 
-                                    borderRadius: '8px', padding: '0.75rem', fontFamily: 'var(--font-mono)', 
-                                    fontSize: '0.72rem', color: '#A3A3B8', overflowX: 'auto', position: 'relative'
-                                  }}>
-                                    <button
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(fmt.snippet);
-                                        alert('Usage snippet copied!');
-                                      }}
-                                      style={{ 
-                                        position: 'absolute', top: '6px', right: '6px', background: 'rgba(255,255,255,0.05)', 
-                                        border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', 
-                                        padding: '0.2rem 0.4rem', color: '#fff', fontSize: '0.6rem', cursor: 'pointer' 
-                                      }}
-                                    >
-                                      Copy
-                                    </button>
-                                    <pre style={{ margin: 0, lineHeight: 1.4, color: '#E1E1E6' }}>{fmt.snippet}</pre>
-                                  </div>
-                                )}
-                              </div>
-
-                            </div>
-                          );
-                        })}
+                              );
+                            })}
+                          </div>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                            Current: <strong>{projectVisibility}</strong>
+                          </span>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Unified Token Dictionary */}
-                    <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Unified Token Dictionary</h3>
-                        <input
-                          type="text"
-                          className="form-input"
-                          placeholder="Search tokens (name, value, type)..."
-                          value={searchQuery}
-                          onChange={e => setSearchQuery(e.target.value)}
-                          style={{ maxWidth: '240px', fontSize: '0.8rem', padding: '0.4rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px' }}
-                        />
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-                        {['Token Key', 'Value', 'Type'].map(h => (
-                          <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
-                        ))}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto' }}>
-                        {Object.keys(activeTokens).flatMap(cat => activeTokens[cat] || []).filter(t => {
-                          const q = searchQuery.toLowerCase();
-                          return t.name.toLowerCase().includes(q) || t.value.toLowerCase().includes(q) || t.type.toLowerCase().includes(q);
-                        }).map((token, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr',
-                              gap: '1rem', alignItems: 'center',
-                              padding: '0.625rem 0.875rem', borderBottom: '1px solid var(--border-subtle)',
+                      {/* Sync Token */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Sync token</h4>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
+                          Your sync token authenticates read requests from <code style={{ fontFamily: 'var(--font-mono)' }}>@strata-ds/core</code>. Pass it as the <code style={{ fontFamily: 'var(--font-mono)' }}>syncToken</code> prop on <code style={{ fontFamily: 'var(--font-mono)' }}>StrataProvider</code>.
+                        </p>
+                        
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', maxWidth: '580px' }}>
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={syncToken ? 'pt_live_' + '*'.repeat(16) : ''} 
+                            style={{ 
+                              flex: 1, 
+                              background: 'var(--bg-tertiary)', 
+                              border: '1px solid var(--border)', 
+                              borderRadius: '8px', 
+                              padding: '0.5rem 0.75rem', 
+                              color: 'var(--text-secondary)', 
+                              fontFamily: 'var(--font-mono)', 
+                              fontSize: '0.82rem',
+                              height: '38px'
+                            }} 
+                          />
+                          <button 
+                            onClick={handleGenerateSyncToken}
+                            className="btn btn-primary"
+                            style={{ 
+                              background: 'var(--accent)', 
+                              borderColor: 'var(--accent)', 
+                              color: '#fff', 
+                              padding: '0.5rem 1.25rem', 
+                              borderRadius: '8px', 
+                              fontSize: '0.8rem', 
+                              cursor: 'pointer',
+                              fontWeight: 600
                             }}
                           >
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>{token.name}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              {token.type === 'color' && (
-                                <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: token.value, border: '1px solid rgba(255,255,255,0.1)' }} />
-                              )}
-                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{token.value}</span>
-                            </div>
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'fit-content',
-                              fontSize: '0.6rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
-                              background: `${TYPE_COLORS[token.type]}12`,
-                              color: TYPE_COLORS[token.type],
-                              border: `1px solid ${TYPE_COLORS[token.type]}22`,
-                              fontWeight: 500
-                            }}>{token.type}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                  </div>
-                )}
-
-                {/* Sub-tab Content: Publish & Sync */}
-                {activeHandoffSubTab === 'sync' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                      {/* Project Visibility Toggle */}
-                      <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                        <div>
-                          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>Project Visibility</h3>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Control authorization requirements for token fetching endpoints.</p>
+                            Generate sync token
+                          </button>
                         </div>
+                      </div>
+
+                      {/* Integration Snippet */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                        <h4 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Integration snippet</h4>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>CDN-first sync pattern — a single edge-cached request replaces 3 Lambda calls.</p>
                         
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
-                          {[
-                            { id: 'Private', title: 'Private Sync Access', desc: 'Sync API requires a valid sync token parameter. Unauthenticated API calls return 401 Unauthorized.' },
-                            { id: 'Public', title: 'Public Sync / CDN Access', desc: 'Make endpoints publicly readable. Ideal for fetching style guides or loading CSS without API tokens.' }
-                          ].map(opt => {
-                            const isSelected = projectVisibility === opt.id;
-                            return (
-                              <div 
-                                key={opt.id}
-                                onClick={() => handleVisibilityChange(opt.id)}
-                                style={{
-                                  padding: '1rem 1.25rem',
-                                  borderRadius: '10px',
-                                  border: `1.5px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
-                                  background: isSelected ? 'var(--bg-tertiary)' : 'var(--bg-secondary)',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s',
-                                  display: 'flex',
-                                  gap: '1rem',
-                                  alignItems: 'flex-start'
-                                }}
-                              >
-                                <div style={{ 
-                                  width: '16px', height: '16px', borderRadius: '50%', 
-                                  border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--text-tertiary)'}`,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  marginTop: '0.1rem', flexShrink: 0
-                                }}>
-                                  {isSelected && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)' }} />}
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{opt.title}</div>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>{opt.desc}</div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Sync Token Manager */}
-                      <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                        <div>
-                          <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>API Sync Token</h3>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>Authentication credential used by applications or bundlers to sync project resources securely.</p>
-                        </div>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem', width: '100%', position: 'relative' }}>
-                            <input
-                              type="text"
-                              readOnly
-                              value={syncToken}
-                              style={{
-                                flex: 1,
-                                height: '40px',
-                                padding: '0 4rem 0 0.75rem',
-                                fontFamily: 'var(--font-mono)',
-                                fontSize: '0.8rem',
-                                color: 'var(--text-primary)',
-                                background: 'var(--bg-tertiary)',
-                                border: '1px solid var(--border)',
-                                borderRadius: '8px',
-                              }}
-                            />
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(syncToken);
-                                alert('Sync Token copied!');
-                              }}
-                              className="btn btn-secondary"
-                              style={{
-                                position: 'absolute', right: '6px', top: '6px', height: '28px',
-                                fontSize: '0.72rem', padding: '0 0.75rem', borderRadius: '6px', cursor: 'pointer'
-                              }}
-                            >
-                              Copy
-                            </button>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            <button 
-                              onClick={handleGenerateSyncToken}
-                              className="btn btn-primary"
-                              style={{ width: '100%', padding: '0.65rem 1rem', fontSize: '0.85rem' }}
-                            >
-                              Regenerate API Token
-                            </button>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.3 }}>
-                              ⚠️ Invalidate current credential immediately. Any project workflows using this token must be updated with the newly generated token.
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* CDN Integration React Provider Snippet */}
-                    <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                      <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
-                          CDN Live Integration Provider
-                        </h3>
-                        <span style={{ 
-                          fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
-                          background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', letterSpacing: '0.05em' 
-                        }}>
-                          LIVE AUTO-SYNC
-                        </span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
-                          Inject Strata Live CDN provider into your application root. The snippet below contains the active <strong>Project ID</strong> and <strong>Sync Token</strong> dynamically generated for your current config environment:
-                        </p>
-                        
-                        {/* Interactive dynamic code block */}
-                        <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto' }}>
+                        <div style={{ position: 'relative', background: '#09090C', border: '1px solid #1A1A24', borderRadius: '12px', padding: '1.25rem', fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: '#A3A3B8', overflowX: 'auto', marginTop: '0.5rem' }}>
                           <button
                             onClick={() => {
                               const code = `import { StrataProvider } from "@strata-ds/core";\n\nexport default function RootLayout({ children }) {\n  return (\n    <StrataProvider\n      syncEnabled={true}\n      projectId="${project.id}"\n      snapshotCdnBase="snapshot.strata.charisol.io/snapshot"\n      syncToken="${syncToken}"\n      syncInterval={5000}\n    >\n      {children}\n    </StrataProvider>\n  );\n}`;
@@ -3144,21 +2943,187 @@ export default function RootLayout({ children }) {
 }`}
                           </pre>
                         </div>
-                        
-                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0.5rem 0 0 0', lineHeight: 1.5 }}>
-                          With this provider configured, changes made in your Strata dashboard propagate automatically to your web app in production and staging without requiring redeployment or CLI syncs.
-                        </p>
                       </div>
-                    </div>
 
+                    </div>
+                  )}
+
+                </div>
+
+                {/* Exporters / Formats Grid */}
+                <div>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1.25rem' }}>
+                    Available Formats & Exporters
+                  </h3>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                    {formats.map(fmt => {
+                      const isExpanded = expandedCard === fmt.id;
+                      const url = `https://strata.charisol.io/api/public/v1/projects/${project.id}/${fmt.id}`;
+                      return (
+                        <div key={fmt.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Header Row */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ 
+                                fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
+                                background: fmt.badgeBg, color: fmt.badgeColor, letterSpacing: '0.05em' 
+                              }}>
+                                {fmt.badge}
+                              </span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {fmt.filename}
+                              </span>
+                            </div>
+                            {fmt.recommended && (
+                              <span style={{ 
+                                fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px',
+                                background: 'rgba(34, 197, 94, 0.1)', color: '#22C55E', letterSpacing: '0.05em'
+                              }}>
+                                RECOMMENDED
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, minHeight: '3rem', lineHeight: 1.4 }}>
+                            {fmt.desc}
+                          </p>
+
+                          {/* URL box */}
+                          <div style={{ display: 'flex', position: 'relative', width: '100%' }}>
+                            <input 
+                              readOnly 
+                              className="form-input" 
+                              value={url} 
+                              style={{ 
+                                fontSize: '0.72rem', height: '36px', padding: '0 50px 0 0.75rem', 
+                                background: 'var(--bg-tertiary)', border: '1px solid var(--border)', 
+                                color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)',
+                                textOverflow: 'ellipsis', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%',
+                                borderRadius: '6px'
+                              }} 
+                            />
+                            <button 
+                              onClick={() => {
+                                navigator.clipboard.writeText(url);
+                                alert(`${fmt.filename} sync URL copied!`);
+                              }}
+                              style={{ 
+                                position: 'absolute', right: '4px', top: '4px', height: '28px', 
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border)', 
+                                color: 'var(--text-primary)', padding: '0 0.5rem', fontSize: '0.7rem', 
+                                borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center' 
+                              }}
+                            >
+                              Copy
+                            </button>
+                          </div>
+
+                          {/* Toggler */}
+                          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
+                            <button 
+                              onClick={() => setExpandedCard(isExpanded ? null : fmt.id)}
+                              style={{ 
+                                background: 'none', border: 'none', color: 'var(--accent)', 
+                                fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer', 
+                                display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 
+                              }}
+                            >
+                              <span>Show usage snippets</span>
+                              <span style={{ 
+                                display: 'inline-block', transition: 'transform 0.2s', 
+                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' 
+                              }}>
+                                ▼
+                              </span>
+                            </button>
+
+                            {/* Expanded Code Snippet */}
+                            {isExpanded && (
+                              <div style={{ 
+                                marginTop: '0.75rem', background: '#09090C', border: '1px solid #1A1A24', 
+                                borderRadius: '8px', padding: '0.75rem', fontFamily: 'var(--font-mono)', 
+                                fontSize: '0.72rem', color: '#A3A3B8', overflowX: 'auto', position: 'relative'
+                              }}>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(fmt.snippet);
+                                    alert('Usage snippet copied!');
+                                  }}
+                                  style={{ 
+                                    position: 'absolute', top: '6px', right: '6px', background: 'rgba(255,255,255,0.05)', 
+                                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', 
+                                    padding: '0.2rem 0.4rem', color: '#fff', fontSize: '0.6rem', cursor: 'pointer' 
+                                  }}
+                                >
+                                  Copy
+                                </button>
+                                <pre style={{ margin: 0, lineHeight: 1.4, color: '#E1E1E6' }}>{fmt.snippet}</pre>
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+
+                {/* Unified Token Dictionary */}
+                <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Unified Token Dictionary</h3>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Search tokens (name, value, type)..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      style={{ maxWidth: '240px', fontSize: '0.8rem', padding: '0.4rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px' }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                    {['Token Key', 'Value', 'Type'].map(h => (
+                      <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto' }}>
+                    {Object.keys(activeTokens).flatMap(cat => activeTokens[cat] || []).filter(t => {
+                      const q = searchQuery.toLowerCase();
+                      return t.name.toLowerCase().includes(q) || t.value.toLowerCase().includes(q) || t.type.toLowerCase().includes(q);
+                    }).map((token, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr',
+                          gap: '1rem', alignItems: 'center',
+                          padding: '0.625rem 0.875rem', borderBottom: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>{token.name}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {token.type === 'color' && (
+                            <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: token.value, border: '1px solid rgba(255,255,255,0.1)' }} />
+                          )}
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{token.value}</span>
+                        </div>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 'fit-content',
+                          fontSize: '0.6rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
+                          background: `${TYPE_COLORS[token.type]}12`,
+                          color: TYPE_COLORS[token.type],
+                          border: `1px solid ${TYPE_COLORS[token.type]}22`,
+                          fontWeight: 500
+                        }}>{token.type}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
               </div>
             );
-          })()}
-
-          {activeTab === 'settings' && (
+          })()}          {activeTab === 'settings' && (
             <div style={{ maxWidth: '480px' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem' }}>Project settings</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
