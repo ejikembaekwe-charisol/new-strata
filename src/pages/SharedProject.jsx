@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
+import { useAuth } from '../context/AuthContext';
 
 const TYPE_COLORS = {
   color: '#FC0694',
@@ -313,9 +314,27 @@ const flattenTokensMap = (tObject) => {
   return flat;
 };
 
+const SANDBOX_COLORS = ['#FC0694', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6'];
+const SANDBOX_RADII = [
+  { label: '4px', value: '4px' },
+  { label: '8px', value: '8px' },
+  { label: '16px', value: '16px' },
+  { label: 'Full', value: '100px' },
+];
+
+const AUDIENCE_TABS = [
+  { id: 'overview', name: 'Overview', to: null },
+  { id: 'developers', name: 'Developers', to: '/developers' },
+  { id: 'designers', name: 'Designers', to: '/designers' },
+  { id: 'design-teams', name: 'Design Teams', to: '/design-teams' },
+  { id: 'vibe-coders', name: 'Vibe Coders', to: '/vibe-coders' },
+];
+
 const SharedProject = () => {
   const { id } = useParams();
-  const { projects } = useProjects();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { projects, addProject } = useProjects();
   const [copiedToken, setCopiedToken] = useState(null);
   const [previewTheme, setPreviewTheme] = useState('dark');
   const [tokenSearch, setTokenSearch] = useState('');
@@ -323,6 +342,11 @@ const SharedProject = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedTier, setSelectedTier] = useState('brand');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [forking, setForking] = useState(false);
+  const [sandboxColor, setSandboxColor] = useState(SANDBOX_COLORS[0]);
+  const [sandboxRadius, setSandboxRadius] = useState(SANDBOX_RADII[1].value);
+  const [sandboxDark, setSandboxDark] = useState(true);
+  const [componentSearch, setComponentSearch] = useState('');
 
   // Find project in context, or fallback to mock project
   const project = projects.find(p => String(p.id) === String(id)) || getMockProject(id);
@@ -345,6 +369,52 @@ const SharedProject = () => {
     navigator.clipboard.writeText(text);
     setCopiedToken(label);
     setTimeout(() => setCopiedToken(null), 2000);
+  };
+
+  // ProjectDetail buckets tokens by TYPE (Color/Typography/Spacing/Border/Shadow/Motion)
+  // with a { layer: 'Brand'|'Semantic'|'Component' } field, while this page's mock/shared
+  // tokens are pre-bucketed by tier — including a separate top-level "Component" group —
+  // and use { tier: 'brand'|'semantic'|'component' }. Re-flatten by each token's real type
+  // so nothing (e.g. the Component-tier button/input tokens) gets silently dropped.
+  const TYPE_TO_LAYER_CATEGORY = {
+    color: 'Color', fontFamily: 'Typography', fontSize: 'Typography', spacing: 'Spacing',
+    borderRadius: 'Border', shadow: 'Shadow', duration: 'Motion', easing: 'Motion',
+  };
+
+  const toLayerTokens = (tMap) => {
+    const result = { Color: [], Typography: [], Spacing: [], Border: [], Shadow: [], Motion: [] };
+    for (const cat in tMap) {
+      if (!Array.isArray(tMap[cat])) continue;
+      tMap[cat].forEach(t => {
+        const bucket = TYPE_TO_LAYER_CATEGORY[t.type] || 'Color';
+        result[bucket].push({
+          name: t.name,
+          value: t.value,
+          type: t.type,
+          layer: t.layer || (t.tier ? t.tier.charAt(0).toUpperCase() + t.tier.slice(1) : 'Brand'),
+        });
+      });
+    }
+    return result;
+  };
+
+  const handleFork = () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    setForking(true);
+    const forked = addProject({
+      title: `${project.name} (Fork)`,
+      description: project.description,
+      color: project.color,
+      websiteUrl: project.websiteUrl,
+      figmaUrl: project.figmaUrl,
+      brand: project.brand,
+      tokens: toLayerTokens(project.tokens),
+      components: project.components,
+    });
+    navigate(`/projects/${forked.id}`);
   };
 
   const resolveTokenValue = (tokenName) => {
@@ -754,15 +824,53 @@ const SharedProject = () => {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button 
-            onClick={() => handleCopy(window.location.href, 'Link')} 
-            className="btn btn-secondary" 
+          <button
+            onClick={handleFork}
+            disabled={forking}
+            className="btn"
+            style={{
+              padding: '0.6rem 1.25rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem',
+              background: project.color || 'var(--accent)', color: '#ffffff', border: 'none',
+              opacity: forking ? 0.7 : 1, cursor: forking ? 'default' : 'pointer',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M6 9a9 9 0 0012 8"/></svg>
+            Fork to My Workspace
+          </button>
+          <button
+            onClick={() => handleCopy(window.location.href, 'Link')}
+            className="btn btn-secondary"
             style={{ padding: '0.6rem 1.25rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/></svg>
             {copiedToken === 'Link' ? 'Copied!' : 'Share Project'}
           </button>
         </div>
+      </div>
+
+      {/* ── Audience Switcher ── */}
+      <div style={{
+        display: 'flex', gap: '0.25rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+        borderRadius: '100px', padding: '0.3rem', width: 'fit-content', marginBottom: '1.5rem',
+      }}>
+        {AUDIENCE_TABS.map(tab => {
+          const isActive = tab.id === 'overview';
+          const content = (
+            <span style={{
+              display: 'block', padding: '0.45rem 1.1rem', borderRadius: '100px',
+              background: isActive ? 'var(--text-primary)' : 'transparent',
+              color: isActive ? 'var(--bg)' : 'var(--text-secondary)',
+              fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s ease',
+            }}>
+              {tab.name}
+            </span>
+          );
+          return tab.to ? (
+            <Link key={tab.id} to={tab.to} style={{ textDecoration: 'none' }}>{content}</Link>
+          ) : (
+            <span key={tab.id}>{content}</span>
+          );
+        })}
       </div>
 
       {/* ── NPM-style Tab Header ── */}
@@ -806,97 +914,164 @@ const SharedProject = () => {
           {activeTab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               
-              {/* Package installation card */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem'
-              }}>
-                <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Install Package</span>
-                <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.8rem 1rem' }}>
-                  <span style={{ color: 'var(--accent)', marginRight: '0.5rem', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 700 }}>$</span>
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={`npm install @strata-ds/${projectSlug}`} 
-                    style={{ background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: '0.85rem', fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }}
-                  />
-                  <button 
-                    onClick={() => handleCopy(`npm install @strata-ds/${projectSlug}`, 'InstallCmd')}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', marginLeft: '0.5rem' }}
-                  >
-                    {copiedToken === 'InstallCmd' ? '✓' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Readme details */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem'
-              }}>
-                <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>README.md</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
-                  <p>Welcome to <strong>{project.name}</strong>, a premium design token distribution package built on Strata. This package offers synchronized distribution of atomic variables directly to developer endpoints.</p>
-                  
-                  <h3 style={{ color: 'var(--text-primary)', margin: '1rem 0 0.5rem', fontSize: '1.1rem' }}>Getting Started</h3>
-                  <p>Sync variables via the Strata CLI or load variables directly via CSS custom properties. Our pipeline packages visual intent directly into theme definitions.</p>
-                  
-                  <pre style={{
-                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '1rem', margin: '0.5rem 0',
-                    fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)',
-                    overflowX: 'auto'
-                  }}>
-{`// CLI synchronization
-npx strata-cli sync --id ${project.id}
-
-// Import in CSS
-@import "@strata-ds/${projectSlug}/variables.css";`}
-                  </pre>
-                </div>
-              </div>
-
-              {/* Live Showcase Sites Gallery */}
+              {/* Interactive Component Sandbox */}
               <div style={{
                 background: 'var(--bg-secondary)', border: '1px solid var(--border)',
                 borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
               }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Live Showcase Sites</h3>
-                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Web products powered by the live variables of this design system.</p>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Interactive Component Sandbox</h3>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Tweak atomic variables and inspect live UI components.</p>
                 </div>
-                
+
+                <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  {/* Mini device header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>{project.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Overview</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <span style={{ background: 'rgba(252,6,148,0.15)', color: '#FC0694', border: '1px solid rgba(252,6,148,0.3)', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '100px' }}>LIVE</span>
+                      <span style={{ background: 'rgba(59,130,246,0.15)', color: '#3B82F6', border: '1px solid rgba(59,130,246,0.3)', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '100px' }}>New</span>
+                    </div>
+                  </div>
+
+                  {/* Brand Identity Preview */}
+                  <div style={{
+                    background: sandboxDark ? '#0D0D12' : '#F4F4F5', border: '1px solid var(--border)',
+                    borderRadius: '14px', padding: '1.25rem', position: 'relative', transition: 'background 0.2s ease',
+                  }}>
+                    <span style={{
+                      position: 'absolute', top: '1rem', right: '1.25rem', fontSize: '0.6rem', fontWeight: 700,
+                      textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent)'
+                    }}>Active Sync</span>
+                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: sandboxDark ? '#FFFFFF' : '#111827' }}>Brand Identity Preview</h4>
+                    <p style={{ margin: '0.3rem 0 1rem 0', fontSize: '0.8rem', color: sandboxDark ? '#8C8CA1' : '#4B5563', maxWidth: '360px' }}>
+                      Primary accent, surface, and typography rendered at real scale.
+                    </p>
+                    <button style={{
+                      background: sandboxColor, color: '#ffffff', border: 'none',
+                      borderRadius: sandboxRadius, padding: '0.6rem 1.25rem',
+                      fontSize: '0.85rem', fontWeight: 600, cursor: 'default', transition: 'background 0.15s ease, border-radius 0.15s ease',
+                    }}>Primary Action</button>
+                  </div>
+
+                  {/* Stat tiles */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                    {[
+                      { label: 'Synced', value: project.showcaseSites?.length || 0 },
+                      { label: 'Tokens', value: allTokens.length },
+                      { label: 'Components', value: project.components?.length || 0 },
+                    ].map(stat => (
+                      <div key={stat.label} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem 1rem' }}>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{stat.label}</div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>{stat.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Search */}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="text"
+                      value={componentSearch}
+                      onChange={(e) => setComponentSearch(e.target.value)}
+                      placeholder="Search components..."
+                      style={{
+                        flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                        color: 'var(--text-primary)', padding: '0.55rem 1rem', borderRadius: '10px',
+                        fontSize: '0.85rem', outline: 'none',
+                      }}
+                    />
+                    <button className="btn btn-secondary" style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem' }}>Search</button>
+                  </div>
+
+                  {/* Color / Radius / Theme controls */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Color:</span>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        {SANDBOX_COLORS.map(c => (
+                          <button
+                            key={c}
+                            onClick={() => setSandboxColor(c)}
+                            title={c}
+                            style={{
+                              width: '20px', height: '20px', borderRadius: '50%', background: c, cursor: 'pointer',
+                              border: sandboxColor === c ? '2px solid var(--text-primary)' : '2px solid transparent',
+                              boxShadow: sandboxColor === c ? '0 0 0 2px var(--bg-tertiary)' : 'none',
+                              padding: 0,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Radius:</span>
+                      <div style={{ display: 'flex', gap: '0.3rem' }}>
+                        {SANDBOX_RADII.map(r => (
+                          <button
+                            key={r.value}
+                            onClick={() => setSandboxRadius(r.value)}
+                            style={{
+                              background: sandboxRadius === r.value ? 'var(--accent)' : 'var(--bg-secondary)',
+                              color: sandboxRadius === r.value ? '#ffffff' : 'var(--text-secondary)',
+                              border: '1px solid var(--border)', borderRadius: '8px',
+                              padding: '0.3rem 0.7rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                            }}
+                          >{r.label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setSandboxDark(d => !d)}
+                      style={{
+                        background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px',
+                        padding: '0.35rem 0.9rem', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer',
+                      }}
+                    >{sandboxDark ? 'Dark Mode' : 'Light Mode'}</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* See It in the Wild */}
+              <div style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
+              }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>See It in the Wild</h3>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Connected live surfaces powered by this system.</p>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.25rem' }}>
                   {(project.showcaseSites || [
-                    { name: 'Muzingo Web Player', url: 'https://muzingo.io', image: '🎵', status: 'Live' }
+                    { name: 'Muzingo Web Player', url: 'https://muzingo.io', status: 'Live' }
                   ]).map(site => (
-                    <div key={site.name} style={{
-                      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                      borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column',
-                      gap: '0.75rem', position: 'relative', transition: 'all 0.2s ease'
-                    }}>
-                      <div style={{
-                        width: '44px', height: '44px', borderRadius: '10px',
-                        background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center',
-                        justifyContent: 'center', fontSize: '1.5rem', border: '1px solid var(--border)'
-                      }}>
-                        {site.image || '🌐'}
-                      </div>
+                    <a
+                      key={site.name}
+                      href={site.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                        borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column',
+                        gap: '0.75rem', textDecoration: 'none', transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <div style={{ width: '100%', height: '72px', borderRadius: '10px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }} />
                       <div>
                         <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{site.name}</h4>
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{site.url}</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
-                          <span style={{ fontSize: '0.65rem', color: '#10B981', fontWeight: 600 }}>{site.status}</span>
-                        </div>
-                        <a href={site.url} target="_blank" rel="noreferrer" style={{
-                          fontSize: '0.75rem', color: 'var(--accent)', textDecoration: 'none', fontWeight: 600
-                        }}>Visit Site →</a>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
+                        <span style={{ fontSize: '0.65rem', color: '#10B981', fontWeight: 600 }}>{site.status}</span>
                       </div>
-                    </div>
+                    </a>
                   ))}
                 </div>
               </div>
@@ -1434,55 +1609,129 @@ npx strata-cli sync --id ${project.id}
         <div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', position: 'sticky', top: '2rem' }}>
             
-            {/* Quick NPM installer */}
-            <div style={{
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'
-            }}>
-              <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>NPM Install Code</h3>
-              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.6rem' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
-                  npm i @strata-ds/{projectSlug}
-                </span>
-                <button 
-                  onClick={() => handleCopy(`npm i @strata-ds/${projectSlug}`, 'InstallSidebar')}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.1rem' }}
-                >
-                  {copiedToken === 'InstallSidebar' ? '✓' : '📋'}
-                </button>
-              </div>
-            </div>
+            {activeTab === 'overview' ? (
+              <>
+                {/* Brand Palette */}
+                <div style={{
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem'
+                }}>
+                  <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Brand Palette</h3>
+                  {[
+                    { label: 'Primary', value: brand.primaryColor || project.color || '#FC0694' },
+                    { label: 'Accent', value: brand.accentColor || '#3B82F6' },
+                    { label: 'Surface', value: resolveTokenValue('color.surface') || '#13131A' },
+                    { label: 'Secondary', value: brand.secondaryColor || '#1A1A24' },
+                  ].map(c => (
+                    <div key={c.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: c.value, border: '1px solid rgba(255,255,255,0.1)' }} />
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{c.label}</span>
+                      </div>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{c.value.toUpperCase()}</span>
+                    </div>
+                  ))}
+                </div>
 
-            {/* NPM statistics */}
-            <div style={{
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'
-            }}>
-              <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Package Info</h3>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Weekly Downloads</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>{(project.weeklyDownloads || 1420).toLocaleString()}</span>
+                {/* Type Scale */}
+                <div style={{
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.85rem'
+                }}>
+                  <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Type Scale</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>Heading</span>
+                    <span style={{ fontSize: '1.1rem', fontWeight: 800, fontFamily: brand.headingFont || 'Outfit', color: 'var(--text-primary)' }}>{project.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>Subheading</span>
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Overview</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>Body</span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'right', fontFamily: brand.bodyFont || 'Inter' }}>A compact type scale for UI and documentation.</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>Caption</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Caption text</span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Total Downloads</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>{(project.totalDownloads || 28400).toLocaleString()}</span>
+
+                {/* Adopted By */}
+                <div style={{
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem'
+                }}>
+                  <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Adopted By</h3>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {(project.showcaseSites || []).slice(0, 3).map((site, i) => (
+                      <div key={site.name} style={{
+                        width: '30px', height: '30px', borderRadius: '50%',
+                        background: SANDBOX_COLORS[i % SANDBOX_COLORS.length],
+                        border: '2px solid var(--bg-secondary)', marginLeft: i === 0 ? 0 : '-8px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: '0.75rem', fontWeight: 700,
+                      }}>{site.name.charAt(0)}</div>
+                    ))}
+                    <span style={{
+                      marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 600,
+                    }}>+{(project.showcaseSites?.length || 3) * 4}</span>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Live Sites Using It</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10B981' }}>{project.showcaseSites ? project.showcaseSites.length : 3} Connected</span>
+              </>
+            ) : (
+              <>
+                {/* Quick NPM installer */}
+                <div style={{
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'
+                }}>
+                  <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>NPM Install Code</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.6rem' }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                      npm i @strata-ds/{projectSlug}
+                    </span>
+                    <button
+                      onClick={() => handleCopy(`npm i @strata-ds/${projectSlug}`, 'InstallSidebar')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.1rem' }}
+                    >
+                      {copiedToken === 'InstallSidebar' ? '✓' : '📋'}
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Current Version</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>v{versionsList[0]?.version || '1.2.0'}</span>
+
+                {/* NPM statistics */}
+                <div style={{
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem'
+                }}>
+                  <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>Package Info</h3>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Weekly Downloads</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>{(project.weeklyDownloads || 1420).toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Total Downloads</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>{(project.totalDownloads || 28400).toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Live Sites Using It</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10B981' }}>{project.showcaseSites ? project.showcaseSites.length : 3} Connected</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Current Version</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>v{versionsList[0]?.version || '1.2.0'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>License</span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{project.license || 'MIT'}</span>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>License</span>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{project.license || 'MIT'}</span>
-                </div>
-              </div>
-            </div>
+              </>
+            )}
 
             {/* Resources list */}
             <div style={{
