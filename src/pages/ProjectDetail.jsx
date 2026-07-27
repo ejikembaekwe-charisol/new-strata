@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
@@ -66,6 +66,7 @@ const TOKEN_TYPES = [
   { id: 'Color', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/></svg> },
   { id: 'Typography', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg> },
   { id: 'Spacing', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> },
+  { id: 'Sizing', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> },
   { id: 'Border', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="4"/></svg> },
   { id: 'Shadow', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="14" height="14" rx="2"/><rect x="7" y="7" width="14" height="14" rx="2" opacity="0.4"/></svg> },
   { id: 'Motion', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> },
@@ -121,6 +122,7 @@ const MOCK_TOKENS = {
     { name: 'button.padding-y', value: '{space.tight}',       type: 'spacing', layer: 'Component' },
     { name: 'input.padding',    value: '{space.comfortable}', type: 'spacing', layer: 'Component' },
   ],
+  Sizing: [],
   Border: [
     { name: 'brand.radius.none', value: '0px',    type: 'borderRadius', layer: 'Brand' },
     { name: 'brand.radius.sm',   value: '4px',    type: 'borderRadius', layer: 'Brand' },
@@ -159,7 +161,7 @@ const migrateTokensToLayers = (saved) => {
   if (!saved) return MOCK_TOKENS;
 
   // Already in new format if keys are type names
-  const typeKeys = ['Color', 'Typography', 'Spacing', 'Border', 'Shadow', 'Motion'];
+  const typeKeys = ['Color', 'Typography', 'Spacing', 'Sizing', 'Border', 'Shadow', 'Motion'];
   const hasTypeKeys = typeKeys.some(k => Array.isArray(saved[k]));
   if (hasTypeKeys) {
     const result = {};
@@ -195,14 +197,75 @@ const migrateTokensToLayers = (saved) => {
 };
 
 const TYPE_COLORS = {
+  // Color family — legacy + full CSS property taxonomy
   color: '#FC0694',
+  'background-color': '#FC0694',
+  'border-color': '#FC0694',
+  'outline-color': '#FC0694',
+  'text-decoration-color': '#FC0694',
+  'accent-color': '#FC0694',
+  fill: '#FC0694',
+  stroke: '#FC0694',
+  // Typography family
   fontFamily: '#10B981',
+  'font-family': '#10B981',
   fontSize: '#3B82F6',
+  'font-size': '#3B82F6',
+  'font-weight': '#3B82F6',
+  'font-style': '#3B82F6',
+  'line-height': '#3B82F6',
+  'letter-spacing': '#3B82F6',
+  'text-align': '#3B82F6',
+  'text-transform': '#3B82F6',
+  'text-decoration': '#3B82F6',
+  'word-spacing': '#3B82F6',
+  // Spacing family
   spacing: '#F59E0B',
+  padding: '#F59E0B',
+  'padding-top': '#F59E0B',
+  'padding-right': '#F59E0B',
+  'padding-bottom': '#F59E0B',
+  'padding-left': '#F59E0B',
+  margin: '#F59E0B',
+  'margin-top': '#F59E0B',
+  'margin-right': '#F59E0B',
+  'margin-bottom': '#F59E0B',
+  'margin-left': '#F59E0B',
+  gap: '#F59E0B',
+  'row-gap': '#F59E0B',
+  'column-gap': '#F59E0B',
+  // Sizing family
+  width: '#F59E0B',
+  height: '#F59E0B',
+  'min-width': '#F59E0B',
+  'min-height': '#F59E0B',
+  'max-width': '#F59E0B',
+  'max-height': '#F59E0B',
+  // Border & Radius family
   borderRadius: '#8B5CF6',
+  border: '#8B5CF6',
+  'border-width': '#8B5CF6',
+  'border-style': '#8B5CF6',
+  'border-radius': '#8B5CF6',
+  outline: '#8B5CF6',
+  'outline-width': '#8B5CF6',
+  'outline-style': '#8B5CF6',
+  'outline-offset': '#8B5CF6',
+  // Effects family
   shadow: '#EC4899',
+  opacity: '#EC4899',
+  'box-shadow': '#EC4899',
+  'text-shadow': '#EC4899',
+  transform: '#EC4899',
+  cursor: '#EC4899',
+  filter: '#EC4899',
+  'backdrop-filter': '#EC4899',
+  // Animation family
   duration: '#6366F1',
   easing: '#14B8A6',
+  transition: '#6366F1',
+  'transition-duration': '#6366F1',
+  'animation-duration': '#6366F1',
 };
 
 export default function ProjectDetail() {
@@ -3156,7 +3219,7 @@ export default function RootLayout({ children }) {
           onClose={() => setTokenModal(null)}
           onSave={(updatedToken) => {
             if (tokenModal.mode === 'add') {
-              handleAddToken(tokenModal.category, updatedToken);
+              handleAddToken(getCategoryForType(updatedToken.type), updatedToken);
             } else {
               handleEditToken(tokenModal.category, tokenModal.token.name, updatedToken);
             }
@@ -3533,25 +3596,241 @@ export default function RootLayout({ children }) {
 }
 
 /* ── Utility functions for token translation ── */
-const getCategoryForType = (type) => {
-  if (type === 'color') return 'Color';
-  if (type === 'fontFamily' || type === 'fontSize') return 'Typography';
-  if (type === 'spacing') return 'Spacing';
-  if (type === 'borderRadius') return 'Border';
-  if (type === 'shadow') return 'Shadow';
-  if (type === 'duration' || type === 'easing') return 'Motion';
-  return 'Color'; // fallback
+// Maps every selectable "type" (legacy camelCase + the full CSS-property
+// taxonomy from the Category dropdown) to its sidebar/data bucket.
+const TYPE_TO_CATEGORY = {
+  color: 'Color', 'background-color': 'Color', 'border-color': 'Color', 'outline-color': 'Color',
+  'text-decoration-color': 'Color', 'accent-color': 'Color', fill: 'Color', stroke: 'Color',
+
+  fontFamily: 'Typography', 'font-family': 'Typography', fontSize: 'Typography', 'font-size': 'Typography',
+  'font-weight': 'Typography', 'font-style': 'Typography', 'line-height': 'Typography',
+  'letter-spacing': 'Typography', 'text-align': 'Typography', 'text-transform': 'Typography',
+  'text-decoration': 'Typography', 'word-spacing': 'Typography',
+
+  spacing: 'Spacing', padding: 'Spacing', 'padding-top': 'Spacing', 'padding-right': 'Spacing',
+  'padding-bottom': 'Spacing', 'padding-left': 'Spacing', margin: 'Spacing', 'margin-top': 'Spacing',
+  'margin-right': 'Spacing', 'margin-bottom': 'Spacing', 'margin-left': 'Spacing', gap: 'Spacing',
+  'row-gap': 'Spacing', 'column-gap': 'Spacing',
+
+  width: 'Sizing', height: 'Sizing', 'min-width': 'Sizing', 'min-height': 'Sizing',
+  'max-width': 'Sizing', 'max-height': 'Sizing',
+
+  borderRadius: 'Border', border: 'Border', 'border-width': 'Border', 'border-style': 'Border',
+  'border-radius': 'Border', outline: 'Border', 'outline-width': 'Border', 'outline-style': 'Border',
+  'outline-offset': 'Border',
+
+  shadow: 'Shadow', opacity: 'Shadow', 'box-shadow': 'Shadow', 'text-shadow': 'Shadow',
+  transform: 'Shadow', cursor: 'Shadow', filter: 'Shadow', 'backdrop-filter': 'Shadow',
+
+  duration: 'Motion', easing: 'Motion', transition: 'Motion', 'transition-duration': 'Motion',
+  'animation-duration': 'Motion',
 };
+
+const getCategoryForType = (type) => TYPE_TO_CATEGORY[type] || 'Color';
 
 const getDefaultTypeForCategory = (category) => {
   if (category === 'Color') return 'color';
   if (category === 'Typography') return 'fontFamily';
   if (category === 'Spacing') return 'spacing';
+  if (category === 'Sizing') return 'width';
   if (category === 'Border') return 'borderRadius';
   if (category === 'Shadow') return 'shadow';
   if (category === 'Motion') return 'duration';
   return 'color';
 };
+
+// Groups shown in the Add/Edit Token "Category" dropdown — the full CSS
+// property taxonomy, matching the Figma spec 1:1. Border/Shadow/Motion are
+// presented under friendlier combined labels; bucket routing for each leaf
+// happens via TYPE_TO_CATEGORY above, independent of these display groups.
+const CATEGORY_GROUPS = [
+  { display: 'Color', items: [
+    { type: 'color', label: 'color' },
+    { type: 'background-color', label: 'background-color' },
+    { type: 'border-color', label: 'border-color' },
+    { type: 'outline-color', label: 'outline-color' },
+    { type: 'text-decoration-color', label: 'text-decoration-color' },
+    { type: 'accent-color', label: 'accent-color' },
+    { type: 'fill', label: 'fill' },
+    { type: 'stroke', label: 'stroke' },
+  ] },
+  { display: 'Typography', items: [
+    { type: 'font-family', label: 'font-family' },
+    { type: 'font-size', label: 'font-size' },
+    { type: 'font-weight', label: 'font-weight' },
+    { type: 'font-style', label: 'font-style' },
+    { type: 'line-height', label: 'line-height' },
+    { type: 'letter-spacing', label: 'letter-spacing' },
+    { type: 'text-align', label: 'text-align' },
+    { type: 'text-transform', label: 'text-transform' },
+    { type: 'text-decoration', label: 'text-decoration' },
+    { type: 'word-spacing', label: 'word-spacing' },
+  ] },
+  { display: 'Spacing', items: [
+    { type: 'padding', label: 'padding' },
+    { type: 'padding-top', label: 'padding-top' },
+    { type: 'padding-right', label: 'padding-right' },
+    { type: 'padding-bottom', label: 'padding-bottom' },
+    { type: 'padding-left', label: 'padding-left' },
+    { type: 'margin', label: 'margin' },
+    { type: 'margin-top', label: 'margin-top' },
+    { type: 'margin-right', label: 'margin-right' },
+    { type: 'margin-bottom', label: 'margin-bottom' },
+    { type: 'margin-left', label: 'margin-left' },
+    { type: 'gap', label: 'gap' },
+    { type: 'row-gap', label: 'row-gap' },
+    { type: 'column-gap', label: 'column-gap' },
+  ] },
+  { display: 'Sizing', items: [
+    { type: 'width', label: 'width' },
+    { type: 'height', label: 'height' },
+    { type: 'min-width', label: 'min-width' },
+    { type: 'min-height', label: 'min-height' },
+    { type: 'max-width', label: 'max-width' },
+    { type: 'max-height', label: 'max-height' },
+  ] },
+  { display: 'Border & Radius', items: [
+    { type: 'border', label: 'border' },
+    { type: 'border-width', label: 'border-width' },
+    { type: 'border-style', label: 'border-style' },
+    { type: 'border-radius', label: 'border-radius' },
+    { type: 'outline', label: 'outline' },
+    { type: 'outline-width', label: 'outline-width' },
+    { type: 'outline-style', label: 'outline-style' },
+    { type: 'outline-offset', label: 'outline-offset' },
+  ] },
+  { display: 'Effects & Animation', items: [
+    { type: 'opacity', label: 'opacity' },
+    { type: 'box-shadow', label: 'box-shadow' },
+    { type: 'text-shadow', label: 'text-shadow' },
+    { type: 'transition', label: 'transition' },
+    { type: 'transition-duration', label: 'transition-duration' },
+    { type: 'transform', label: 'transform' },
+    { type: 'animation-duration', label: 'animation-duration' },
+    { type: 'cursor', label: 'cursor' },
+    { type: 'filter', label: 'filter' },
+    { type: 'backdrop-filter', label: 'backdrop-filter' },
+  ] },
+];
+
+const getGroupDisplayForType = (type) => {
+  const group = CATEGORY_GROUPS.find(g => g.items.some(i => i.type === type));
+  return group ? group.display : 'Color';
+};
+
+/* ── Searchable, grouped Category dropdown for the Token modal ── */
+function CategoryDropdown({ type, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [expandedGroup, setExpandedGroup] = useState(getGroupDisplayForType(type));
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const query = search.trim().toLowerCase();
+  const filteredGroups = CATEGORY_GROUPS
+    .map(group => ({ ...group, items: query ? group.items.filter(i => i.label.includes(query)) : group.items }))
+    .filter(group => !query || group.items.length > 0);
+
+  return (
+    <div ref={rootRef} style={{ position: 'relative', width: '100%' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+          borderRadius: '8px', padding: '10px 12.8px', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', cursor: 'pointer', fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ fontSize: '13px', color: '#D9D9E5' }}>{getGroupDisplayForType(type)}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          style={{ color: 'var(--text-secondary)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20,
+          background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '12px',
+          maxHeight: '260px', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search CSS properties..."
+              style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: '13px', fontFamily: 'inherit' }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', padding: '8px' }}>
+            {filteredGroups.length === 0 && (
+              <div style={{ padding: '10px 12px', fontSize: '12px', color: 'var(--text-tertiary)' }}>No matches</div>
+            )}
+            {filteredGroups.map(group => {
+              const isOpen = query ? true : expandedGroup === group.display;
+              return (
+                <div key={group.display} style={{ marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedGroup(isOpen ? null : group.display)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      background: 'none', border: 'none', padding: '6px 12px', borderRadius: '8px',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.25px', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                      {group.display}
+                    </span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                      style={{ color: 'var(--text-tertiary)', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </button>
+                  {isOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: '4px', paddingTop: '2px' }}>
+                      {group.items.map(item => (
+                        <button
+                          key={item.type}
+                          type="button"
+                          onClick={() => { onSelect(item.type); setOpen(false); setSearch(''); }}
+                          onMouseEnter={e => { if (item.type !== type) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
+                          onMouseLeave={e => { if (item.type !== type) e.currentTarget.style.background = 'none'; }}
+                          style={{
+                            textAlign: 'left', background: item.type === type ? 'var(--bg-secondary)' : 'none',
+                            border: 'none', color: item.type === type ? 'var(--text-primary)' : '#A6A6B2',
+                            fontSize: '12px', padding: '6px 12px 6px 24px', borderRadius: '6px',
+                            cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.1s',
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── Visual token preview helper ── */
 const renderTokenPreview = (token) => {
@@ -3562,6 +3841,13 @@ const renderTokenPreview = (token) => {
 
   switch (type) {
     case 'color':
+    case 'background-color':
+    case 'border-color':
+    case 'outline-color':
+    case 'text-decoration-color':
+    case 'accent-color':
+    case 'fill':
+    case 'stroke':
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div style={{
@@ -3576,6 +3862,7 @@ const renderTokenPreview = (token) => {
       );
       
     case 'fontSize':
+    case 'font-size':
       let sizeVal = cleanValue;
       if (/^\d+$/.test(sizeVal)) sizeVal += 'px';
       return (
@@ -3585,6 +3872,7 @@ const renderTokenPreview = (token) => {
       );
       
     case 'fontFamily':
+    case 'font-family':
       return (
         <span style={{ fontFamily: cleanValue, fontSize: '0.85rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
           Aa Bb Cc
@@ -3592,6 +3880,25 @@ const renderTokenPreview = (token) => {
       );
       
     case 'spacing':
+    case 'padding':
+    case 'padding-top':
+    case 'padding-right':
+    case 'padding-bottom':
+    case 'padding-left':
+    case 'margin':
+    case 'margin-top':
+    case 'margin-right':
+    case 'margin-bottom':
+    case 'margin-left':
+    case 'gap':
+    case 'row-gap':
+    case 'column-gap':
+    case 'width':
+    case 'height':
+    case 'min-width':
+    case 'min-height':
+    case 'max-width':
+    case 'max-height':
       let spacingVal = cleanValue;
       if (/^\d+$/.test(spacingVal)) spacingVal += 'px';
       return (
@@ -3607,6 +3914,7 @@ const renderTokenPreview = (token) => {
       );
       
     case 'borderRadius':
+    case 'border-radius':
       let radiusVal = cleanValue;
       if (/^\d+$/.test(radiusVal)) radiusVal += 'px';
       return (
@@ -3619,6 +3927,8 @@ const renderTokenPreview = (token) => {
       );
       
     case 'shadow':
+    case 'box-shadow':
+    case 'text-shadow':
       return (
         <div style={{
           width: '32px', height: '32px',
@@ -3628,9 +3938,11 @@ const renderTokenPreview = (token) => {
           border: '1px solid var(--border)'
         }} />
       );
-      
+
     case 'duration':
     case 'easing':
+    case 'transition-duration':
+    case 'animation-duration':
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div 
@@ -3642,13 +3954,13 @@ const renderTokenPreview = (token) => {
               transition: `transform 400ms cubic-bezier(0.4, 0, 0.2, 1)`,
             }}
             onMouseEnter={e => {
-              const animDuration = type === 'duration' ? cleanValue : '300ms';
+              const animDuration = (type === 'duration' || type === 'transition-duration' || type === 'animation-duration') ? cleanValue : '300ms';
               const animEasing = type === 'easing' ? cleanValue : 'ease';
               e.currentTarget.style.transition = `transform ${animDuration} ${animEasing}`;
               e.currentTarget.style.transform = 'translateX(12px)';
             }}
             onMouseLeave={e => {
-              const animDuration = type === 'duration' ? cleanValue : '300ms';
+              const animDuration = (type === 'duration' || type === 'transition-duration' || type === 'animation-duration') ? cleanValue : '300ms';
               const animEasing = type === 'easing' ? cleanValue : 'ease';
               e.currentTarget.style.transition = `transform ${animDuration} ${animEasing}`;
               e.currentTarget.style.transform = 'translateX(0)';
@@ -3718,25 +4030,11 @@ function TokenModal({ modal, onClose, onSave }) {
             />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Token Type</label>
-            <select
-              className="form-input"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              style={{ cursor: 'pointer' }}
-            >
-              <option value="color">Color</option>
-              <option value="fontFamily">Font Family</option>
-              <option value="fontSize">Font Size</option>
-              <option value="spacing">Spacing</option>
-              <option value="borderRadius">Border Radius</option>
-              <option value="shadow">Shadow</option>
-              <option value="duration">Duration</option>
-              <option value="easing">Easing</option>
-            </select>
+            <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Category *</label>
+            <CategoryDropdown type={type} onSelect={setType} />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Layer</label>
+            <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Tier</label>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               {TOKEN_LAYERS.map(l => {
                 const lColor = l === 'Brand' ? '#F59E0B' : l === 'Semantic' ? '#3B82F6' : '#10B981';
@@ -3809,8 +4107,8 @@ function TokenModal({ modal, onClose, onSave }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
-            <button type="button" onClick={onClose} style={actionBtnStyle}>Cancel</button>
-            <button type="submit" className="btn btn-primary" style={{ padding: '0.4rem 1.25rem' }}>
+            <button type="button" onClick={onClose} style={{ ...actionBtnStyle, borderRadius: '9999px', background: 'none', padding: '0.65rem 1.3rem' }}>Cancel</button>
+            <button type="submit" className="btn btn-primary" style={{ padding: '0.65rem 1.5rem' }}>
               {isEdit ? 'Save Changes' : 'Create Token'}
             </button>
           </div>

@@ -31,6 +31,7 @@ const DEFAULT_TOKENS = {
     { name: 'spacing.6', value: '24px', type: 'spacing' },
     { name: 'spacing.8', value: '32px', type: 'spacing' },
   ],
+  Sizing: [],
   Border: [
     { name: 'border.radius.sm', value: '4px', type: 'borderRadius' },
     { name: 'border.radius.md', value: '8px', type: 'borderRadius' },
