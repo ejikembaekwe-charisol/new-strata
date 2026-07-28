@@ -32,6 +32,9 @@ const DEFAULT_TOKENS = {
     { name: 'spacing.8', value: '32px', type: 'spacing' },
   ],
   Sizing: [],
+  Layout: [],
+  Flexbox: [],
+  Lists: [],
   Border: [
     { name: 'border.radius.sm', value: '4px', type: 'borderRadius' },
     { name: 'border.radius.md', value: '8px', type: 'borderRadius' },

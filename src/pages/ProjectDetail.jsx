@@ -70,6 +70,9 @@ const TOKEN_TYPES = [
   { id: 'Border', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="4"/></svg> },
   { id: 'Shadow', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="4" width="14" height="14" rx="2"/><rect x="7" y="7" width="14" height="14" rx="2" opacity="0.4"/></svg> },
   { id: 'Motion', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> },
+  { id: 'Layout', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> },
+  { id: 'Flexbox', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> },
+  { id: 'Lists', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg> },
 ];
 
 // Token LAYERS (for the pill switcher)
@@ -123,6 +126,9 @@ const MOCK_TOKENS = {
     { name: 'input.padding',    value: '{space.comfortable}', type: 'spacing', layer: 'Component' },
   ],
   Sizing: [],
+  Layout: [],
+  Flexbox: [],
+  Lists: [],
   Border: [
     { name: 'brand.radius.none', value: '0px',    type: 'borderRadius', layer: 'Brand' },
     { name: 'brand.radius.sm',   value: '4px',    type: 'borderRadius', layer: 'Brand' },
@@ -161,7 +167,7 @@ const migrateTokensToLayers = (saved) => {
   if (!saved) return MOCK_TOKENS;
 
   // Already in new format if keys are type names
-  const typeKeys = ['Color', 'Typography', 'Spacing', 'Sizing', 'Border', 'Shadow', 'Motion'];
+  const typeKeys = ['Color', 'Typography', 'Spacing', 'Sizing', 'Border', 'Shadow', 'Motion', 'Layout', 'Flexbox', 'Lists'];
   const hasTypeKeys = typeKeys.some(k => Array.isArray(saved[k]));
   if (hasTypeKeys) {
     const result = {};
@@ -266,6 +272,34 @@ const TYPE_COLORS = {
   transition: '#6366F1',
   'transition-duration': '#6366F1',
   'animation-duration': '#6366F1',
+  // Layout & Positioning family
+  display: '#38BDF8',
+  position: '#38BDF8',
+  top: '#38BDF8',
+  right: '#38BDF8',
+  bottom: '#38BDF8',
+  left: '#38BDF8',
+  'z-index': '#38BDF8',
+  overflow: '#38BDF8',
+  // Flexbox & Grid family
+  'flex-direction': '#C084FC',
+  'flex-wrap': '#C084FC',
+  'flex-grow': '#C084FC',
+  'flex-shrink': '#C084FC',
+  'flex-basis': '#C084FC',
+  'justify-content': '#C084FC',
+  'align-items': '#C084FC',
+  'align-content': '#C084FC',
+  'align-self': '#C084FC',
+  order: '#C084FC',
+  'grid-template-columns': '#C084FC',
+  'grid-template-rows': '#C084FC',
+  'grid-column': '#C084FC',
+  'grid-row': '#C084FC',
+  'grid-area': '#C084FC',
+  // Lists family
+  'list-style': '#94A3B8',
+  'list-style-type': '#94A3B8',
 };
 
 export default function ProjectDetail() {
@@ -3609,8 +3643,7 @@ const TYPE_TO_CATEGORY = {
 
   spacing: 'Spacing', padding: 'Spacing', 'padding-top': 'Spacing', 'padding-right': 'Spacing',
   'padding-bottom': 'Spacing', 'padding-left': 'Spacing', margin: 'Spacing', 'margin-top': 'Spacing',
-  'margin-right': 'Spacing', 'margin-bottom': 'Spacing', 'margin-left': 'Spacing', gap: 'Spacing',
-  'row-gap': 'Spacing', 'column-gap': 'Spacing',
+  'margin-right': 'Spacing', 'margin-bottom': 'Spacing', 'margin-left': 'Spacing',
 
   width: 'Sizing', height: 'Sizing', 'min-width': 'Sizing', 'min-height': 'Sizing',
   'max-width': 'Sizing', 'max-height': 'Sizing',
@@ -3624,6 +3657,17 @@ const TYPE_TO_CATEGORY = {
 
   duration: 'Motion', easing: 'Motion', transition: 'Motion', 'transition-duration': 'Motion',
   'animation-duration': 'Motion',
+
+  display: 'Layout', position: 'Layout', top: 'Layout', right: 'Layout', bottom: 'Layout',
+  left: 'Layout', 'z-index': 'Layout', overflow: 'Layout',
+
+  'flex-direction': 'Flexbox', 'flex-wrap': 'Flexbox', 'flex-grow': 'Flexbox', 'flex-shrink': 'Flexbox',
+  'flex-basis': 'Flexbox', 'justify-content': 'Flexbox', 'align-items': 'Flexbox', 'align-content': 'Flexbox',
+  'align-self': 'Flexbox', order: 'Flexbox', gap: 'Flexbox', 'row-gap': 'Flexbox', 'column-gap': 'Flexbox',
+  'grid-template-columns': 'Flexbox', 'grid-template-rows': 'Flexbox', 'grid-column': 'Flexbox',
+  'grid-row': 'Flexbox', 'grid-area': 'Flexbox',
+
+  'list-style': 'Lists', 'list-style-type': 'Lists',
 };
 
 const getCategoryForType = (type) => TYPE_TO_CATEGORY[type] || 'Color';
@@ -3636,13 +3680,17 @@ const getDefaultTypeForCategory = (category) => {
   if (category === 'Border') return 'borderRadius';
   if (category === 'Shadow') return 'shadow';
   if (category === 'Motion') return 'duration';
+  if (category === 'Layout') return 'display';
+  if (category === 'Flexbox') return 'flex-direction';
+  if (category === 'Lists') return 'list-style';
   return 'color';
 };
 
-// Groups shown in the Add/Edit Token "Category" dropdown — the full CSS
-// property taxonomy, matching the Figma spec 1:1. Border/Shadow/Motion are
-// presented under friendlier combined labels; bucket routing for each leaf
-// happens via TYPE_TO_CATEGORY above, independent of these display groups.
+// Groups shown in the Add/Edit Token "Category" dropdown — one group per
+// sidebar bucket (Color/Typography/Spacing/Sizing/Border/Shadow/Motion/
+// Layout/Flexbox/Lists), in the same order as the sidebar. Every group's
+// `display` name matches its bucket exactly, so TYPE_TO_CATEGORY and the
+// dropdown never disagree about where a property lives.
 const CATEGORY_GROUPS = [
   { display: 'Color', items: [
     { type: 'color', label: 'color' },
@@ -3677,9 +3725,6 @@ const CATEGORY_GROUPS = [
     { type: 'margin-right', label: 'margin-right' },
     { type: 'margin-bottom', label: 'margin-bottom' },
     { type: 'margin-left', label: 'margin-left' },
-    { type: 'gap', label: 'gap' },
-    { type: 'row-gap', label: 'row-gap' },
-    { type: 'column-gap', label: 'column-gap' },
   ] },
   { display: 'Sizing', items: [
     { type: 'width', label: 'width' },
@@ -3689,7 +3734,7 @@ const CATEGORY_GROUPS = [
     { type: 'max-width', label: 'max-width' },
     { type: 'max-height', label: 'max-height' },
   ] },
-  { display: 'Border & Radius', items: [
+  { display: 'Border', items: [
     { type: 'border', label: 'border' },
     { type: 'border-width', label: 'border-width' },
     { type: 'border-style', label: 'border-style' },
@@ -3699,17 +3744,53 @@ const CATEGORY_GROUPS = [
     { type: 'outline-style', label: 'outline-style' },
     { type: 'outline-offset', label: 'outline-offset' },
   ] },
-  { display: 'Effects & Animation', items: [
+  { display: 'Shadow', items: [
     { type: 'opacity', label: 'opacity' },
     { type: 'box-shadow', label: 'box-shadow' },
     { type: 'text-shadow', label: 'text-shadow' },
-    { type: 'transition', label: 'transition' },
-    { type: 'transition-duration', label: 'transition-duration' },
     { type: 'transform', label: 'transform' },
-    { type: 'animation-duration', label: 'animation-duration' },
     { type: 'cursor', label: 'cursor' },
     { type: 'filter', label: 'filter' },
     { type: 'backdrop-filter', label: 'backdrop-filter' },
+  ] },
+  { display: 'Motion', items: [
+    { type: 'transition', label: 'transition' },
+    { type: 'transition-duration', label: 'transition-duration' },
+    { type: 'animation-duration', label: 'animation-duration' },
+  ] },
+  { display: 'Layout', items: [
+    { type: 'display', label: 'display' },
+    { type: 'position', label: 'position' },
+    { type: 'top', label: 'top' },
+    { type: 'right', label: 'right' },
+    { type: 'bottom', label: 'bottom' },
+    { type: 'left', label: 'left' },
+    { type: 'z-index', label: 'z-index' },
+    { type: 'overflow', label: 'overflow' },
+  ] },
+  { display: 'Flexbox', items: [
+    { type: 'flex-direction', label: 'flex-direction' },
+    { type: 'flex-wrap', label: 'flex-wrap' },
+    { type: 'flex-grow', label: 'flex-grow' },
+    { type: 'flex-shrink', label: 'flex-shrink' },
+    { type: 'flex-basis', label: 'flex-basis' },
+    { type: 'justify-content', label: 'justify-content' },
+    { type: 'align-items', label: 'align-items' },
+    { type: 'align-content', label: 'align-content' },
+    { type: 'align-self', label: 'align-self' },
+    { type: 'order', label: 'order' },
+    { type: 'gap', label: 'gap' },
+    { type: 'row-gap', label: 'row-gap' },
+    { type: 'column-gap', label: 'column-gap' },
+    { type: 'grid-template-columns', label: 'grid-template-columns' },
+    { type: 'grid-template-rows', label: 'grid-template-rows' },
+    { type: 'grid-column', label: 'grid-column' },
+    { type: 'grid-row', label: 'grid-row' },
+    { type: 'grid-area', label: 'grid-area' },
+  ] },
+  { display: 'Lists', items: [
+    { type: 'list-style', label: 'list-style' },
+    { type: 'list-style-type', label: 'list-style-type' },
   ] },
 ];
 
@@ -3899,6 +3980,10 @@ const renderTokenPreview = (token) => {
     case 'min-height':
     case 'max-width':
     case 'max-height':
+    case 'top':
+    case 'right':
+    case 'bottom':
+    case 'left':
       let spacingVal = cleanValue;
       if (/^\d+$/.test(spacingVal)) spacingVal += 'px';
       return (
