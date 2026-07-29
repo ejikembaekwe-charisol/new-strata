@@ -802,7 +802,7 @@ const SharedProject = () => {
     <div className="page-container" style={{ paddingBottom: '6rem' }}>
       
       {/* ── Breadcrumb / Header ── */}
-      <div style={{ padding: '6rem 0 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="sp-header-row" style={{ padding: '6rem 0 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <Link to="/explore" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.75rem' }}>
             ← Back to Explore
@@ -823,7 +823,7 @@ const SharedProject = () => {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="sp-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
           <button
             onClick={handleFork}
             disabled={forking}
@@ -849,7 +849,7 @@ const SharedProject = () => {
       </div>
 
       {/* ── Audience Switcher ── */}
-      <div style={{
+      <div className="sp-audience-switcher" style={{
         display: 'flex', gap: '0.25rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
         borderRadius: '100px', padding: '0.3rem', width: 'fit-content', marginBottom: '1.5rem',
       }}>
@@ -905,7 +905,7 @@ const SharedProject = () => {
       </div>
 
       {/* ── Main Layout: Content Grid with Stats Sidebar ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2.5rem' }}>
+      <div className="sp-main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2.5rem' }}>
         
         {/* Left Side Content panel */}
         <div style={{ minWidth: 0 }}>
@@ -1245,13 +1245,14 @@ const SharedProject = () => {
               </div>
 
               {/* Side Category Selector + Table Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '2rem' }}>
+              <div className="sp-token-grid" style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '2rem' }}>
                 {/* Category Sidebar list */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderRight: '1px solid var(--border)', paddingRight: '1rem' }}>
-                  <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>Categories</span>
+                <div className="sp-token-categories" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderRight: '1px solid var(--border)', paddingRight: '1rem' }}>
+                  <span className="sp-token-categories-label" style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>Categories</span>
                   {tokenCategories.map(cat => (
                     <button
                       key={cat}
+                      className="sp-token-category-btn"
                       onClick={() => setSelectedCategory(cat)}
                       style={{
                         background: selectedCategory === cat ? 'rgba(255,255,255,0.05)' : 'none',
@@ -1273,7 +1274,7 @@ const SharedProject = () => {
 
                 {/* Tokens display list */}
                 <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '550px', overflowY: 'auto' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
+                  <div className="sp-token-table-header" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
                     {['Name', 'Value', 'Type', 'Visual Preview'].map(h => (
                       <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                     ))}
@@ -1281,7 +1282,7 @@ const SharedProject = () => {
 
                   {filteredTokens.length > 0 ? (
                     filteredTokens.map((t, idx) => (
-                      <div key={idx} style={{
+                      <div key={idx} className="sp-token-row" style={{
                         display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '1rem', alignItems: 'center',
                         padding: '0.6rem 0.875rem', borderBottom: '1px solid rgba(128,128,128,0.08)'
                       }}>
@@ -1778,6 +1779,49 @@ const SharedProject = () => {
         </div>
 
       </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media (max-width: 768px) {
+          .sp-header-row { flex-direction: column !important; align-items: stretch !important; gap: 1.25rem !important; }
+          .sp-header-actions { width: 100%; }
+          .sp-header-actions button { flex: 1; justify-content: center !important; }
+          .sp-audience-switcher { width: 100% !important; max-width: 100%; overflow-x: auto; }
+          .sp-main-grid { grid-template-columns: 1fr !important; }
+          .sp-token-grid { grid-template-columns: 1fr !important; gap: 1.25rem !important; }
+          .sp-token-categories {
+            flex-direction: row !important;
+            overflow-x: auto;
+            border-right: none !important;
+            border-bottom: 1px solid var(--border);
+            padding-right: 0 !important;
+            padding-bottom: 0.75rem !important;
+            gap: 0.5rem !important;
+          }
+          .sp-token-categories-label { display: none; }
+          .sp-token-category-btn {
+            flex-shrink: 0;
+            white-space: nowrap;
+            border-radius: 100px !important;
+            padding: 0.4rem 0.9rem !important;
+          }
+          .sp-token-table-header { display: none !important; }
+          .sp-token-row {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.6rem !important;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1rem !important;
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border) !important;
+          }
+          .sp-token-row > *:nth-child(1) { order: 1; }
+          .sp-token-row > *:nth-child(2) { order: 4; }
+          .sp-token-row > *:nth-child(3) { order: 2; }
+          .sp-token-row > *:nth-child(4) { order: 3; }
+        }
+      `}} />
 
     </div>
   );

@@ -323,6 +323,7 @@ function ProjectDetailInner() {
   const [activeCategory, setActiveCategory] = useState('Color');  // token type
   const [activeLayer, setActiveLayer] = useState('Brand');          // Brand | Semantic | Component
   const [activeComponentCategory, setActiveComponentCategory] = useState('Actions & Buttons');
+  const [tokenTableSearch, setTokenTableSearch] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [brandData, setBrandData] = useState(null);
   
@@ -1351,14 +1352,17 @@ This document serves as our living source of truth.`
     alert('Downloading assets... (mock)');
   };
 
-  // Filter tokens by both type (sidebar) and layer (pill)
-  const tokens = (activeTokens[activeCategory] || []).filter(t => t.layer === activeLayer);
+  // Filter tokens by both type (sidebar) and layer (pill), then by the table search box
+  const tokenTableSearchLower = tokenTableSearch.trim().toLowerCase();
+  const tokens = (activeTokens[activeCategory] || [])
+    .filter(t => t.layer === activeLayer)
+    .filter(t => !tokenTableSearchLower || [t.name, t.value, t.type].some(v => String(v).toLowerCase().includes(tokenTableSearchLower)));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)' }}>
 
       {/* ── App Top Bar ── */}
-      <header style={{
+      <header className="pd-header" style={{
         display: 'flex', alignItems: 'center', gap: '1rem',
         padding: '0 1.5rem', height: '52px', flexShrink: 0,
         background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)',
@@ -1370,18 +1374,18 @@ This document serves as our living source of truth.`
           </span>
         </Link>
 
-        <span style={{ color: 'var(--border)', fontSize: '1.2rem', marginLeft: '0.25rem' }}>/</span>
+        <span className="pd-breadcrumb-sep" style={{ color: 'var(--border)', fontSize: '1.2rem', marginLeft: '0.25rem' }}>/</span>
 
-        <Link to="/projects" style={{ textDecoration: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+        <Link to="/projects" className="pd-breadcrumb-projects" style={{ textDecoration: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
           Projects
         </Link>
 
-        <span style={{ color: 'var(--border)', fontSize: '1.2rem' }}>/</span>
+        <span className="pd-breadcrumb-sep" style={{ color: 'var(--border)', fontSize: '1.2rem' }}>/</span>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
           <div style={{ width: '14px', height: '14px', borderRadius: '3px', background: project.color, flexShrink: 0 }} />
-          <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)' }}>{project.name}</span>
-          <span style={{
+          <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
+          <span className="pd-status-pill" style={{
             fontSize: '0.6rem', padding: '0.15rem 0.45rem', borderRadius: '100px',
             border: '1px solid var(--border)', color: 'var(--text-tertiary)',
             textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -1402,11 +1406,11 @@ This document serves as our living source of truth.`
             <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
             <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
           </svg>
-          Sync
+          <span className="pd-btn-label">Sync</span>
         </button>
 
         {/* Export button */}
-        <button style={{
+        <button className="pd-export-btn" style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
           borderRadius: '6px', padding: '0.4rem 0.875rem',
@@ -1416,7 +1420,7 @@ This document serves as our living source of truth.`
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-          Export
+          <span className="pd-btn-label">Export</span>
         </button>
 
         {/* Avatar */}
@@ -1454,17 +1458,17 @@ This document serves as our living source of truth.`
         </div>
       </header>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="pd-shell" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
         {/* ── Left Sidebar ── */}
-        <aside style={{
+        <aside className="pd-sidebar" style={{
           width: '200px', flexShrink: 0,
           background: 'var(--bg-secondary)', borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column', padding: '1rem 0',
           overflowY: 'auto',
         }}>
           {/* Tabs */}
-          <div style={{ padding: '0 0.75rem', marginBottom: '1.5rem' }}>
+          <div className="pd-sidebar-tabs" style={{ padding: '0 0.75rem', marginBottom: '1.5rem' }}>
             {[
               { id: 'brand', label: 'Brand Bible', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> },
               { id: 'handoff', label: 'Handoff', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg> },
@@ -1474,6 +1478,7 @@ This document serves as our living source of truth.`
             ].map(tab => (
               <button
                 key={tab.id}
+                className="pd-sidebar-tab-btn"
                 onClick={() => setActiveTab(tab.id)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
@@ -1493,8 +1498,8 @@ This document serves as our living source of truth.`
 
           {/* Token TYPE categories in sidebar */}
           {activeTab === 'tokens' && (
-            <div style={{ padding: '0 0.75rem' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
+            <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
+              <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
                 Token Type
               </div>
               {TOKEN_TYPES.map(({ id, icon }) => {
@@ -1503,6 +1508,7 @@ This document serves as our living source of truth.`
                 return (
                   <button
                     key={id}
+                    className="pd-sidebar-category-btn"
                     onClick={() => setActiveCategory(id)}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1529,8 +1535,8 @@ This document serves as our living source of truth.`
 
           {/* Component categories */}
           {activeTab === 'components' && (
-            <div style={{ padding: '0 0.75rem' }}>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
+            <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
+              <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
                 Categories
               </div>
               {['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'].map(cat => {
@@ -1553,6 +1559,7 @@ This document serves as our living source of truth.`
                 return (
                   <button
                     key={cat}
+                    className="pd-sidebar-category-btn"
                     onClick={() => setActiveComponentCategory(cat)}
                     style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1602,7 +1609,7 @@ This document serves as our living source of truth.`
               )}
 
               {/* Sub-tab Switcher */}
-              <div style={{
+              <div className="pd-brand-subtabs" style={{
                 display: 'inline-flex',
                 background: 'var(--bg-tertiary)',
                 border: '1px solid var(--border)',
@@ -1618,6 +1625,7 @@ This document serves as our living source of truth.`
                 ].map(subTab => (
                   <button
                     key={subTab.id}
+                    className="pd-brand-subtab-btn"
                     onClick={() => setActiveBrandSubTab(subTab.id)}
                     style={{
                       padding: '0.5rem 1.25rem',
@@ -1639,7 +1647,7 @@ This document serves as our living source of truth.`
 
               {/* Sub-tab 1: Visual Identity */}
               {activeBrandSubTab === 'identity' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
+                <div className="pd-brand-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                     
                     {/* Brand Colors card */}
@@ -1676,7 +1684,7 @@ This document serves as our living source of truth.`
                       <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
                         Select heading and body fonts used throughout the design system.
                       </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                      <div className="pd-brand-minigrid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                         <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem 1.25rem', borderRadius: '8px' }}>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Headings</span>
                           <select 
@@ -1763,7 +1771,7 @@ This document serves as our living source of truth.`
 
               {/* Sub-tab 2: Manifesto & Voice */}
               {activeBrandSubTab === 'voice' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
+                <div className="pd-brand-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                     
                     {/* Manifesto Section */}
@@ -1885,7 +1893,7 @@ This document serves as our living source of truth.`
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
                   
                   {/* Generated Assets List & PDF Bible Preview */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem' }}>
+                  <div className="pd-brand-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem' }}>
                     
                     {/* Generated Brand Bible PDF Preview Card */}
                     <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -2153,7 +2161,7 @@ This document serves as our living source of truth.`
           {activeTab === 'tokens' && (
             <>
               {/* Token table header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <div className="pd-tokens-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
                     {activeCategory} Tokens
@@ -2168,6 +2176,25 @@ This document serves as our living source of truth.`
                 </div>
               </div>
 
+              {/* Token search */}
+              <div style={{ position: 'relative', marginBottom: '1.25rem' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }}>
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input
+                  type="text"
+                  value={tokenTableSearch}
+                  onChange={(e) => setTokenTableSearch(e.target.value)}
+                  placeholder={`Search ${activeCategory.toLowerCase()}, spacing, typography...`}
+                  style={{
+                    width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                    borderRadius: '10px', padding: '0.65rem 1rem 0.65rem 2.25rem', color: 'var(--text-primary)',
+                    fontSize: '0.85rem', outline: 'none', fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+
               {/* ── Layer pill switcher ── */}
               <div style={{
                 display: 'inline-flex',
@@ -2178,6 +2205,8 @@ This document serves as our living source of truth.`
                 marginBottom: '1.25rem',
                 gap: '2px',
                 position: 'relative',
+                maxWidth: '100%',
+                overflowX: 'auto',
               }}>
                 {TOKEN_LAYERS.map(layer => {
                   const count = (activeTokens[activeCategory] || []).filter(t => t.layer === layer).length;
@@ -2230,7 +2259,7 @@ This document serves as our living source of truth.`
               </div>
 
               {/* Column headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr auto', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
+              <div className="pd-token-table-header" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr auto', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
                 {['Name', 'Value', 'Type', 'Visual Preview', ''].map(h => (
                   <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                 ))}
@@ -2247,6 +2276,7 @@ This document serves as our living source of truth.`
                 return (
                   <div
                     key={i}
+                    className="pd-token-row"
                     style={{
                       display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr auto',
                       gap: '1rem', alignItems: 'center',
@@ -2354,7 +2384,7 @@ This document serves as our living source of truth.`
                     </div>
                     
                     {/* 3-Dot Action Dropdown */}
-                    <div style={{ position: 'relative' }}>
+                    <div className="pd-token-row-actions" style={{ position: 'relative' }}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -3624,6 +3654,75 @@ export default function RootLayout({ children }) {
           </button>
         </div>
       )}
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media (max-width: 768px) {
+          .pd-header { padding: 0 0.875rem !important; gap: 0.625rem !important; }
+          .pd-breadcrumb-sep, .pd-breadcrumb-projects, .pd-status-pill { display: none !important; }
+          .pd-btn-label { display: none; }
+          .pd-export-btn { display: none !important; }
+
+          .pd-shell { flex-direction: column !important; overflow: visible !important; }
+          .pd-sidebar {
+            width: 100% !important;
+            border-right: none !important;
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 0 !important;
+            overflow-y: visible;
+          }
+          .pd-sidebar-tabs {
+            display: flex !important;
+            flex-direction: row !important;
+            overflow-x: auto;
+            margin-bottom: 0 !important;
+            padding: 0 0.75rem !important;
+            gap: 0.4rem;
+          }
+          .pd-sidebar-tab-btn { width: auto !important; flex-shrink: 0; white-space: nowrap; }
+          .pd-sidebar-categories {
+            display: flex !important;
+            flex-direction: row !important;
+            overflow-x: auto;
+            padding: 0.6rem 0.75rem 0 !important;
+            margin-top: 0.6rem;
+            border-top: 1px solid var(--border);
+            gap: 0.4rem;
+          }
+          .pd-sidebar-categories-label { display: none; }
+          .pd-sidebar-category-btn {
+            width: auto !important;
+            flex-shrink: 0;
+            white-space: nowrap;
+            border-radius: 100px !important;
+          }
+
+          .pd-tokens-header { flex-direction: column !important; align-items: stretch !important; }
+
+          .pd-token-table-header { display: none !important; }
+          .pd-token-row {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.6rem !important;
+            position: relative;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1rem !important;
+            margin-bottom: 0.75rem;
+          }
+          .pd-token-row > *:nth-child(1) { order: 1; padding-right: 2rem; }
+          .pd-token-row > *:nth-child(2) { order: 4; }
+          .pd-token-row > *:nth-child(3) { order: 2; }
+          .pd-token-row > *:nth-child(4) { order: 3; }
+          .pd-token-row-actions { position: absolute !important; top: 0.75rem; right: 0.75rem; }
+
+          .pd-brand-subtabs { display: flex !important; width: 100%; overflow-x: auto; }
+          .pd-brand-subtab-btn { flex-shrink: 0; white-space: nowrap; }
+
+          .pd-brand-grid { grid-template-columns: 1fr !important; gap: 1.5rem !important; }
+          .pd-brand-minigrid { grid-template-columns: 1fr !important; gap: 0.75rem !important; }
+        }
+      `}} />
 
     </div>
   );
