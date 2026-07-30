@@ -6,13 +6,13 @@ export const useProjects = () => useContext(ProjectContext);
 
 const DEFAULT_TOKENS = {
   Color: [
-    { name: 'color.primary', value: '#FC0694', type: 'color' },
-    { name: 'color.secondary', value: '#1A1A24', type: 'color' },
-    { name: 'color.accent', value: '#3B82F6', type: 'color' },
-    { name: 'color.background', value: '#0D0D12', type: 'color' },
-    { name: 'color.surface', value: '#13131A', type: 'color' },
-    { name: 'color.text.primary', value: '#FFFFFF', type: 'color' },
-    { name: 'color.text.secondary', value: '#8C8CA1', type: 'color' },
+    { name: 'color.primary', value: '#FC0694', type: 'color', layer: 'Brand', description: 'Primary brand identity color' },
+    { name: 'color.secondary', value: '#1A1A24', type: 'color', layer: 'Brand', description: 'Secondary brand slate color' },
+    { name: 'color.accent', value: '#3B82F6', type: 'color', layer: 'Brand', description: 'Vibrant high-contrast accent' },
+    { name: 'color.background', value: '#0D0D12', type: 'color', layer: 'Brand', description: 'Deep dark application canvas' },
+    { name: 'color.surface', value: '#13131A', type: 'color', layer: 'Brand', description: 'Elevated panel and card background' },
+    { name: 'color.text.primary', value: '#FFFFFF', type: 'color', layer: 'Brand', description: 'High-contrast reading text' },
+    { name: 'color.text.secondary', value: '#8C8CA1', type: 'color', layer: 'Brand', description: 'Muted secondary reading text' },
   ],
   Typography: [
     { name: 'font.heading', value: 'Outfit', type: 'fontFamily' },

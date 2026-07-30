@@ -77,16 +77,31 @@ const TOKEN_TYPES = [
 
 // Token LAYERS (for the pill switcher)
 const TOKEN_LAYERS = ['Brand', 'Semantic', 'Component'];
+const TOKEN_LAYER_LABELS = { Brand: 'Brand', Semantic: 'Semantic', Component: 'Scoped' };
+
+// Types whose "Visual Preview" cell already renders a swatch + the raw value
+// (must match the color cases in renderTokenPreview) — used to skip the
+// redundant duplicate value line on the mobile token card.
+const COLOR_VALUE_TYPES = new Set(['color', 'background-color', 'border-color', 'outline-color', 'text-decoration-color', 'accent-color', 'fill', 'stroke']);
+
+// Sidebar main navigation tabs — shared by the desktop list, the mobile icon rail, and the mobile nav overlay
+const MAIN_TABS = [
+  { id: 'brand', label: 'Brand Bible', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> },
+  { id: 'handoff', label: 'Handoff', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg> },
+  { id: 'tokens', label: 'Tokens', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
+  { id: 'components', label: 'Components', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+  { id: 'settings', label: 'Settings', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> },
+];
 
 // Flat token store: { Color: [{name, value, type, layer}, ...], Typography: [...], ... }
 const MOCK_TOKENS = {
   Color: [
-    { name: 'brand.color.primary',    value: '#FC0694', type: 'color', layer: 'Brand' },
-    { name: 'brand.color.secondary',  value: '#1A1A24', type: 'color', layer: 'Brand' },
-    { name: 'brand.color.accent',     value: '#3B82F6', type: 'color', layer: 'Brand' },
-    { name: 'brand.color.background', value: '#0D0D12', type: 'color', layer: 'Brand' },
-    { name: 'brand.color.surface',    value: '#13131A', type: 'color', layer: 'Brand' },
-    { name: 'brand.color.text',       value: '#FFFFFF', type: 'color', layer: 'Brand' },
+    { name: 'brand.color.primary',    value: '#FC0694', type: 'color', layer: 'Brand', description: 'Primary brand identity color' },
+    { name: 'brand.color.secondary',  value: '#1A1A24', type: 'color', layer: 'Brand', description: 'Secondary brand slate color' },
+    { name: 'brand.color.accent',     value: '#3B82F6', type: 'color', layer: 'Brand', description: 'Vibrant high-contrast accent' },
+    { name: 'brand.color.background', value: '#0D0D12', type: 'color', layer: 'Brand', description: 'Deep dark application canvas' },
+    { name: 'brand.color.surface',    value: '#13131A', type: 'color', layer: 'Brand', description: 'Elevated panel and card background' },
+    { name: 'brand.color.text',       value: '#FFFFFF', type: 'color', layer: 'Brand', description: 'High-contrast reading text' },
     { name: 'color.action',           value: '{brand.color.primary}',    type: 'color', layer: 'Semantic' },
     { name: 'color.bg.primary',       value: '{brand.color.background}', type: 'color', layer: 'Semantic' },
     { name: 'color.bg.surface',       value: '{brand.color.surface}',    type: 'color', layer: 'Semantic' },
@@ -324,6 +339,8 @@ function ProjectDetailInner() {
   const [activeLayer, setActiveLayer] = useState('Brand');          // Brand | Semantic | Component
   const [activeComponentCategory, setActiveComponentCategory] = useState('Actions & Buttons');
   const [tokenTableSearch, setTokenTableSearch] = useState('');
+  const [copiedToken, setCopiedToken] = useState(null);
+  const [mobileNavExpanded, setMobileNavExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [brandData, setBrandData] = useState(null);
   
@@ -1358,8 +1375,101 @@ This document serves as our living source of truth.`
     .filter(t => t.layer === activeLayer)
     .filter(t => !tokenTableSearchLower || [t.name, t.value, t.type].some(v => String(v).toLowerCase().includes(tokenTableSearchLower)));
 
+  // Shared main-tab button list — rendered in the desktop sidebar, the mobile icon
+  // rail (icon-only), and the mobile nav overlay (icon + label, like desktop).
+  const renderMainTabButtons = () => MAIN_TABS.map(tab => (
+    <button
+      key={tab.id}
+      className={`pd-sidebar-tab-btn${activeTab === tab.id ? ' pd-sidebar-tab-btn-active' : ''}`}
+      title={tab.label}
+      onClick={() => { setActiveTab(tab.id); setMobileNavExpanded(false); }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+        background: activeTab === tab.id ? 'var(--bg-tertiary)' : 'none',
+        border: 'none', borderRadius: '6px',
+        padding: '0.5rem 0.625rem', marginBottom: '0.1rem',
+        color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+        fontSize: '0.82rem', fontWeight: activeTab === tab.id ? 500 : 400,
+        cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+      }}
+    >
+      {tab.icon}
+      <span className="pd-sidebar-tab-label">{tab.label}</span>
+    </button>
+  ));
+
+  // Shared button list for the Token Type categories — rendered both in the desktop
+  // sidebar and as a mobile chip row (the mobile icon rail has no room for labels).
+  const renderTokenTypeCategoryButtons = () => TOKEN_TYPES.map(({ id, icon }) => {
+    const total = (activeTokens[id] || []).length;
+    const layerCount = (activeTokens[id] || []).filter(t => t.layer === activeLayer).length;
+    return (
+      <button
+        key={id}
+        className="pd-sidebar-category-btn"
+        onClick={() => { setActiveCategory(id); setMobileNavExpanded(false); }}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', background: activeCategory === id ? 'var(--accent-glow)' : 'none',
+          border: activeCategory === id ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
+          borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
+          color: activeCategory === id ? 'var(--accent)' : 'var(--text-secondary)',
+          fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+          gap: '0.5rem',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+          <span style={{ opacity: 0.7 }}>{icon}</span>
+          <span className="pd-sidebar-category-label">{id}</span>
+        </span>
+        <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+          {layerCount}/{total}
+        </span>
+      </button>
+    );
+  });
+
+  // Shared button list for Component categories — same rationale as above.
+  const renderComponentCategoryButtons = () => ['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'].map(cat => {
+    const count = components.filter(comp => {
+      let compCat = comp.category;
+      if (compCat === 'Atom') {
+        if (comp.template === 'button') compCat = 'Actions & Buttons';
+        else if (comp.template === 'input') compCat = 'Form Inputs';
+        else if (comp.template === 'badge') compCat = 'Feedback & Status';
+        else compCat = 'Actions & Buttons';
+      } else if (compCat === 'Molecule') {
+        compCat = 'Display & Data';
+      } else if (compCat === 'Organism') {
+        compCat = 'Navigation';
+      }
+      return compCat === cat;
+    }).length;
+
+    return (
+      <button
+        key={cat}
+        className="pd-sidebar-category-btn"
+        onClick={() => { setActiveComponentCategory(cat); setMobileNavExpanded(false); }}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', background: activeComponentCategory === cat ? 'var(--accent-glow)' : 'none',
+          border: activeComponentCategory === cat ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
+          borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
+          color: activeComponentCategory === cat ? 'var(--accent)' : 'var(--text-secondary)',
+          fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+        }}
+      >
+        <span className="pd-sidebar-category-label">{cat}</span>
+        <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+          {count}
+        </span>
+      </button>
+    );
+  });
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
 
       {/* ── App Top Bar ── */}
       <header className="pd-header" style={{
@@ -1394,8 +1504,13 @@ This document serves as our living source of truth.`
 
         <div style={{ flex: 1 }} />
 
+        <span className="pd-header-live-dot" style={{
+          display: 'none', width: '10px', height: '10px', borderRadius: '50%',
+          background: 'var(--accent)', flexShrink: 0,
+        }} />
+
         {/* Sync button */}
-        <button style={{
+        <button className="pd-header-sync" style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           background: 'var(--accent-glow)', border: '1px solid rgba(252,6,148,0.25)',
           borderRadius: '6px', padding: '0.4rem 0.875rem',
@@ -1424,7 +1539,7 @@ This document serves as our living source of truth.`
         </button>
 
         {/* Avatar */}
-        <div style={{ position: 'relative' }}>
+        <div className="pd-header-avatar" style={{ position: 'relative' }}>
           <button
             onClick={() => setShowUserMenu(p => !p)}
             style={{
@@ -1467,33 +1582,73 @@ This document serves as our living source of truth.`
           display: 'flex', flexDirection: 'column', padding: '1rem 0',
           overflowY: 'auto',
         }}>
+          {/* Mobile-only: expand the icon rail into a labeled overlay menu */}
+          <button
+            className="pd-mobile-nav-toggle"
+            title="Expand menu"
+            onClick={() => setMobileNavExpanded(true)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+
           {/* Tabs */}
           <div className="pd-sidebar-tabs" style={{ padding: '0 0.75rem', marginBottom: '1.5rem' }}>
-            {[
-              { id: 'brand', label: 'Brand Bible', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> },
-              { id: 'handoff', label: 'Handoff', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg> },
-              { id: 'tokens', label: 'Tokens', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
-              { id: 'components', label: 'Components', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
-              { id: 'settings', label: 'Settings', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> },
-            ].map(tab => (
+            {renderMainTabButtons()}
+          </div>
+
+          {/* Rail-only bottom actions (mobile icon rail) */}
+          <div className="pd-sidebar-rail-bottom">
+            <button
+              className="pd-rail-btn"
+              title="Export"
+              onClick={() => {}}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button
+              className="pd-rail-btn pd-rail-btn-accent"
+              title="Sync"
+              onClick={() => {}}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+            </button>
+            <div style={{ position: 'relative' }}>
               <button
-                key={tab.id}
-                className="pd-sidebar-tab-btn"
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                  background: activeTab === tab.id ? 'var(--bg-tertiary)' : 'none',
-                  border: 'none', borderRadius: '6px',
-                  padding: '0.5rem 0.625rem', marginBottom: '0.1rem',
-                  color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  fontSize: '0.82rem', fontWeight: activeTab === tab.id ? 500 : 400,
-                  cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                }}
+                className="pd-rail-avatar"
+                title={user?.name || 'Account'}
+                onClick={() => setShowUserMenu(p => !p)}
               >
-                {tab.icon}
-                {tab.label}
+                {user?.initials || 'U'}
               </button>
-            ))}
+              {showUserMenu && (
+                <>
+                  <div
+                    onClick={() => setShowUserMenu(false)}
+                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 200, background: 'transparent' }}
+                  />
+                  <div style={{
+                    position: 'fixed', bottom: '0.75rem', left: '60px',
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                    borderRadius: '10px', padding: '0.375rem', minWidth: '160px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 201,
+                  }}>
+                    <div style={{ padding: '0.5rem 0.75rem 0.75rem', borderBottom: '1px solid var(--border)', marginBottom: '0.375rem' }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{user?.name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>{user?.email}</div>
+                    </div>
+                    <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
+                      My projects
+                    </button>
+                    <button onClick={() => { logout(); navigate('/'); setShowUserMenu(false); }} style={{ ...menuItemStyle, color: '#EF4444' }}>
+                      Log out
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Token TYPE categories in sidebar */}
@@ -1502,34 +1657,7 @@ This document serves as our living source of truth.`
               <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
                 Token Type
               </div>
-              {TOKEN_TYPES.map(({ id, icon }) => {
-                const total = (activeTokens[id] || []).length;
-                const layerCount = (activeTokens[id] || []).filter(t => t.layer === activeLayer).length;
-                return (
-                  <button
-                    key={id}
-                    className="pd-sidebar-category-btn"
-                    onClick={() => setActiveCategory(id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      width: '100%', background: activeCategory === id ? 'var(--accent-glow)' : 'none',
-                      border: activeCategory === id ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
-                      borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-                      color: activeCategory === id ? 'var(--accent)' : 'var(--text-secondary)',
-                      fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                      gap: '0.5rem',
-                    }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
-                      <span style={{ opacity: 0.7 }}>{icon}</span>
-                      {id}
-                    </span>
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-                      {layerCount}/{total}
-                    </span>
-                  </button>
-                );
-              })}
+              {renderTokenTypeCategoryButtons()}
             </div>
           )}
 
@@ -1539,50 +1667,53 @@ This document serves as our living source of truth.`
               <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
                 Categories
               </div>
-              {['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'].map(cat => {
-                const count = components.filter(comp => {
-                  let compCat = comp.category;
-                  if (compCat === 'Atom') {
-                    if (comp.template === 'button') compCat = 'Actions & Buttons';
-                    else if (comp.template === 'input') compCat = 'Form Inputs';
-                    else if (comp.template === 'badge') compCat = 'Feedback & Status';
-                    else compCat = 'Actions & Buttons';
-                  } else if (compCat === 'Molecule') {
-                    if (comp.template === 'card') compCat = 'Display & Data';
-                    else compCat = 'Display & Data';
-                  } else if (compCat === 'Organism') {
-                    compCat = 'Navigation';
-                  }
-                  return compCat === cat;
-                }).length;
-
-                return (
-                  <button
-                    key={cat}
-                    className="pd-sidebar-category-btn"
-                    onClick={() => setActiveComponentCategory(cat)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      width: '100%', background: activeComponentCategory === cat ? 'var(--accent-glow)' : 'none',
-                      border: activeComponentCategory === cat ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
-                      borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-                      color: activeComponentCategory === cat ? 'var(--accent)' : 'var(--text-secondary)',
-                      fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                    }}
-                  >
-                    {cat}
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
+              {renderComponentCategoryButtons()}
             </div>
           )}
         </aside>
 
+        {/* Mobile-only: expanded nav overlay (icon rail → full labeled menu) */}
+        {mobileNavExpanded && (
+          <>
+            <div className="pd-mobile-nav-backdrop" onClick={() => setMobileNavExpanded(false)} />
+            <div className="pd-mobile-nav-overlay">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 0.75rem', marginBottom: '1rem' }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>Menu</span>
+                <button
+                  onClick={() => setMobileNavExpanded(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+
+              <div className="pd-sidebar-tabs" style={{ padding: '0 0.75rem', marginBottom: '1.25rem' }}>
+                {renderMainTabButtons()}
+              </div>
+
+              {activeTab === 'tokens' && (
+                <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
+                  <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
+                    Token Type
+                  </div>
+                  {renderTokenTypeCategoryButtons()}
+                </div>
+              )}
+
+              {activeTab === 'components' && (
+                <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
+                  <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
+                    Categories
+                  </div>
+                  {renderComponentCategoryButtons()}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {/* ── Main Content ── */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}>
+        <main className="pd-main" style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}>
 
           {activeTab === 'brand' && (
             <div style={{ maxWidth: '1200px' }}>
@@ -2163,14 +2294,23 @@ This document serves as our living source of truth.`
               {/* Token table header */}
               <div className="pd-tokens-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                    {activeCategory} Tokens
-                  </h2>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                      {activeCategory} Tokens
+                    </h2>
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--text-tertiary)',
+                      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                      borderRadius: '6px', padding: '0.15rem 0.5rem',
+                    }}>
+                      {(activeTokens[activeCategory] || []).length} defined
+                    </span>
+                  </div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                    {tokens.length} {activeLayer.toLowerCase()} token{tokens.length !== 1 ? 's' : ''}
+                    {tokens.length} {TOKEN_LAYER_LABELS[activeLayer].toLowerCase()} token{tokens.length !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="pd-tokens-header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                   <button onClick={() => setTokenModal({ mode: 'add', category: activeCategory, defaultLayer: activeLayer })} style={actionBtnStyle}>+ Add token</button>
                   <button style={actionBtnStyle} onClick={() => alert('Importing tokens... (mock)')}>Import</button>
                 </div>
@@ -2242,7 +2382,7 @@ This document serves as our living source of truth.`
                         transition: 'all 0.18s',
                         flexShrink: 0,
                       }} />
-                      {layer}
+                      {TOKEN_LAYER_LABELS[layer]}
                       <span style={{
                         fontSize: '0.65rem',
                         background: isActive ? `${layerColor}20` : 'transparent',
@@ -2259,8 +2399,8 @@ This document serves as our living source of truth.`
               </div>
 
               {/* Column headers */}
-              <div className="pd-token-table-header" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr auto', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
-                {['Name', 'Value', 'Type', 'Visual Preview', ''].map(h => (
+              <div className="pd-token-table-header" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
+                {['Name', 'Value', 'Type', 'Visual Preview'].map(h => (
                   <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                 ))}
               </div>
@@ -2278,7 +2418,7 @@ This document serves as our living source of truth.`
                     key={i}
                     className="pd-token-row"
                     style={{
-                      display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr auto',
+                      display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr',
                       gap: '1rem', alignItems: 'center',
                       padding: '0.625rem 0.875rem', borderRadius: '8px',
                       transition: 'background 0.15s', cursor: 'default',
@@ -2289,7 +2429,10 @@ This document serves as our living source of truth.`
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
                       {token.name}
                     </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div
+                      className={!isAlias && COLOR_VALUE_TYPES.has(token.type) ? 'pd-token-row-value-duplicate' : undefined}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    >
                       {editingTokenName === token.name ? (
                         <input
                           autoFocus
@@ -2379,80 +2522,113 @@ This document serves as our living source of truth.`
                     </span>
                     
                     {/* Live Visual Preview column */}
-                    <div>
+                    <div className="pd-token-preview-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                       {renderTokenPreview(previewToken)}
-                    </div>
-                    
-                    {/* 3-Dot Action Dropdown */}
-                    <div className="pd-token-row-actions" style={{ position: 'relative' }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveDropdown(activeDropdown === token.name ? null : token.name);
-                        }}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: 'var(--text-tertiary)', padding: '0.2rem', borderRadius: '4px',
-                          display: 'flex', alignItems: 'center',
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                          <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
-                        </svg>
-                      </button>
-                      {activeDropdown === token.name && (
-                        <>
-                          <div
-                            onClick={() => setActiveDropdown(null)}
-                            style={{
-                              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                              zIndex: 100, background: 'transparent',
-                            }}
-                          />
-                          <div style={{
-                            position: 'absolute', top: '100%', right: 0,
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          className="pd-token-copy-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(String(resolvedPreviewValue));
+                            setCopiedToken(token.name);
+                            setTimeout(() => setCopiedToken(prev => prev === token.name ? null : prev), 1200);
+                          }}
+                          style={{
+                            display: 'none', alignItems: 'center', gap: '0.35rem',
                             background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                            borderRadius: '8px', padding: '0.25rem', minWidth: '120px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 101,
-                            display: 'flex', flexDirection: 'column', gap: '0.1rem',
-                          }}>
-                            <button
-                              onClick={() => {
-                                setTokenModal({ mode: 'edit', token, category: activeCategory });
-                                setActiveDropdown(null);
-                              }}
-                              style={menuItemStyle}
-                            >
-                              Edit Token
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDuplicateToken(activeCategory, token);
-                                setActiveDropdown(null);
-                              }}
-                              style={menuItemStyle}
-                            >
-                              Duplicate
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`Are you sure you want to delete "${token.name}"?`)) {
-                                  handleDeleteToken(activeCategory, token.name);
-                                }
-                                setActiveDropdown(null);
-                              }}
-                              style={{ ...menuItemStyle, color: '#EF4444' }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </>
-                      )}
+                            borderRadius: '8px', padding: '0.4rem 0.6rem', color: 'var(--text-tertiary)',
+                            fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                          }}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                          {copiedToken === token.name ? 'Copied!' : 'Copy'}
+                        </button>
+
+                        {/* 3-Dot Action Dropdown */}
+                        <div className="pd-token-row-actions" style={{ position: 'relative' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveDropdown(activeDropdown === token.name ? null : token.name);
+                            }}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: 'var(--text-tertiary)', padding: '0.2rem', borderRadius: '4px',
+                              display: 'flex', alignItems: 'center',
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                              <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                            </svg>
+                          </button>
+                          {activeDropdown === token.name && (
+                            <>
+                              <div
+                                onClick={() => setActiveDropdown(null)}
+                                style={{
+                                  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                                  zIndex: 100, background: 'transparent',
+                                }}
+                              />
+                              <div style={{
+                                position: 'absolute', top: '100%', right: 0,
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                                borderRadius: '8px', padding: '0.25rem', minWidth: '120px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 101,
+                                display: 'flex', flexDirection: 'column', gap: '0.1rem',
+                              }}>
+                                <button
+                                  onClick={() => {
+                                    setTokenModal({ mode: 'edit', token, category: activeCategory });
+                                    setActiveDropdown(null);
+                                  }}
+                                  style={menuItemStyle}
+                                >
+                                  Edit Token
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleDuplicateToken(activeCategory, token);
+                                    setActiveDropdown(null);
+                                  }}
+                                  style={menuItemStyle}
+                                >
+                                  Duplicate
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Are you sure you want to delete "${token.name}"?`)) {
+                                      handleDeleteToken(activeCategory, token.name);
+                                    }
+                                    setActiveDropdown(null);
+                                  }}
+                                  style={{ ...menuItemStyle, color: '#EF4444' }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Description (mobile card only) */}
+                    {token.description && (
+                      <span className="pd-token-row-desc" style={{ display: 'none', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                        {token.description}
+                      </span>
+                    )}
                   </div>
                 );
               })}
             </>
+          )}
+
+          {/* CSS property (Token Type) list — placed at the bottom on mobile, below the token cards */}
+          {activeTab === 'tokens' && (
+            <div className="pd-mobile-category-row">{renderTokenTypeCategoryButtons()}</div>
           )}
 
           {activeTab === 'components' && (() => {
@@ -3250,7 +3426,14 @@ export default function RootLayout({ children }) {
 
               </div>
             );
-          })()}          {activeTab === 'settings' && (
+          })()}
+
+          {/* Component categories — placed at the bottom on mobile, below the component cards */}
+          {activeTab === 'components' && (
+            <div className="pd-mobile-category-row">{renderComponentCategoryButtons()}</div>
+          )}
+
+          {activeTab === 'settings' && (
             <div style={{ maxWidth: '480px' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem' }}>Project settings</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -3656,53 +3839,123 @@ export default function RootLayout({ children }) {
       )}
 
       <style dangerouslySetInnerHTML={{ __html: `
+        /* Mobile-only surfaces, collapsed on desktop by default */
+        .pd-mobile-category-row, .pd-sidebar-rail-bottom, .pd-mobile-nav-toggle { display: none; }
+
         @media (max-width: 768px) {
           .pd-header { padding: 0 0.875rem !important; gap: 0.625rem !important; }
-          .pd-breadcrumb-sep, .pd-breadcrumb-projects, .pd-status-pill { display: none !important; }
+          .pd-status-pill { display: none !important; }
           .pd-btn-label { display: none; }
-          .pd-export-btn { display: none !important; }
+          .pd-export-btn, .pd-header-sync, .pd-header-avatar { display: none !important; }
+          .pd-header-live-dot { display: inline-block !important; }
 
-          .pd-shell { flex-direction: column !important; overflow: visible !important; }
+          /* Sidebar collapses to a 52px icon-only rail, same row layout as desktop */
           .pd-sidebar {
-            width: 100% !important;
-            border-right: none !important;
-            border-bottom: 1px solid var(--border);
+            width: 52px !important;
+            flex-shrink: 0;
+            align-items: center;
             padding: 0.75rem 0 !important;
-            overflow-y: visible;
           }
           .pd-sidebar-tabs {
+            width: 100%;
             display: flex !important;
-            flex-direction: row !important;
-            overflow-x: auto;
-            margin-bottom: 0 !important;
-            padding: 0 0.75rem !important;
-            gap: 0.4rem;
+            flex-direction: column !important;
+            align-items: center;
+            padding: 0 0.6rem !important;
+            gap: 0.3rem;
           }
-          .pd-sidebar-tab-btn { width: auto !important; flex-shrink: 0; white-space: nowrap; }
-          .pd-sidebar-categories {
+          .pd-sidebar-tab-btn {
+            width: 32px !important;
+            height: 32px;
+            justify-content: center !important;
+            padding: 0 !important;
+          }
+          .pd-sidebar-tab-btn-active { background: rgba(252,6,148,0.08) !important; color: var(--accent) !important; }
+          .pd-sidebar-tab-label { display: none; }
+
+          .pd-mobile-nav-toggle {
+            display: flex; align-items: center; justify-content: center;
+            width: 32px; height: 32px; margin: 0 0 0.5rem;
+            background: none; border: none; border-radius: 6px;
+            color: var(--text-secondary); cursor: pointer;
+          }
+
+          /* Token Type / Component category lists move out of the rail into a fixed bottom navbar */
+          .pd-sidebar-categories { display: none !important; }
+          .pd-main { padding-bottom: 4.5rem !important; }
+          .pd-mobile-category-row {
             display: flex !important;
-            flex-direction: row !important;
-            overflow-x: auto;
-            padding: 0.6rem 0.75rem 0 !important;
-            margin-top: 0.6rem;
+            position: fixed;
+            left: 52px; right: 0; bottom: 0;
+            background: var(--bg-secondary);
             border-top: 1px solid var(--border);
+            overflow-x: auto;
             gap: 0.4rem;
+            padding: 0.625rem 0.75rem;
+            z-index: 150;
           }
-          .pd-sidebar-categories-label { display: none; }
-          .pd-sidebar-category-btn {
+          .pd-mobile-category-row .pd-sidebar-category-btn {
             width: auto !important;
             flex-shrink: 0;
             white-space: nowrap;
             border-radius: 100px !important;
           }
+          .pd-mobile-category-row .pd-sidebar-category-count { display: none; }
+
+          /* Expanded nav overlay — the rail's hamburger toggle opens this */
+          .pd-mobile-nav-backdrop {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 300;
+          }
+          .pd-mobile-nav-overlay {
+            position: fixed; top: 0; left: 0; bottom: 0;
+            width: 240px; max-width: 80vw;
+            background: var(--bg-secondary); border-right: 1px solid var(--border);
+            padding: 1rem 0 1.25rem; overflow-y: auto; z-index: 301;
+            box-shadow: 8px 0 24px rgba(0,0,0,0.4);
+          }
+          .pd-mobile-nav-overlay .pd-sidebar-tab-btn {
+            width: 100% !important; height: auto !important;
+            justify-content: flex-start !important; padding: 0.5rem 0.625rem !important;
+          }
+          .pd-mobile-nav-overlay .pd-sidebar-tab-label { display: inline !important; }
+          .pd-mobile-nav-overlay .pd-sidebar-categories { display: block !important; }
+
+          /* Sync / Export / Account relocate from the header into the rail's bottom section */
+          .pd-sidebar-rail-bottom {
+            display: flex !important;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+            margin-top: auto;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+          }
+          .pd-rail-btn {
+            width: 32px; height: 32px; border-radius: 6px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary);
+          }
+          .pd-rail-btn-accent { background: rgba(252,6,148,0.13); border-color: rgba(252,6,148,0.25); color: var(--accent); }
+          .pd-rail-avatar {
+            width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+            background: var(--accent); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 0.7rem;
+            display: flex; align-items: center; justify-content: center;
+          }
 
           .pd-tokens-header { flex-direction: column !important; align-items: stretch !important; }
+          .pd-tokens-header-actions { justify-content: space-between !important; }
+          .pd-tokens-header-actions button { flex: 1; }
 
           .pd-token-table-header { display: none !important; }
+          /* Grid instead of flex-column so the name and badge can share row 1 as two real
+             columns (badge auto-sized + flush to the card's edge) — matches Figma exactly
+             and, unlike fixed pixel offsets, never overlaps for long type names. */
           .pd-token-row {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 0.6rem !important;
+            display: grid !important;
+            grid-template-columns: 1fr auto !important;
+            gap: 0.5rem 0.75rem !important;
             position: relative;
             background: var(--bg-tertiary);
             border: 1px solid var(--border);
@@ -3710,11 +3963,25 @@ export default function RootLayout({ children }) {
             padding: 1rem !important;
             margin-bottom: 0.75rem;
           }
-          .pd-token-row > *:nth-child(1) { order: 1; padding-right: 2rem; }
-          .pd-token-row > *:nth-child(2) { order: 4; }
-          .pd-token-row > *:nth-child(3) { order: 2; }
-          .pd-token-row > *:nth-child(4) { order: 3; }
-          .pd-token-row-actions { position: absolute !important; top: 0.75rem; right: 0.75rem; }
+          /* Row 1: name (col 1, truncates) ── type badge (col 2, flush right — extreme end) */
+          .pd-token-row > *:nth-child(1) {
+            grid-column: 1; grid-row: 1;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            align-self: center;
+          }
+          .pd-token-row > *:nth-child(3) { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; }
+
+          /* Row 2: description, spans the full card width */
+          .pd-token-row-desc { display: block !important; grid-column: 1 / -1; grid-row: 2; }
+
+          /* Row 3: swatch + value (extreme left) ── Copy + ⋮ menu (extreme right) */
+          .pd-token-row > *:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
+
+          /* Row 4: the raw editable value — redundant for simple color tokens (already shown in row 3), kept for aliases/other types */
+          .pd-token-row > *:nth-child(2) { grid-column: 1 / -1; grid-row: 4; }
+          .pd-token-row-value-duplicate { display: none !important; }
+
+          .pd-token-copy-btn { display: inline-flex !important; }
 
           .pd-brand-subtabs { display: flex !important; width: 100%; overflow-x: auto; }
           .pd-brand-subtab-btn { flex-shrink: 0; white-space: nowrap; }
@@ -4239,7 +4506,7 @@ function TokenModal({ modal, onClose, onSave }) {
                     }}
                   >
                     <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isActive ? lColor : 'var(--text-tertiary)', flexShrink: 0 }} />
-                    {l}
+                    {TOKEN_LAYER_LABELS[l]}
                   </button>
                 );
               })}
