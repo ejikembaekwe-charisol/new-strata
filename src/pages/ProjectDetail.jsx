@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
+import branchIcon from '../assets/branch-icon.svg';
 
 /* ── Error Boundary: prevents blank screen on render crashes ── */
 class ErrorBoundary extends React.Component {
@@ -91,6 +92,7 @@ const MAIN_TABS = [
   { id: 'tokens', label: 'Tokens', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
   { id: 'components', label: 'Components', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
   { id: 'settings', label: 'Settings', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> },
+  { id: 'collaboration', label: 'Collaboration', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
 ];
 
 // Flat token store: { Color: [{name, value, type, layer}, ...], Typography: [...], ... }
@@ -329,7 +331,7 @@ function ProjectDetailInner() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { projects, isLoaded, updateProject } = useProjects();
+  const { projects, isLoaded, updateProject, addProject } = useProjects();
 
   // Find project from list
   const project = projects.find(p => String(p.id) === String(id));
@@ -342,6 +344,9 @@ function ProjectDetailInner() {
   const [copiedToken, setCopiedToken] = useState(null);
   const [mobileNavExpanded, setMobileNavExpanded] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showBranchMenu, setShowBranchMenu] = useState(false);
+  const [isLightTheme, setIsLightTheme] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState(() => new Date());
   const [brandData, setBrandData] = useState(null);
   
   // Handoff state variables
@@ -404,6 +409,13 @@ function ProjectDetailInner() {
       }
     }
   }, [project]);
+
+  // Bump the header's "Saved" timestamp whenever token/component/brand content actually changes
+  const skipNextSaveStamp = useRef(true);
+  useEffect(() => {
+    if (skipNextSaveStamp.current) { skipNextSaveStamp.current = false; return; }
+    setLastSavedAt(new Date());
+  }, [activeTokens, components, brandData]);
 
   const [generatedAssetsVisibility, setGeneratedAssetsVisibility] = useState(() => {
     return project?.generatedAssetsVisibility || {
@@ -1369,6 +1381,30 @@ This document serves as our living source of truth.`
     alert('Downloading assets... (mock)');
   };
 
+  // Branches always point at the true root project, so a branch-of-a-branch
+  // still shows up as a sibling in the root's branch switcher.
+  const branchRootId = project?.branchOf || project?.id;
+  const projectBranchName = project?.branchName || 'main';
+  const branchSiblings = projects.filter(p => p.branchOf === branchRootId && String(p.id) !== String(id));
+  const branchRoot = project?.branchOf ? projects.find(p => String(p.id) === String(branchRootId)) : null;
+
+  const handleBranchProject = () => {
+    if (!project) return;
+    const branched = addProject({
+      title: `${project.name} (Branch)`,
+      description: project.description,
+      color: project.color,
+      websiteUrl: project.websiteUrl,
+      figmaUrl: project.figmaUrl,
+      brand: brandData,
+      tokens: activeTokens,
+      components,
+      branchOf: branchRootId,
+      branchName: `branch-${String(Date.now()).slice(-4)}`,
+    });
+    navigate(`/projects/${branched.id}`);
+  };
+
   // Filter tokens by both type (sidebar) and layer (pill), then by the table search box
   const tokenTableSearchLower = tokenTableSearch.trim().toLowerCase();
   const tokens = (activeTokens[activeCategory] || [])
@@ -1493,13 +1529,12 @@ This document serves as our living source of truth.`
         <span className="pd-breadcrumb-sep" style={{ color: 'var(--border)', fontSize: '1.2rem' }}>/</span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-          <div style={{ width: '14px', height: '14px', borderRadius: '3px', background: project.color, flexShrink: 0 }} />
-          <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
-          <span className="pd-status-pill" style={{
-            fontSize: '0.6rem', padding: '0.15rem 0.45rem', borderRadius: '100px',
-            border: '1px solid var(--border)', color: 'var(--text-tertiary)',
-            textTransform: 'uppercase', letterSpacing: '0.05em',
-          }}>{project.status}</span>
+          <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
+          <span className="pd-status-pill" style={
+            project.status === 'Active'
+              ? { fontSize: '0.625rem', padding: '0.125rem 0.5rem', borderRadius: '100px', background: 'var(--accent-glow)', color: 'var(--accent)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }
+              : { fontSize: '0.6rem', padding: '0.15rem 0.45rem', borderRadius: '100px', border: '1px solid var(--border)', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+          }>{project.status}</span>
         </div>
 
         <div style={{ flex: 1 }} />
@@ -1509,33 +1544,115 @@ This document serves as our living source of truth.`
           background: 'var(--accent)', flexShrink: 0,
         }} />
 
+        {/* Last saved timestamp */}
+        <span className="pd-header-saved" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+          Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+        </span>
+
+        {/* Branch selector */}
+        <div className="pd-header-branch" style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowBranchMenu(p => !p)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: 'transparent', border: '1px solid #333',
+              borderRadius: '6px', padding: '0.4rem 0.75rem',
+              color: '#eee', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            <img src={branchIcon} alt="" width="14" height="14" />
+            <span style={{ maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectBranchName}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {showBranchMenu && (
+            <>
+              <div onClick={() => setShowBranchMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'transparent' }} />
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 8px)', left: 0, minWidth: '200px',
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '10px', padding: '0.375rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 201,
+              }}>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.375rem 0.625rem' }}>Branches</div>
+                {branchRoot && (
+                  <button onClick={() => { navigate(`/projects/${branchRoot.id}`); setShowBranchMenu(false); }} style={menuItemStyle}>
+                    main
+                  </button>
+                )}
+                {!project.branchOf && (
+                  <button style={{ ...menuItemStyle, color: 'var(--accent)', cursor: 'default' }}>
+                    main (current)
+                  </button>
+                )}
+                {branchSiblings.map(sib => (
+                  <button key={sib.id} onClick={() => { navigate(`/projects/${sib.id}`); setShowBranchMenu(false); }} style={menuItemStyle}>
+                    {sib.branchName || sib.id}
+                  </button>
+                ))}
+                {project.branchOf && (
+                  <button style={{ ...menuItemStyle, color: 'var(--accent)', cursor: 'default' }}>
+                    {projectBranchName} (current)
+                  </button>
+                )}
+                <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
+                <button onClick={() => { handleBranchProject(); setShowBranchMenu(false); }} style={menuItemStyle}>
+                  + New branch from here
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Sync button */}
-        <button className="pd-header-sync" style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          background: 'var(--accent-glow)', border: '1px solid rgba(252,6,148,0.25)',
-          borderRadius: '6px', padding: '0.4rem 0.875rem',
-          color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}>
+        <button
+          className="pd-header-sync"
+          onClick={() => setBrandBibleDirty(false)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'var(--accent-glow)', border: '1px solid rgba(252,6,148,0.25)',
+            borderRadius: '6px', padding: '0.4rem 0.875rem',
+            color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
             <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
           </svg>
-          <span className="pd-btn-label">Sync</span>
+          <span className="pd-btn-label">{brandBibleDirty ? 'Sync' : 'Synced'}</span>
         </button>
 
         {/* Export button */}
-        <button className="pd-export-btn" style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem',
-          background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-          borderRadius: '6px', padding: '0.4rem 0.875rem',
-          color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
-          fontFamily: 'inherit',
-        }}>
+        <button
+          className="pd-export-btn"
+          onClick={() => setActiveTab('handoff')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '0.4rem 0.875rem',
+            color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
           <span className="pd-btn-label">Export</span>
+        </button>
+
+        {/* Theme toggle */}
+        <button
+          className="pd-header-theme-toggle"
+          title={isLightTheme ? 'Switch to dark theme' : 'Switch to light theme'}
+          onClick={() => { setIsLightTheme(p => !p); document.body.classList.toggle('light-theme'); }}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: '34px', height: '34px', borderRadius: '100px',
+            background: 'transparent', border: '1px solid var(--border)',
+            fontSize: '0.75rem', cursor: 'pointer',
+          }}
+        >
+          {isLightTheme ? '🌙' : '☀️'}
         </button>
 
         {/* Avatar */}
@@ -1598,6 +1715,13 @@ This document serves as our living source of truth.`
 
           {/* Rail-only bottom actions (mobile icon rail) */}
           <div className="pd-sidebar-rail-bottom">
+            <button
+              className="pd-rail-btn pd-rail-btn-ghost"
+              title="Branch this project"
+              onClick={handleBranchProject}
+            >
+              <img src={branchIcon} alt="" width="16" height="16" />
+            </button>
             <button
               className="pd-rail-btn"
               title="Export"
@@ -1708,6 +1832,142 @@ This document serves as our living source of truth.`
                   {renderComponentCategoryButtons()}
                 </div>
               )}
+
+              {/* Branch selector / Sync / Export / Account — bottom of the full menu */}
+              <div className="pd-mobile-nav-bottom">
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <button
+                    onClick={() => setShowBranchMenu(p => !p)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                      background: 'transparent', border: '1px solid #333',
+                      borderRadius: '6px', padding: '0.5rem 0.75rem',
+                      color: '#eee', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <img src={branchIcon} alt="" width="14" height="14" />
+                    <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectBranchName}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  {showBranchMenu && (
+                    <>
+                      <div onClick={() => setShowBranchMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 310, background: 'transparent' }} />
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0,
+                        background: 'var(--bg)', border: '1px solid var(--border)',
+                        borderRadius: '10px', padding: '0.375rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 311,
+                      }}>
+                        <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.375rem 0.625rem' }}>Branches</div>
+                        {branchRoot && (
+                          <button onClick={() => { navigate(`/projects/${branchRoot.id}`); setShowBranchMenu(false); }} style={menuItemStyle}>
+                            main
+                          </button>
+                        )}
+                        {!project.branchOf && (
+                          <button style={{ ...menuItemStyle, color: 'var(--accent)', cursor: 'default' }}>
+                            main (current)
+                          </button>
+                        )}
+                        {branchSiblings.map(sib => (
+                          <button key={sib.id} onClick={() => { navigate(`/projects/${sib.id}`); setShowBranchMenu(false); }} style={menuItemStyle}>
+                            {sib.branchName || sib.id}
+                          </button>
+                        ))}
+                        {project.branchOf && (
+                          <button style={{ ...menuItemStyle, color: 'var(--accent)', cursor: 'default' }}>
+                            {projectBranchName} (current)
+                          </button>
+                        )}
+                        <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
+                        <button onClick={() => { handleBranchProject(); setShowBranchMenu(false); }} style={menuItemStyle}>
+                          + New branch from here
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setBrandBibleDirty(false)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    background: 'var(--accent-glow)', border: '1px solid rgba(252,6,148,0.25)',
+                    borderRadius: '6px', padding: '0.5rem 0.75rem',
+                    color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                  </svg>
+                  {brandBibleDirty ? 'Sync' : 'Synced'}
+                </button>
+
+                <button
+                  onClick={() => { setActiveTab('handoff'); setMobileNavExpanded(false); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                    borderRadius: '6px', padding: '0.5rem 0.75rem',
+                    color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Export
+                </button>
+
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <button
+                    onClick={() => setShowUserMenu(p => !p)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      padding: '0.25rem', fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{
+                      width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                      background: 'var(--accent)', color: '#fff',
+                      fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '0.65rem',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {user?.initials || 'U'}
+                    </span>
+                    <span style={{
+                      fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-primary)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {user?.name || 'Account'}
+                    </span>
+                  </button>
+                  {showUserMenu && (
+                    <>
+                      <div onClick={() => setShowUserMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 310, background: 'transparent' }} />
+                      <div style={{
+                        position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0,
+                        background: 'var(--bg)', border: '1px solid var(--border)',
+                        borderRadius: '10px', padding: '0.375rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 311,
+                      }}>
+                        <div style={{ padding: '0.5rem 0.75rem 0.75rem', borderBottom: '1px solid var(--border)', marginBottom: '0.375rem' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{user?.name}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>{user?.email}</div>
+                        </div>
+                        <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
+                          My projects
+                        </button>
+                        <button onClick={() => { logout(); navigate('/'); setShowUserMenu(false); }} style={{ ...menuItemStyle, color: '#EF4444' }}>
+                          Log out
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
           </>
         )}
@@ -1907,16 +2167,16 @@ This document serves as our living source of truth.`
                     
                     {/* Manifesto Section */}
                     <section>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                      <div className="pd-manifesto-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <h2 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Holistic Design Manifesto</h2>
-                          <span style={{ 
-                            fontSize: '0.65rem', padding: '0.2rem 0.6rem', borderRadius: '100px', 
-                            background: 'var(--accent-glow)', color: 'var(--accent)', 
-                            border: '1px solid rgba(252,6,148,0.2)', fontWeight: 600 
+                          <span style={{
+                            fontSize: '0.65rem', padding: '0.2rem 0.6rem', borderRadius: '100px',
+                            background: 'var(--accent-glow)', color: 'var(--accent)',
+                            border: '1px solid rgba(252,6,148,0.2)', fontWeight: 600
                           }}>AI GENERATED</span>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <div className="pd-manifesto-actions" style={{ display: 'flex', gap: '0.75rem' }}>
                           <button style={actionBtnStyle} onClick={() => handlePrintBrandBible()}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '0.4rem' }}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Export PDF
@@ -2028,7 +2288,7 @@ This document serves as our living source of truth.`
                     
                     {/* Generated Brand Bible PDF Preview Card */}
                     <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="pd-assets-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Compiled Brand Bible</h3>
                           {brandBibleDirty ? (
@@ -2037,9 +2297,9 @@ This document serves as our living source of truth.`
                             <span style={{ fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '100px', background: 'rgba(16,185,129,0.12)', color: '#10B981', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600 }}>LIVE & SYNCED</span>
                           )}
                         </div>
-                        <button 
+                        <button
                           onClick={handlePrintBrandBible}
-                          className="btn btn-secondary" 
+                          className="btn btn-secondary pd-bible-download-btn"
                           style={{ fontSize: '0.75rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2063,9 +2323,9 @@ This document serves as our living source of truth.`
                       }}>
                         {/* Cover details */}
                         <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <div className="pd-bible-cover-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                             <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900, fontSize: '1.5rem', color: 'var(--text-primary)' }}>S<span style={{ color: brandData.primaryColor }}>.</span></span>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Strata Generated Artifact</span>
+                            <span className="pd-bible-cover-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Strata Generated Artifact</span>
                           </div>
                           <h4 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0.5rem 0 0.25rem' }}>Core Brand Guidelines</h4>
                           <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0 }}>Always kept up-to-date with your design tokens.</p>
@@ -2080,17 +2340,17 @@ This document serves as our living source of truth.`
                         {/* Swatches */}
                         <div>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Color Palette Swatches</span>
-                          <div style={{ display: 'flex', gap: '1rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
                             {[
                               { name: 'Primary', color: brandData.primaryColor },
                               { name: 'Secondary', color: brandData.secondaryColor },
                               { name: 'Accent', color: brandData.accentColor }
                             ].map(swatch => (
-                              <div key={swatch.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: swatch.color, border: '1px solid rgba(255,255,255,0.1)' }}></div>
-                                <div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontWeight: 600 }}>{swatch.name}</div>
-                                  <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{swatch.color.toUpperCase()}</div>
+                              <div key={swatch.name} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 0 90px', minWidth: '90px', background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                <div style={{ width: '24px', height: '24px', borderRadius: '4px', background: swatch.color, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}></div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{swatch.name}</div>
+                                  <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{swatch.color.toUpperCase()}</div>
                                 </div>
                               </div>
                             ))}
@@ -2192,17 +2452,17 @@ This document serves as our living source of truth.`
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Uploaded Reference Files ({uploadedAssets.length})</span>
                         {uploadedAssets.map(asset => (
-                          <div key={asset.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-tertiary)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <div style={{ color: 'var(--accent)' }}>
+                          <div key={asset.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', background: 'var(--bg-tertiary)', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                              <div style={{ color: 'var(--accent)', flexShrink: 0 }}>
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                               </div>
-                              <div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500 }}>{asset.name}</div>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{asset.size} • Uploaded {asset.date}</div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.name}</div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{asset.size} • Uploaded {asset.date}</div>
                               </div>
                             </div>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
                               <button 
                                 onClick={() => alert(`Downloading ${asset.name}...`)}
                                 style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.25rem' }}
@@ -2228,13 +2488,13 @@ This document serves as our living source of truth.`
                   </div>
 
                   {/* System Generated Production Assets List (Infused from original Assets Hub) */}
-                  <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)' }}>
+                  <div className="pd-codeassets-card" style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '24px', border: '1px solid var(--border)' }}>
                     <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
                       <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>System Generated Code Assets</h3>
                       <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>Download pre-compiled design token distribution files direct for integration.</p>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
+                    <div className="pd-brand-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
                       {[
                         {
                           key: 'css',
@@ -2263,7 +2523,7 @@ This document serves as our living source of truth.`
                       ].map(asset => (
                         <div key={asset.key} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', justifyContent: 'space-between' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="pd-exporter-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>{asset.badge}</span>
                               <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{asset.filename}</span>
                             </div>
@@ -2778,7 +3038,7 @@ This document serves as our living source of truth.`
 
             return (
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
+                <div className="pd-components-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
                   <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                     {activeComponentCategory} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({catComps.length})</span>
                   </h2>
@@ -2835,7 +3095,7 @@ This document serves as our living source of truth.`
                               No presets in this category.
                             </p>
                           ) : (
-                            <div style={{
+                            <div className="pd-component-grid" style={{
                               display: 'grid',
                               gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
                               gap: '1.25rem',
@@ -2885,7 +3145,7 @@ This document serves as our living source of truth.`
                               </button>
                             </div>
                           ) : (
-                            <div style={{
+                            <div className="pd-component-grid" style={{
                               display: 'grid',
                               gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
                               gap: '1.25rem',
@@ -3000,10 +3260,10 @@ This document serves as our living source of truth.`
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', maxWidth: '1200px' }}>
                 
                 {/* Integration Card */}
-                <div style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                <div className="pd-handoff-card" style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
                   
                   {/* Tab Selector */}
-                  <div style={{
+                  <div className="pd-handoff-subtabs" style={{
                     display: 'flex',
                     borderBottom: '1px solid var(--border)',
                     paddingBottom: '0.75rem',
@@ -3018,6 +3278,7 @@ This document serves as our living source of truth.`
                       return (
                         <button
                           key={subTab.id}
+                          className="pd-handoff-subtab-btn"
                           onClick={() => setActiveHandoffSubTab(subTab.id)}
                           style={{
                             padding: '0.5rem 1.25rem',
@@ -3042,18 +3303,18 @@ This document serves as our living source of truth.`
                   {activeHandoffSubTab === 'connect' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                       {/* Project ID copy card */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.875rem 1.25rem', borderRadius: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>Project ID:</span>
-                          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500 }}>{project.id}</span>
+                      <div className="pd-handoff-id-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.875rem 1.25rem', borderRadius: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', minWidth: 0 }}>
+                          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>Project ID:</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.id}</span>
                         </div>
-                        <button 
+                        <button
                           onClick={() => {
                             navigator.clipboard.writeText(project.id);
                             alert('Project ID copied!');
                           }}
                           className="btn btn-secondary"
-                          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)', padding: '0.35rem 0.875rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem' }}
+                          style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-primary)', padding: '0.35rem 0.875rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', flexShrink: 0 }}
                         >
                           Copy
                         </button>
@@ -3176,10 +3437,10 @@ export default function RootLayout({ children }) {
                           Your sync token authenticates read requests from <code style={{ fontFamily: 'var(--font-mono)' }}>@strata-ds/core</code>. Pass it as the <code style={{ fontFamily: 'var(--font-mono)' }}>syncToken</code> prop on <code style={{ fontFamily: 'var(--font-mono)' }}>StrataProvider</code>.
                         </p>
                         
-                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', maxWidth: '580px' }}>
-                          <input 
-                            type="text" 
-                            readOnly 
+                        <div className="pd-handoff-token-row" style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', maxWidth: '580px' }}>
+                          <input
+                            type="text"
+                            readOnly
                             value={syncToken ? 'pt_live_' + '*'.repeat(16) : ''} 
                             style={{ 
                               flex: 1, 
@@ -3259,14 +3520,14 @@ export default function RootLayout({ children }) {
                     Available Formats & Exporters
                   </h3>
                   
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                  <div className="pd-handoff-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
                     {formats.map(fmt => {
                       const isExpanded = expandedCard === fmt.id;
                       const url = `https://strata.charisol.io/api/public/v1/projects/${project.id}/${fmt.id}`;
                       return (
                         <div key={fmt.id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                           {/* Header Row */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div className="pd-exporter-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <span style={{ 
                                 fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem', borderRadius: '4px',
@@ -3375,7 +3636,7 @@ export default function RootLayout({ children }) {
 
                 {/* Unified Token Dictionary */}
                 <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div className="pd-handoff-dict-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Unified Token Dictionary</h3>
                     <input
                       type="text"
@@ -3386,12 +3647,13 @@ export default function RootLayout({ children }) {
                       style={{ maxWidth: '240px', fontSize: '0.8rem', padding: '0.4rem 0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px' }}
                     />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                  <div className="pd-handoff-table-scroll" style={{ overflowX: 'auto' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', fontWeight: 600, minWidth: '480px' }}>
                     {['Token Key', 'Value', 'Type'].map(h => (
                       <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
                     ))}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto', minWidth: '480px' }}>
                     {Object.keys(activeTokens).flatMap(cat => activeTokens[cat] || []).filter(t => {
                       const q = searchQuery.toLowerCase();
                       return t.name.toLowerCase().includes(q) || t.value.toLowerCase().includes(q) || t.type.toLowerCase().includes(q);
@@ -3421,6 +3683,7 @@ export default function RootLayout({ children }) {
                         }}>{token.type}</span>
                       </div>
                     ))}
+                  </div>
                   </div>
                 </div>
 
@@ -3454,6 +3717,26 @@ export default function RootLayout({ children }) {
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'collaboration' && (
+            <div style={{
+              maxWidth: '480px', textAlign: 'center', margin: '3rem auto 0',
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              borderRadius: '16px', padding: '3rem 2rem',
+            }}>
+              <div style={{
+                width: '48px', height: '48px', borderRadius: '12px', background: 'var(--accent-glow)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)',
+                margin: '0 auto 1.25rem',
+              }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Collaboration is coming soon</h2>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+                Invite teammates, leave comments on tokens and components, and review changes together.
+              </p>
             </div>
           )}
         </main>
@@ -3847,6 +4130,7 @@ export default function RootLayout({ children }) {
           .pd-status-pill { display: none !important; }
           .pd-btn-label { display: none; }
           .pd-export-btn, .pd-header-sync, .pd-header-avatar { display: none !important; }
+          .pd-header-saved, .pd-header-branch, .pd-header-theme-toggle { display: none !important; }
           .pd-header-live-dot { display: inline-block !important; }
 
           /* Sidebar collapses to a 52px icon-only rail, same row layout as desktop */
@@ -3913,6 +4197,7 @@ export default function RootLayout({ children }) {
             background: var(--bg-secondary); border-right: 1px solid var(--border);
             padding: 1rem 0 1.25rem; overflow-y: auto; z-index: 301;
             box-shadow: 8px 0 24px rgba(0,0,0,0.4);
+            display: flex; flex-direction: column;
           }
           .pd-mobile-nav-overlay .pd-sidebar-tab-btn {
             width: 100% !important; height: auto !important;
@@ -3920,6 +4205,10 @@ export default function RootLayout({ children }) {
           }
           .pd-mobile-nav-overlay .pd-sidebar-tab-label { display: inline !important; }
           .pd-mobile-nav-overlay .pd-sidebar-categories { display: block !important; }
+          .pd-mobile-nav-bottom {
+            margin-top: auto; padding: 1rem 0.75rem 0; border-top: 1px solid var(--border);
+            display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+          }
 
           /* Sync / Export / Account relocate from the header into the rail's bottom section */
           .pd-sidebar-rail-bottom {
@@ -3938,6 +4227,7 @@ export default function RootLayout({ children }) {
             background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary);
           }
           .pd-rail-btn-accent { background: rgba(252,6,148,0.13); border-color: rgba(252,6,148,0.25); color: var(--accent); }
+          .pd-rail-btn-ghost { background: transparent; border-color: #333; }
           .pd-rail-avatar {
             width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
             background: var(--accent); color: #fff; font-family: var(--font-heading); font-weight: 700; font-size: 0.7rem;
@@ -3983,11 +4273,65 @@ export default function RootLayout({ children }) {
 
           .pd-token-copy-btn { display: inline-flex !important; }
 
-          .pd-brand-subtabs { display: flex !important; width: 100%; overflow-x: auto; }
+          .pd-brand-subtabs {
+            display: flex !important;
+            position: fixed;
+            left: 52px; right: 0; bottom: 0;
+            width: auto;
+            background: var(--bg-secondary);
+            border: none;
+            border-top: 1px solid var(--border);
+            border-radius: 0;
+            padding: 0.625rem 0.75rem;
+            margin-bottom: 0 !important;
+            overflow-x: auto;
+            z-index: 150;
+          }
           .pd-brand-subtab-btn { flex-shrink: 0; white-space: nowrap; }
 
           .pd-brand-grid { grid-template-columns: 1fr !important; gap: 1.5rem !important; }
+          .pd-brand-grid > * { min-width: 0; }
           .pd-brand-minigrid { grid-template-columns: 1fr !important; gap: 0.75rem !important; }
+
+          .pd-manifesto-header { flex-direction: column !important; align-items: stretch !important; gap: 0.75rem; }
+          .pd-manifesto-actions { width: 100%; }
+          .pd-manifesto-actions button { flex: 1; text-align: center; }
+
+          .pd-assets-header { flex-direction: column; align-items: flex-start !important; gap: 0.75rem; }
+          .pd-bible-download-btn { border-radius: 100px !important; align-self: flex-start; }
+          .pd-bible-cover-label { font-size: 0.65rem; white-space: nowrap; }
+
+          .pd-components-header { flex-wrap: wrap; gap: 0.75rem; }
+          .pd-component-grid { grid-template-columns: 1fr !important; }
+
+          .pd-handoff-card { padding: 1.25rem !important; }
+          .pd-codeassets-card { padding: 1.25rem !important; }
+          /* Sub-tab switcher becomes a fixed bottom navbar on mobile, matching Figma's Frame 8 */
+          .pd-handoff-subtabs {
+            position: fixed;
+            left: 52px; right: 0; bottom: 0;
+            display: flex !important;
+            gap: 0.5rem !important;
+            background: var(--bg-tertiary);
+            border: none !important;
+            border-top: 1px solid var(--border);
+            padding: 0.75rem !important;
+            margin-bottom: 0 !important;
+            z-index: 150;
+          }
+          .pd-handoff-subtabs .pd-handoff-subtab-btn {
+            flex: 1;
+            white-space: nowrap;
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.78rem !important;
+          }
+          .pd-handoff-id-row { flex-wrap: wrap; gap: 0.5rem; }
+          .pd-handoff-token-row { flex-direction: column !important; max-width: 100% !important; }
+          .pd-handoff-token-row input { width: 100%; }
+          .pd-handoff-grid { grid-template-columns: 1fr !important; }
+          .pd-exporter-header { flex-wrap: wrap; gap: 0.5rem; }
+          .pd-handoff-dict-header { flex-direction: column !important; align-items: stretch !important; gap: 0.75rem; }
+          .pd-handoff-dict-header input { max-width: 100% !important; }
         }
       `}} />
 

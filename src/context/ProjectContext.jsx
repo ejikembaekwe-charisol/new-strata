@@ -93,6 +93,8 @@ export function ProjectProvider({ children }) {
       },
       tokens: projectData.tokens || DEFAULT_TOKENS,
       components: projectData.components || [],
+      branchOf: projectData.branchOf,
+      branchName: projectData.branchName,
     };
     setProjects(prev => [newProject, ...prev]);
     return newProject;
