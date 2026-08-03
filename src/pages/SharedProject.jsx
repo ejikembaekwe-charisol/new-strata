@@ -806,6 +806,63 @@ const SharedProject = () => {
   const projectSlug = (project.name || 'design-system').toLowerCase().replace(/\s+/g, '-');
   const { added, modified, deleted } = getVersionDiff();
 
+  // Full design system as a single Markdown file — meant to be dropped straight
+  // into a repo or pasted into an AI prompt, so an agent/LLM has the whole
+  // system (brand, tokens, components, integration) as grounded context.
+  const generateMarkdown = () => {
+    const lines = [];
+    lines.push(`# ${project.name}`);
+    if (project.description) lines.push(`\n${project.description}`);
+
+    lines.push(`\n## Brand`);
+    lines.push(`- Primary: \`${brand.primaryColor || project.color || '#FC0694'}\``);
+    lines.push(`- Secondary: \`${brand.secondaryColor || '#1A1A24'}\``);
+    lines.push(`- Accent: \`${brand.accentColor || '#3B82F6'}\``);
+    lines.push(`- Heading font: ${brand.headingFont || 'Outfit'}`);
+    lines.push(`- Body font: ${brand.bodyFont || 'Inter'}`);
+    if (brand.toneKeywords?.length) lines.push(`- Tone: ${brand.toneKeywords.join(', ')}`);
+    if (brand.voice) lines.push(`- Voice: ${brand.voice}`);
+
+    lines.push(`\n## Integration`);
+    lines.push(`\`\`\`css`);
+    lines.push(`@import url("https://strata.io/api/v1/projects/${project.id}/css");`);
+    lines.push(`\`\`\``);
+    lines.push(`\`\`\`bash`);
+    lines.push(`npx strata-cli sync --id ${project.id}`);
+    lines.push(`\`\`\``);
+
+    if (allTokens.length) {
+      lines.push(`\n## Tokens (${allTokens.length})`);
+      const byCategory = {};
+      allTokens.forEach(t => { (byCategory[t.category] = byCategory[t.category] || []).push(t); });
+      Object.keys(byCategory).forEach(cat => {
+        lines.push(`\n### ${cat}`);
+        lines.push(`| Name | Value | Type |`);
+        lines.push(`|---|---|---|`);
+        byCategory[cat].forEach(t => lines.push(`| \`${t.name}\` | \`${t.value}\` | ${t.type} |`));
+      });
+    }
+
+    if (project.components?.length) {
+      lines.push(`\n## Components (${project.components.length})`);
+      project.components.forEach(c => {
+        lines.push(`- **${c.name}**${c.description ? ` — ${c.description}` : ''}`);
+      });
+    }
+
+    return lines.join('\n') + '\n';
+  };
+
+  const handleDownloadMarkdown = () => {
+    const dataStr = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(generateMarkdown());
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute('href', dataStr);
+    downloadAnchorNode.setAttribute('download', `${projectSlug}.md`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
   // ── Overview tab cards, built once so `activeAudience` can reorder/curate
   // them without duplicating any of the underlying JSX ──
   const sandboxCard = (
@@ -1012,9 +1069,19 @@ const SharedProject = () => {
           </div>
         </div>
       </div>
-      <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-        Need export formats or the full snippet library? See the <strong>Components &amp; Spec</strong> tab.
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+          Need export formats or the full snippet library? See the <strong>Components &amp; Spec</strong> tab.
+        </p>
+        <button
+          onClick={handleDownloadMarkdown}
+          className="btn btn-secondary"
+          style={{ fontSize: '0.78rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0, whiteSpace: 'nowrap' }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download as Markdown
+        </button>
+      </div>
     </div>
   );
 
@@ -1108,6 +1175,14 @@ const SharedProject = () => {
           {copiedToken === 'Vibe Coder Snippet' ? '✓' : '📋'}
         </button>
       </div>
+      <button
+        onClick={handleDownloadMarkdown}
+        className="btn btn-secondary"
+        style={{ fontSize: '0.78rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', width: 'fit-content' }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download as Markdown
+      </button>
     </div>
   );
 
