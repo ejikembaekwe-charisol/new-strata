@@ -93,6 +93,7 @@ export function ProjectProvider({ children }) {
       },
       tokens: projectData.tokens || DEFAULT_TOKENS,
       components: projectData.components || [],
+      members: projectData.members || [],
       branchOf: projectData.branchOf,
       branchName: projectData.branchName,
     };

@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
 import branchIcon from '../assets/branch-icon.svg';
+import { resolveMyRole, can, canViewTab, ROLES } from '../utils/permissions';
 
 /* ── Error Boundary: prevents blank screen on render crashes ── */
 class ErrorBoundary extends React.Component {
@@ -60,6 +61,13 @@ const actionBtnStyle = {
   background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
   borderRadius: '6px', padding: '0.4rem 0.75rem', fontSize: '0.78rem',
   color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit',
+};
+
+const computeInitials = (name) => {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
 // Sidebar shows token TYPES
@@ -331,10 +339,11 @@ function ProjectDetailInner() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { projects, isLoaded, updateProject, addProject } = useProjects();
+  const { projects, isLoaded, updateProject, addProject, deleteProject } = useProjects();
 
   // Find project from list
   const project = projects.find(p => String(p.id) === String(id));
+  const myRole = resolveMyRole(project, user);
 
   const [activeTab, setActiveTab] = useState('tokens');
   const [activeCategory, setActiveCategory] = useState('Color');  // token type
@@ -348,7 +357,12 @@ function ProjectDetailInner() {
   const [isLightTheme, setIsLightTheme] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState(() => new Date());
   const [brandData, setBrandData] = useState(null);
-  
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [transferOwnershipOpen, setTransferOwnershipOpen] = useState(false);
+  const [transferTargetId, setTransferTargetId] = useState('');
+  const [projectNameDraft, setProjectNameDraft] = useState(project?.name || '');
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'Designer' });
+
   // Handoff state variables
   const [expandedCard, setExpandedCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -492,6 +506,13 @@ export const ThemeProvider = ({ children }) => {
   const [editingTokenValue, setEditingTokenValue] = useState('');
   const [presetsExpanded, setPresetsExpanded] = useState(true);
   const [customExpanded, setCustomExpanded] = useState(true);
+
+  // Keep the Settings tab's name draft in sync once the project loads
+  React.useEffect(() => {
+    if (project) {
+      setProjectNameDraft(project.name);
+    }
+  }, [project?.id, project?.name]);
 
   // Initialize brandData once project is found
   React.useEffect(() => {
@@ -1413,7 +1434,7 @@ This document serves as our living source of truth.`
 
   // Shared main-tab button list — rendered in the desktop sidebar, the mobile icon
   // rail (icon-only), and the mobile nav overlay (icon + label, like desktop).
-  const renderMainTabButtons = () => MAIN_TABS.map(tab => (
+  const renderMainTabButtons = () => MAIN_TABS.filter(tab => canViewTab(myRole, tab.id)).map(tab => (
     <button
       key={tab.id}
       className={`pd-sidebar-tab-btn${activeTab === tab.id ? ' pd-sidebar-tab-btn-active' : ''}`}
@@ -1682,6 +1703,11 @@ This document serves as our living source of truth.`
               <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
                 My projects
               </button>
+              {canViewTab(myRole, 'settings') && (
+                <button onClick={() => { setActiveTab('settings'); setShowUserMenu(false); }} style={menuItemStyle}>
+                  Settings
+                </button>
+              )}
               <button onClick={() => { logout(); navigate('/'); setShowUserMenu(false); }} style={{ ...menuItemStyle, color: '#EF4444' }}>
                 Log out
               </button>
@@ -1766,6 +1792,11 @@ This document serves as our living source of truth.`
                     <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
                       My projects
                     </button>
+                    {canViewTab(myRole, 'settings') && (
+                      <button onClick={() => { setActiveTab('settings'); setShowUserMenu(false); }} style={menuItemStyle}>
+                        Settings
+                      </button>
+                    )}
                     <button onClick={() => { logout(); navigate('/'); setShowUserMenu(false); }} style={{ ...menuItemStyle, color: '#EF4444' }}>
                       Log out
                     </button>
@@ -1960,6 +1991,11 @@ This document serves as our living source of truth.`
                         <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
                           My projects
                         </button>
+                        {canViewTab(myRole, 'settings') && (
+                          <button onClick={() => { setActiveTab('settings'); setShowUserMenu(false); setMobileNavExpanded(false); }} style={menuItemStyle}>
+                            Settings
+                          </button>
+                        )}
                         <button onClick={() => { logout(); navigate('/'); setShowUserMenu(false); }} style={{ ...menuItemStyle, color: '#EF4444' }}>
                           Log out
                         </button>
@@ -2056,11 +2092,12 @@ This document serves as our living source of truth.`
                           <div key={c.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.75rem 1.25rem', borderRadius: '8px' }}>
                             <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>{c.label}</span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <input 
-                                type="color" 
-                                value={brandData[c.field]} 
+                              <input
+                                type="color"
+                                value={brandData[c.field]}
                                 onChange={(e) => handleBrandUpdate(c.field, e.target.value)}
-                                style={{ width: '32px', height: '32px', border: 'none', borderRadius: '6px', background: 'none', cursor: 'pointer' }}
+                                disabled={!can(myRole, 'brandBible', 'edit')}
+                                style={{ width: '32px', height: '32px', border: 'none', borderRadius: '6px', background: 'none', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
                               />
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600 }}>{brandData[c.field].toUpperCase()}</span>
                             </div>
@@ -2078,10 +2115,11 @@ This document serves as our living source of truth.`
                       <div className="pd-brand-minigrid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                         <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem 1.25rem', borderRadius: '8px' }}>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Headings</span>
-                          <select 
-                            value={brandData.headingFont} 
+                          <select
+                            value={brandData.headingFont}
                             onChange={(e) => handleBrandUpdate('headingFont', e.target.value)}
-                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer' }}
+                            disabled={!can(myRole, 'brandBible', 'edit')}
+                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
                           >
                             <option>Outfit</option>
                             <option>Inter</option>
@@ -2090,10 +2128,11 @@ This document serves as our living source of truth.`
                         </div>
                         <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem 1.25rem', borderRadius: '8px' }}>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Body Font</span>
-                          <select 
-                            value={brandData.bodyFont} 
+                          <select
+                            value={brandData.bodyFont}
                             onChange={(e) => handleBrandUpdate('bodyFont', e.target.value)}
-                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: 'pointer' }}
+                            disabled={!can(myRole, 'brandBible', 'edit')}
+                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
                           >
                             <option>Inter</option>
                             <option>Roboto</option>
@@ -2137,20 +2176,22 @@ This document serves as our living source of truth.`
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Figma URL</label>
-                          <input 
-                            className="form-input" 
-                            style={{ fontSize: '0.8rem', padding: '0.4rem' }} 
-                            value={brandData.figmaUrl} 
+                          <input
+                            className="form-input"
+                            style={{ fontSize: '0.8rem', padding: '0.4rem' }}
+                            value={brandData.figmaUrl}
                             onChange={(e) => handleBrandUpdate('figmaUrl', e.target.value)}
+                            disabled={!can(myRole, 'brandBible', 'edit')}
                           />
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Website URL</label>
-                          <input 
-                            className="form-input" 
-                            style={{ fontSize: '0.8rem', padding: '0.4rem' }} 
-                            value={brandData.websiteUrl} 
+                          <input
+                            className="form-input"
+                            style={{ fontSize: '0.8rem', padding: '0.4rem' }}
+                            value={brandData.websiteUrl}
                             onChange={(e) => handleBrandUpdate('websiteUrl', e.target.value)}
+                            disabled={!can(myRole, 'brandBible', 'edit')}
                           />
                         </div>
                       </div>
@@ -2200,14 +2241,14 @@ This document serves as our living source of truth.`
                           background: 'radial-gradient(circle, rgba(252,6,148,0.05) 0%, transparent 70%)',
                           pointerEvents: 'none'
                         }} />
-                        <textarea 
-                          className="manifesto-view" 
-                          style={{ 
-                            whiteSpace: 'pre-wrap', 
-                            width: '100%', 
-                            minHeight: '280px', 
-                            background: 'transparent', 
-                            border: 'none', 
+                        <textarea
+                          className="manifesto-view"
+                          style={{
+                            whiteSpace: 'pre-wrap',
+                            width: '100%',
+                            minHeight: '280px',
+                            background: 'transparent',
+                            border: 'none',
                             color: 'inherit',
                             fontSize: 'inherit',
                             lineHeight: 'inherit',
@@ -2218,6 +2259,7 @@ This document serves as our living source of truth.`
                           }}
                           value={brandData.manifesto}
                           onChange={(e) => handleBrandUpdate('manifesto', e.target.value)}
+                          readOnly={!can(myRole, 'brandBible', 'edit')}
                         />
                       </div>
                     </section>
@@ -2231,13 +2273,15 @@ This document serves as our living source of truth.`
                     <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <h3 style={{ fontSize: '0.85rem', margin: 0, fontWeight: 600, color: 'var(--text-primary)' }}>Tone Keywords</h3>
-                        <button 
-                          onClick={() => {
-                            const val = prompt('Add tone keyword (e.g. Playful, Professional):');
-                            if (val) handleBrandUpdate('toneKeywords', [...brandData.toneKeywords, val]);
-                          }}
-                          style={{ ...actionBtnStyle, fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
-                        >+ Add</button>
+                        {can(myRole, 'brandBible', 'create') && (
+                          <button
+                            onClick={() => {
+                              const val = prompt('Add tone keyword (e.g. Playful, Professional):');
+                              if (val) handleBrandUpdate('toneKeywords', [...brandData.toneKeywords, val]);
+                            }}
+                            style={{ ...actionBtnStyle, fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                          >+ Add</button>
+                        )}
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                         {brandData.toneKeywords.map((keyword, i) => (
@@ -2247,12 +2291,14 @@ This document serves as our living source of truth.`
                             color: 'var(--text-primary)', fontSize: '0.78rem'
                           }}>
                             {keyword}
-                            <button 
-                              onClick={() => handleBrandUpdate('toneKeywords', brandData.toneKeywords.filter((_, idx) => idx !== i))}
-                              style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 0, display: 'flex' }}
-                            >
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                            </button>
+                            {can(myRole, 'brandBible', 'delete') && (
+                              <button
+                                onClick={() => handleBrandUpdate('toneKeywords', brandData.toneKeywords.filter((_, idx) => idx !== i))}
+                                style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 0, display: 'flex' }}
+                              >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                              </button>
+                            )}
                           </div>
                         ))}
                         {brandData.toneKeywords.length === 0 && (
@@ -2265,12 +2311,13 @@ This document serves as our living source of truth.`
                     <div style={{ background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--border)' }}>
                       <h3 style={{ fontSize: '0.85rem', margin: '0 0 1rem 0', fontWeight: 600, color: 'var(--text-primary)' }}>Brand Voice</h3>
                       <div className="form-group" style={{ marginBottom: 0 }}>
-                        <textarea 
+                        <textarea
                           className="form-textarea"
                           style={{ height: '120px', fontSize: '0.85rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '6px', width: '100%', padding: '0.5rem' }}
                           value={brandData.voice}
                           onChange={(e) => handleBrandUpdate('voice', e.target.value)}
                           placeholder="Describe how the brand speaks..."
+                          readOnly={!can(myRole, 'brandBible', 'edit')}
                         />
                       </div>
                     </div>
@@ -2391,13 +2438,14 @@ This document serves as our living source of truth.`
                       </div>
 
                       {/* Drag and Drop File Input Area */}
-                      <div 
+                      {can(myRole, 'assets', 'upload') ? (
+                      <div
                         onClick={() => document.getElementById('brand-bible-uploader').click()}
-                        style={{ 
-                          border: '2px dashed var(--border)', 
-                          borderRadius: '16px', 
-                          padding: '2.5rem 1.5rem', 
-                          textAlign: 'center', 
+                        style={{
+                          border: '2px dashed var(--border)',
+                          borderRadius: '16px',
+                          padding: '2.5rem 1.5rem',
+                          textAlign: 'center',
                           cursor: 'pointer',
                           background: isScanningDoc ? 'rgba(252,6,148,0.03)' : 'var(--bg-tertiary)',
                           transition: 'background 0.2s, border-color 0.2s',
@@ -2447,6 +2495,14 @@ This document serves as our living source of truth.`
                           </div>
                         )}
                       </div>
+                      ) : (
+                        <div style={{
+                          border: '2px dashed var(--border)', borderRadius: '16px', padding: '2rem 1.5rem',
+                          textAlign: 'center', background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)', fontSize: '0.8rem',
+                        }}>
+                          You don't have permission to upload reference documents.
+                        </div>
+                      )}
 
                       {/* Uploaded Reference List */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -2469,16 +2525,18 @@ This document serves as our living source of truth.`
                               >
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                               </button>
-                              <button 
-                                onClick={() => {
-                                  if (confirm(`Are you sure you want to remove ${asset.name}?`)) {
-                                    updateUploadedAssets(uploadedAssets.filter(a => a.id !== asset.id));
-                                  }
-                                }}
-                                style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0.25rem' }}
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                              </button>
+                              {can(myRole, 'assets', 'delete') && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to remove ${asset.name}?`)) {
+                                      updateUploadedAssets(uploadedAssets.filter(a => a.id !== asset.id));
+                                    }
+                                  }}
+                                  style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0.25rem' }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -2570,10 +2628,12 @@ This document serves as our living source of truth.`
                     {tokens.length} {TOKEN_LAYER_LABELS[activeLayer].toLowerCase()} token{tokens.length !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <div className="pd-tokens-header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button onClick={() => setTokenModal({ mode: 'add', category: activeCategory, defaultLayer: activeLayer })} style={actionBtnStyle}>+ Add token</button>
-                  <button style={actionBtnStyle} onClick={() => alert('Importing tokens... (mock)')}>Import</button>
-                </div>
+                {can(myRole, 'tokens', 'create') && (
+                  <div className="pd-tokens-header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => setTokenModal({ mode: 'add', category: activeCategory, defaultLayer: activeLayer })} style={actionBtnStyle}>+ Add token</button>
+                    <button style={actionBtnStyle} onClick={() => alert('Importing tokens... (mock)')}>Import</button>
+                  </div>
+                )}
               </div>
 
               {/* Token search */}
@@ -2806,6 +2866,7 @@ This document serves as our living source of truth.`
                         </button>
 
                         {/* 3-Dot Action Dropdown */}
+                        {can(myRole, 'tokens', 'edit') && (
                         <div className="pd-token-row-actions" style={{ position: 'relative' }}>
                           <button
                             onClick={(e) => {
@@ -2871,6 +2932,7 @@ This document serves as our living source of truth.`
                             </>
                           )}
                         </div>
+                        )}
                       </div>
                     </div>
 
@@ -2943,6 +3005,7 @@ This document serves as our living source of truth.`
                     </div>
                     <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{comp.description}</p>
                   </div>
+                  {can(myRole, 'components', 'edit') && (
                   <div style={{ display: 'flex', gap: '0.25rem' }}>
                     <button
                       onClick={() => setComponentModal({ mode: 'edit', component: comp })}
@@ -2991,6 +3054,7 @@ This document serves as our living source of truth.`
                       </button>
                     )}
                   </div>
+                  )}
                 </div>
 
                 {/* Canvas/Preview Area */}
@@ -3042,9 +3106,11 @@ This document serves as our living source of truth.`
                   <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                     {activeComponentCategory} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({catComps.length})</span>
                   </h2>
-                  <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                    + Add component
-                  </button>
+                  {can(myRole, 'components', 'create') && (
+                    <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
+                      + Add component
+                    </button>
+                  )}
                 </div>
 
                 {catComps.length === 0 ? (
@@ -3056,9 +3122,11 @@ This document serves as our living source of truth.`
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginBottom: '1.5rem' }}>
                       Add a component to {activeComponentCategory} to reference your tokens.
                     </p>
-                    <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                      Create first {activeComponentCategory.toLowerCase().slice(0, -1)}
-                    </button>
+                    {can(myRole, 'components', 'create') && (
+                      <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
+                        Create first {activeComponentCategory.toLowerCase().slice(0, -1)}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -3140,9 +3208,11 @@ This document serves as our living source of truth.`
                               <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', margin: '0 0 1rem 0' }}>
                                 No custom components created in this category yet.
                               </p>
-                              <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.4rem 1rem' }}>
-                                Create Custom Component
-                              </button>
+                              {can(myRole, 'components', 'create') && (
+                                <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.4rem 1rem' }}>
+                                  Create Custom Component
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <div className="pd-component-grid" style={{
@@ -3699,46 +3769,307 @@ export default function RootLayout({ children }) {
           {activeTab === 'settings' && (
             <div style={{ maxWidth: '480px' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem' }}>Project settings</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Project name</label>
-                  <input className="form-input" defaultValue={project.name} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Visibility</label>
-                  <select className="form-input" style={{ cursor: 'pointer' }}>
-                    <option>Private</option>
-                    <option>Public</option>
-                  </select>
-                </div>
-                <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
-                  <button style={{ ...actionBtnStyle, color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)' }}>
-                    Delete project
+              {canViewTab(myRole, 'collaboration') && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px',
+                  padding: '1rem 1.25rem', marginBottom: '1.5rem',
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Team &amp; Permissions</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                      Manage who has access to this project and what they can do.
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.9rem', flexShrink: 0 }}
+                    onClick={() => setActiveTab('collaboration')}
+                  >
+                    Manage &rarr;
                   </button>
                 </div>
-              </div>
+              )}
+              {!can(myRole, 'projectManagement', 'updateSettings') ? (
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
+                  Only the project Owner or an Admin can change these settings.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Project name</label>
+                    <input
+                      className="form-input"
+                      value={projectNameDraft}
+                      onChange={(e) => setProjectNameDraft(e.target.value)}
+                      onBlur={() => {
+                        if (projectNameDraft.trim() && projectNameDraft !== project.name) {
+                          updateProject(id, { name: projectNameDraft.trim() });
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Visibility</label>
+                    <select
+                      className="form-input"
+                      style={{ cursor: 'pointer' }}
+                      value={project.visibility || 'Private'}
+                      onChange={(e) => handleVisibilityChange(e.target.value)}
+                    >
+                      <option>Private</option>
+                      <option>Public</option>
+                    </select>
+                  </div>
+
+                  {can(myRole, 'projectManagement', 'transferOwnership') && (
+                    <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+                      <label className="form-label">Transfer ownership</label>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.25rem 0 0.75rem' }}>
+                        Hand full ownership of this project to another member. You'll be downgraded to Admin.
+                      </p>
+                      {(project.members || []).filter(m => m.email?.toLowerCase() !== user?.email?.toLowerCase()).length === 0 ? (
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Invite a teammate first to transfer ownership to them.</p>
+                      ) : (
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <select
+                            className="form-input"
+                            style={{ cursor: 'pointer', flex: 1 }}
+                            value={transferTargetId}
+                            onChange={(e) => setTransferTargetId(e.target.value)}
+                          >
+                            <option value="">Select a member…</option>
+                            {(project.members || [])
+                              .filter(m => m.email?.toLowerCase() !== user?.email?.toLowerCase())
+                              .map(m => (
+                                <option key={m.id} value={m.id}>{m.name} ({m.role})</option>
+                              ))}
+                          </select>
+                          <button
+                            className="btn btn-secondary"
+                            disabled={!transferTargetId}
+                            onClick={() => {
+                              const target = (project.members || []).find(m => m.id === transferTargetId);
+                              if (!target) return;
+                              if (!window.confirm(`Make ${target.name} the Owner of this project? You will become an Admin.`)) return;
+                              const updatedMembers = (project.members || []).map(m => {
+                                if (m.id === target.id) return { ...m, role: 'Owner' };
+                                if (m.email?.toLowerCase() === user?.email?.toLowerCase()) return { ...m, role: 'Admin' };
+                                return m;
+                              });
+                              updateProject(id, { members: updatedMembers });
+                              setTransferTargetId('');
+                            }}
+                          >
+                            Transfer
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {can(myRole, 'projectManagement', 'deleteProject') && (
+                    <div style={{ paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+                      <button
+                        style={{ ...actionBtnStyle, color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)' }}
+                        onClick={() => {
+                          if (window.confirm(`Delete "${project.name}"? This cannot be undone.`)) {
+                            deleteProject(id);
+                            navigate('/projects');
+                          }
+                        }}
+                      >
+                        Delete project
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {activeTab === 'collaboration' && (
-            <div style={{
-              maxWidth: '480px', textAlign: 'center', margin: '3rem auto 0',
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '16px', padding: '3rem 2rem',
-            }}>
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '12px', background: 'var(--accent-glow)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)',
-                margin: '0 auto 1.25rem',
-              }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          {activeTab === 'collaboration' && (() => {
+            const members = project.members || [];
+            const canInvite = can(myRole, 'collaboration', 'inviteMembers') || can(myRole, 'collaboration', 'manageMembers');
+            const canRemove = can(myRole, 'collaboration', 'removeMembers') || can(myRole, 'collaboration', 'manageMembers');
+            const canAssignRoles = can(myRole, 'collaboration', 'assignRoles') || can(myRole, 'collaboration', 'manageMembers');
+
+            const handleInviteSubmit = () => {
+              if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
+                alert('Please fill in a name and email.');
+                return;
+              }
+              const base = members.length
+                ? members
+                : [{ id: user.email, name: user.name, email: user.email, initials: user.initials, role: 'Owner', joinedAt: new Date().toISOString() }];
+              const newMember = {
+                id: String(Date.now()),
+                name: inviteForm.name.trim(),
+                email: inviteForm.email.trim(),
+                initials: computeInitials(inviteForm.name),
+                role: inviteForm.role,
+                joinedAt: new Date().toISOString(),
+              };
+              updateProject(id, { members: [...base, newMember] });
+              setInviteForm({ name: '', email: '', role: 'Designer' });
+              setInviteModalOpen(false);
+            };
+
+            const handleRoleChange = (memberId, newRole) => {
+              updateProject(id, { members: members.map(m => m.id === memberId ? { ...m, role: newRole } : m) });
+            };
+
+            const handleRemoveMember = (memberId, memberName) => {
+              if (!window.confirm(`Remove ${memberName} from this project?`)) return;
+              updateProject(id, { members: members.filter(m => m.id !== memberId) });
+            };
+
+            // If no team has been set up yet, show "you" as the implicit fallback Owner.
+            const displayMembers = members.length
+              ? members
+              : [{ id: 'me', name: user?.name, email: user?.email, initials: user?.initials, role: 'Owner', joinedAt: null }];
+
+            return (
+              <div style={{ maxWidth: '640px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>Team &amp; access</h2>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0.25rem 0 0' }}>Manage who has access to this project and what they can do.</p>
+                  </div>
+                  {canInvite && (
+                    <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '0.5rem 1rem' }} onClick={() => setInviteModalOpen(true)}>
+                      + Invite teammate
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden' }}>
+                  {displayMembers.map((m, i) => {
+                    const isSelf = m.email?.toLowerCase() === user?.email?.toLowerCase();
+                    const canEditThisRow = canAssignRoles && m.role !== 'Owner' && !isSelf;
+                    return (
+                      <div key={m.id} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+                        padding: '0.875rem 1.25rem',
+                        borderBottom: i < displayMembers.length - 1 ? '1px solid var(--border)' : 'none',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                          <div style={{
+                            width: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent)',
+                            color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.7rem', fontWeight: 700, flexShrink: 0, fontFamily: 'var(--font-heading)',
+                          }}>
+                            {m.initials}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-primary)' }}>
+                              {m.name}{isSelf ? ' (you)' : ''}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {m.email}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                          {canEditThisRow ? (
+                            <select
+                              value={m.role}
+                              onChange={(e) => handleRoleChange(m.id, e.target.value)}
+                              style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem', borderRadius: '6px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                            >
+                              {ROLES.filter(r => r !== 'Owner').map(r => (
+                                <option key={r} value={r}>{r}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', borderRadius: '100px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                              {m.role}
+                            </span>
+                          )}
+                          {canRemove && m.role !== 'Owner' && !isSelf && (
+                            <button
+                              onClick={() => handleRemoveMember(m.id, m.name)}
+                              title="Remove member"
+                              style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {members.length === 0 && (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginTop: '0.75rem' }}>
+                    It's just you right now. Invite teammates to collaborate on this design system.
+                  </p>
+                )}
+
+                {inviteModalOpen && (
+                  <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(9, 9, 12, 0.85)', backdropFilter: 'blur(10px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+                  }}>
+                    <div style={{
+                      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                      borderRadius: '16px', padding: '2rem', width: '400px',
+                      boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                      display: 'flex', flexDirection: 'column', gap: '1.25rem',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Invite teammate</h3>
+                        <button onClick={() => setInviteModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem' }}>×</button>
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Name</label>
+                        <input
+                          type="text" className="form-input" value={inviteForm.name}
+                          onChange={(e) => setInviteForm(f => ({ ...f, name: e.target.value }))}
+                          placeholder="e.g. Jordan Lee"
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Email</label>
+                        <input
+                          type="email" className="form-input" value={inviteForm.email}
+                          onChange={(e) => setInviteForm(f => ({ ...f, email: e.target.value }))}
+                          placeholder="jordan@company.com"
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Role</label>
+                        <select
+                          className="form-input" style={{ cursor: 'pointer' }}
+                          value={inviteForm.role}
+                          onChange={(e) => setInviteForm(f => ({ ...f, role: e.target.value }))}
+                        >
+                          {ROLES.filter(r => r !== 'Owner').map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', margin: 0 }}>
+                        No email is sent — this adds a teammate directly (local simulation, like your sync token).
+                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                        <button
+                          onClick={() => setInviteModalOpen(false)}
+                          style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '0.5rem 1.25rem', borderRadius: '8px', fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Cancel
+                        </button>
+                        <button className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.82rem' }} onClick={handleInviteSubmit}>
+                          Send invite
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Collaboration is coming soon</h2>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Invite teammates, leave comments on tokens and components, and review changes together.
-              </p>
-            </div>
-          )}
+            );
+          })()}
         </main>
       </div>
 

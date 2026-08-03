@@ -323,12 +323,19 @@ const SANDBOX_RADII = [
 ];
 
 const AUDIENCE_TABS = [
-  { id: 'overview', name: 'Overview', to: null },
-  { id: 'developers', name: 'Developers', to: '/developers' },
-  { id: 'designers', name: 'Designers', to: '/designers' },
-  { id: 'design-teams', name: 'Design Teams', to: '/design-teams' },
-  { id: 'vibe-coders', name: 'Vibe Coders', to: '/vibe-coders' },
+  { id: 'overview', name: 'Overview' },
+  { id: 'developers', name: 'Developers' },
+  { id: 'designers', name: 'Designers' },
+  { id: 'design-teams', name: 'Design Teams' },
+  { id: 'vibe-coders', name: 'Vibe Coders' },
 ];
+
+const AUDIENCE_STRAPLINES = {
+  developers: 'Runtime sync — pull tokens and components without a redeploy.',
+  designers: 'Brand, tokens, and components exactly as they’ll ship.',
+  'design-teams': 'One system definition, adopted consistently everywhere it’s used.',
+  'vibe-coders': 'Copy the essentials and keep every screen on-brand.',
+};
 
 const SharedProject = () => {
   const { id } = useParams();
@@ -340,6 +347,7 @@ const SharedProject = () => {
   const [tokenSearch, setTokenSearch] = useState('');
   const [activeExportTab, setActiveExportTab] = useState('css');
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeAudience, setActiveAudience] = useState('overview');
   const [selectedTier, setSelectedTier] = useState('brand');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [forking, setForking] = useState(false);
@@ -798,6 +806,318 @@ const SharedProject = () => {
   const projectSlug = (project.name || 'design-system').toLowerCase().replace(/\s+/g, '-');
   const { added, modified, deleted } = getVersionDiff();
 
+  // ── Overview tab cards, built once so `activeAudience` can reorder/curate
+  // them without duplicating any of the underlying JSX ──
+  const sandboxCard = (
+    <div style={{
+      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+      borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
+    }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Interactive Component Sandbox</h3>
+        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Tweak atomic variables and inspect live UI components.</p>
+      </div>
+
+      <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {/* Mini device header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>{project.name}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Overview</div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <span style={{ background: 'rgba(252,6,148,0.15)', color: '#FC0694', border: '1px solid rgba(252,6,148,0.3)', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '100px' }}>LIVE</span>
+            <span style={{ background: 'rgba(59,130,246,0.15)', color: '#3B82F6', border: '1px solid rgba(59,130,246,0.3)', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '100px' }}>New</span>
+          </div>
+        </div>
+
+        {/* Brand Identity Preview */}
+        <div style={{
+          background: sandboxDark ? '#0D0D12' : '#F4F4F5', border: '1px solid var(--border)',
+          borderRadius: '14px', padding: '1.25rem', position: 'relative', transition: 'background 0.2s ease',
+        }}>
+          <span style={{
+            position: 'absolute', top: '1rem', right: '1.25rem', fontSize: '0.6rem', fontWeight: 700,
+            textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent)'
+          }}>Active Sync</span>
+          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: sandboxDark ? '#FFFFFF' : '#111827' }}>Brand Identity Preview</h4>
+          <p style={{ margin: '0.3rem 0 1rem 0', fontSize: '0.8rem', color: sandboxDark ? '#8C8CA1' : '#4B5563', maxWidth: '360px' }}>
+            Primary accent, surface, and typography rendered at real scale.
+          </p>
+          <button style={{
+            background: sandboxColor, color: '#ffffff', border: 'none',
+            borderRadius: sandboxRadius, padding: '0.6rem 1.25rem',
+            fontSize: '0.85rem', fontWeight: 600, cursor: 'default', transition: 'background 0.15s ease, border-radius 0.15s ease',
+          }}>Primary Action</button>
+        </div>
+
+        {/* Stat tiles */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+          {[
+            { label: 'Synced', value: project.showcaseSites?.length || 0 },
+            { label: 'Tokens', value: allTokens.length },
+            { label: 'Components', value: project.components?.length || 0 },
+          ].map(stat => (
+            <div key={stat.label} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem 1rem' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{stat.label}</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>{stat.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <input
+            type="text"
+            value={componentSearch}
+            onChange={(e) => setComponentSearch(e.target.value)}
+            placeholder="Search components..."
+            style={{
+              flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              color: 'var(--text-primary)', padding: '0.55rem 1rem', borderRadius: '10px',
+              fontSize: '0.85rem', outline: 'none',
+            }}
+          />
+          <button className="btn btn-secondary" style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem' }}>Search</button>
+        </div>
+
+        {/* Color / Radius / Theme controls */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Color:</span>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              {SANDBOX_COLORS.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setSandboxColor(c)}
+                  title={c}
+                  style={{
+                    width: '20px', height: '20px', borderRadius: '50%', background: c, cursor: 'pointer',
+                    border: sandboxColor === c ? '2px solid var(--text-primary)' : '2px solid transparent',
+                    boxShadow: sandboxColor === c ? '0 0 0 2px var(--bg-tertiary)' : 'none',
+                    padding: 0,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Radius:</span>
+            <div style={{ display: 'flex', gap: '0.3rem' }}>
+              {SANDBOX_RADII.map(r => (
+                <button
+                  key={r.value}
+                  onClick={() => setSandboxRadius(r.value)}
+                  style={{
+                    background: sandboxRadius === r.value ? 'var(--accent)' : 'var(--bg-secondary)',
+                    color: sandboxRadius === r.value ? '#ffffff' : 'var(--text-secondary)',
+                    border: '1px solid var(--border)', borderRadius: '8px',
+                    padding: '0.3rem 0.7rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                  }}
+                >{r.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            onClick={() => setSandboxDark(d => !d)}
+            style={{
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px',
+              padding: '0.35rem 0.9rem', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer',
+            }}
+          >{sandboxDark ? 'Dark Mode' : 'Light Mode'}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const wildCard = (
+    <div style={{
+      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+      borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
+    }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>See It in the Wild</h3>
+        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Connected live surfaces powered by this system.</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.25rem' }}>
+        {(project.showcaseSites || [
+          { name: 'Muzingo Web Player', url: 'https://muzingo.io', status: 'Live' }
+        ]).map(site => (
+          <a
+            key={site.name}
+            href={site.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+              borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column',
+              gap: '0.75rem', textDecoration: 'none', transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ width: '100%', height: '72px', borderRadius: '10px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }} />
+            <div>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{site.name}</h4>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{site.url}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
+              <span style={{ fontSize: '0.65rem', color: '#10B981', fontWeight: 600 }}>{site.status}</span>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+
+  const developerCard = (
+    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Quick Integration</h3>
+        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Pull this system into your app — no redeploy needed when it changes.</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+        <div>
+          <label style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>CDN Public Link</label>
+          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+            <input
+              type="text" readOnly
+              value={`https://strata.io/api/v1/projects/${project.id}/css`}
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }}
+            />
+            <button
+              onClick={() => handleCopy(`https://strata.io/api/v1/projects/${project.id}/css`, 'Overview CDN')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)' }}
+            >
+              {copiedToken === 'Overview CDN' ? '✓' : '📋'}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.25rem' }}>CLI Sync Command</label>
+          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+            <input
+              type="text" readOnly
+              value={`npx strata-cli sync --id ${project.id}`}
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }}
+            />
+            <button
+              onClick={() => handleCopy(`npx strata-cli sync --id ${project.id}`, 'Overview CLI')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)' }}
+            >
+              {copiedToken === 'Overview CLI' ? '✓' : '📋'}
+            </button>
+          </div>
+        </div>
+      </div>
+      <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+        Need export formats or the full snippet library? See the <strong>Components &amp; Spec</strong> tab.
+      </p>
+    </div>
+  );
+
+  const designerCard = (
+    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Brand at a Glance</h3>
+        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Color, type, and voice — exactly as they'll ship.</p>
+      </div>
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        {[
+          { label: 'Primary', value: brand.primaryColor || project.color || '#FC0694' },
+          { label: 'Secondary', value: brand.secondaryColor || '#1A1A24' },
+          { label: 'Accent', value: brand.accentColor || '#3B82F6' },
+        ].map(c => (
+          <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.6rem 1rem', flex: '1 0 140px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: c.value, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{c.label}</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{c.value.toUpperCase()}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+        <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Heading</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: brand.headingFont || 'Outfit', color: 'var(--text-primary)' }}>{brand.headingFont || 'Outfit'}</div>
+        </div>
+        <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Body</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 400, fontFamily: brand.bodyFont || 'Inter', color: 'var(--text-primary)' }}>{brand.bodyFont || 'Inter'}</div>
+        </div>
+      </div>
+      {(brand.toneKeywords?.length > 0 || brand.voice) && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+          {brand.toneKeywords?.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: brand.voice ? '0.75rem' : 0 }}>
+              {brand.toneKeywords.map((k, i) => (
+                <span key={i} style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '100px', padding: '0.25rem 0.7rem' }}>{k}</span>
+              ))}
+            </div>
+          )}
+          {brand.voice && (
+            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>“{brand.voice}”</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const latestVersion = versionsList[0];
+  const designTeamCard = (
+    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Latest Version</h3>
+        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>What shipped most recently across every connected surface.</p>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem 1.25rem' }}>
+        <div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>v{latestVersion?.version}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{latestVersion?.description}</div>
+        </div>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{latestVersion?.date}</span>
+      </div>
+      <button
+        onClick={() => setActiveTab('versions')}
+        style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: 0, textAlign: 'left' }}
+      >
+        View full version history &rarr;
+      </button>
+    </div>
+  );
+
+  const vibeCoderCard = (
+    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div>
+        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>Copy &amp; Go</h3>
+        <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Drop this into your app and every screen stays on-brand.</p>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+        <input
+          type="text" readOnly
+          value={`@import url("https://strata.io/api/v1/projects/${project.id}/css");`}
+          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', width: '100%', outline: 'none' }}
+        />
+        <button
+          onClick={() => handleCopy(`@import url("https://strata.io/api/v1/projects/${project.id}/css");`, 'Vibe Coder Snippet')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)' }}
+        >
+          {copiedToken === 'Vibe Coder Snippet' ? '✓' : '📋'}
+        </button>
+      </div>
+    </div>
+  );
+
+  const overviewCards =
+    activeAudience === 'developers' ? [developerCard, sandboxCard, wildCard] :
+    activeAudience === 'designers' ? [designerCard, sandboxCard, wildCard] :
+    activeAudience === 'design-teams' ? [wildCard, designTeamCard, sandboxCard] :
+    activeAudience === 'vibe-coders' ? [sandboxCard, vibeCoderCard, wildCard] :
+    [sandboxCard, wildCard];
+
   return (
     <div className="page-container" style={{ paddingBottom: '6rem' }}>
       
@@ -851,27 +1171,33 @@ const SharedProject = () => {
       {/* ── Audience Switcher ── */}
       <div className="sp-audience-switcher" style={{
         display: 'flex', gap: '0.25rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '100px', padding: '0.3rem', width: 'fit-content', marginBottom: '1.5rem',
+        borderRadius: '100px', padding: '0.3rem', width: 'fit-content', marginBottom: '0.75rem',
       }}>
         {AUDIENCE_TABS.map(tab => {
-          const isActive = tab.id === 'overview';
-          const content = (
-            <span style={{
-              display: 'block', padding: '0.45rem 1.1rem', borderRadius: '100px',
-              background: isActive ? 'var(--text-primary)' : 'transparent',
-              color: isActive ? 'var(--bg)' : 'var(--text-secondary)',
-              fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s ease',
-            }}>
+          const isActive = tab.id === activeAudience;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => { setActiveAudience(tab.id); setActiveTab('overview'); }}
+              style={{
+                display: 'block', padding: '0.45rem 1.1rem', borderRadius: '100px',
+                background: isActive ? 'var(--text-primary)' : 'transparent',
+                color: isActive ? 'var(--bg)' : 'var(--text-secondary)',
+                fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s ease',
+                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
               {tab.name}
-            </span>
-          );
-          return tab.to ? (
-            <Link key={tab.id} to={tab.to} style={{ textDecoration: 'none' }}>{content}</Link>
-          ) : (
-            <span key={tab.id}>{content}</span>
+            </button>
           );
         })}
       </div>
+
+      {AUDIENCE_STRAPLINES[activeAudience] && (
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '0 0 1.5rem 0' }}>
+          {AUDIENCE_STRAPLINES[activeAudience]}
+        </p>
+      )}
 
       {/* ── NPM-style Tab Header ── */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto', gap: '0.5rem' }}>
@@ -910,172 +1236,10 @@ const SharedProject = () => {
         {/* Left Side Content panel */}
         <div style={{ minWidth: 0 }}>
           
-          {/* OVERVIEW TAB */}
+          {/* OVERVIEW TAB — content curated per activeAudience, see overviewCards above */}
           {activeTab === 'overview' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-              
-              {/* Interactive Component Sandbox */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
-              }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Interactive Component Sandbox</h3>
-                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Tweak atomic variables and inspect live UI components.</p>
-                </div>
-
-                <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  {/* Mini device header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>{project.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Overview</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.4rem' }}>
-                      <span style={{ background: 'rgba(252,6,148,0.15)', color: '#FC0694', border: '1px solid rgba(252,6,148,0.3)', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '100px' }}>LIVE</span>
-                      <span style={{ background: 'rgba(59,130,246,0.15)', color: '#3B82F6', border: '1px solid rgba(59,130,246,0.3)', fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.6rem', borderRadius: '100px' }}>New</span>
-                    </div>
-                  </div>
-
-                  {/* Brand Identity Preview */}
-                  <div style={{
-                    background: sandboxDark ? '#0D0D12' : '#F4F4F5', border: '1px solid var(--border)',
-                    borderRadius: '14px', padding: '1.25rem', position: 'relative', transition: 'background 0.2s ease',
-                  }}>
-                    <span style={{
-                      position: 'absolute', top: '1rem', right: '1.25rem', fontSize: '0.6rem', fontWeight: 700,
-                      textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent)'
-                    }}>Active Sync</span>
-                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: sandboxDark ? '#FFFFFF' : '#111827' }}>Brand Identity Preview</h4>
-                    <p style={{ margin: '0.3rem 0 1rem 0', fontSize: '0.8rem', color: sandboxDark ? '#8C8CA1' : '#4B5563', maxWidth: '360px' }}>
-                      Primary accent, surface, and typography rendered at real scale.
-                    </p>
-                    <button style={{
-                      background: sandboxColor, color: '#ffffff', border: 'none',
-                      borderRadius: sandboxRadius, padding: '0.6rem 1.25rem',
-                      fontSize: '0.85rem', fontWeight: 600, cursor: 'default', transition: 'background 0.15s ease, border-radius 0.15s ease',
-                    }}>Primary Action</button>
-                  </div>
-
-                  {/* Stat tiles */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
-                    {[
-                      { label: 'Synced', value: project.showcaseSites?.length || 0 },
-                      { label: 'Tokens', value: allTokens.length },
-                      { label: 'Components', value: project.components?.length || 0 },
-                    ].map(stat => (
-                      <div key={stat.label} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem 1rem' }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{stat.label}</div>
-                        <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>{stat.value}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Search */}
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <input
-                      type="text"
-                      value={componentSearch}
-                      onChange={(e) => setComponentSearch(e.target.value)}
-                      placeholder="Search components..."
-                      style={{
-                        flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                        color: 'var(--text-primary)', padding: '0.55rem 1rem', borderRadius: '10px',
-                        fontSize: '0.85rem', outline: 'none',
-                      }}
-                    />
-                    <button className="btn btn-secondary" style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem' }}>Search</button>
-                  </div>
-
-                  {/* Color / Radius / Theme controls */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Color:</span>
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        {SANDBOX_COLORS.map(c => (
-                          <button
-                            key={c}
-                            onClick={() => setSandboxColor(c)}
-                            title={c}
-                            style={{
-                              width: '20px', height: '20px', borderRadius: '50%', background: c, cursor: 'pointer',
-                              border: sandboxColor === c ? '2px solid var(--text-primary)' : '2px solid transparent',
-                              boxShadow: sandboxColor === c ? '0 0 0 2px var(--bg-tertiary)' : 'none',
-                              padding: 0,
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Radius:</span>
-                      <div style={{ display: 'flex', gap: '0.3rem' }}>
-                        {SANDBOX_RADII.map(r => (
-                          <button
-                            key={r.value}
-                            onClick={() => setSandboxRadius(r.value)}
-                            style={{
-                              background: sandboxRadius === r.value ? 'var(--accent)' : 'var(--bg-secondary)',
-                              color: sandboxRadius === r.value ? '#ffffff' : 'var(--text-secondary)',
-                              border: '1px solid var(--border)', borderRadius: '8px',
-                              padding: '0.3rem 0.7rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
-                            }}
-                          >{r.label}</button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => setSandboxDark(d => !d)}
-                      style={{
-                        background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px',
-                        padding: '0.35rem 0.9rem', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)', cursor: 'pointer',
-                      }}
-                    >{sandboxDark ? 'Dark Mode' : 'Light Mode'}</button>
-                  </div>
-                </div>
-              </div>
-
-              {/* See It in the Wild */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
-              }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>See It in the Wild</h3>
-                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Connected live surfaces powered by this system.</p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.25rem' }}>
-                  {(project.showcaseSites || [
-                    { name: 'Muzingo Web Player', url: 'https://muzingo.io', status: 'Live' }
-                  ]).map(site => (
-                    <a
-                      key={site.name}
-                      href={site.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                        borderRadius: '16px', padding: '1.25rem', display: 'flex', flexDirection: 'column',
-                        gap: '0.75rem', textDecoration: 'none', transition: 'all 0.2s ease'
-                      }}
-                    >
-                      <div style={{ width: '100%', height: '72px', borderRadius: '10px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }} />
-                      <div>
-                        <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{site.name}</h4>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{site.url}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
-                        <span style={{ fontSize: '0.65rem', color: '#10B981', fontWeight: 600 }}>{site.status}</span>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              </div>
-
+              {overviewCards.map((card, i) => <React.Fragment key={i}>{card}</React.Fragment>)}
             </div>
           )}
 
