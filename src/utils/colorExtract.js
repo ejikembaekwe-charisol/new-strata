@@ -59,6 +59,38 @@ export function extractColorsFromImage(file) {
   });
 }
 
+/**
+ * Downscale + compress an uploaded image into a base64 data URL, small
+ * enough to persist safely in localStorage (unlike a raw File/object URL,
+ * a data URL survives a page reload since it's plain JSON-serializable text).
+ */
+export function resizeImageToDataUrl(file, maxDim = 480, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not load image'));
+    };
+
+    img.src = url;
+  });
+}
+
 function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
