@@ -507,8 +507,6 @@ export const ThemeProvider = ({ children }) => {
   const [editingTokenValue, setEditingTokenValue] = useState('');
   const [presetsExpanded, setPresetsExpanded] = useState(true);
   const [customExpanded, setCustomExpanded] = useState(true);
-  const [tokenScan, setTokenScan] = useState(null); // { colors: [{name,value,include}], scanning: bool }
-  const [componentUpload, setComponentUpload] = useState(null); // { imageUrl, name, description, category }
 
   // Keep the Settings tab's name draft in sync once the project loads
   React.useEffect(() => {
@@ -585,61 +583,6 @@ This document serves as our living source of truth.`
       [category]: [...(activeTokens[category] || []), token]
     };
     updateTokensState(updated);
-  };
-
-  const handleTokenScreenshotSelected = async (file) => {
-    if (!file) return;
-    setTokenScan({ scanning: true, colors: [] });
-    const { primaryColor, secondaryColor, accentColor, extracted } = await extractColorsFromImage(file);
-    if (!extracted) {
-      setTokenScan({ scanning: false, colors: [], failed: true });
-      return;
-    }
-    setTokenScan({
-      scanning: false,
-      colors: [
-        { name: 'color.upload.primary', value: primaryColor, include: true },
-        { name: 'color.upload.secondary', value: secondaryColor, include: true },
-        { name: 'color.upload.accent', value: accentColor, include: true },
-      ],
-    });
-  };
-
-  const handleAddScannedTokens = () => {
-    const newTokens = tokenScan.colors
-      .filter(c => c.include)
-      .map(c => ({ name: c.name, value: c.value, type: 'color', layer: 'Brand' }));
-    updateTokensState({
-      ...activeTokens,
-      Color: [...(activeTokens.Color || []), ...newTokens],
-    });
-    setTokenScan(null);
-  };
-
-  const handleComponentScreenshotSelected = async (file) => {
-    if (!file) return;
-    try {
-      const imageUrl = await resizeImageToDataUrl(file);
-      setComponentUpload({ imageUrl, name: '', description: '', category: activeComponentCategory });
-    } catch (e) {
-      alert('Could not read that image — please try a different file.');
-    }
-  };
-
-  const handleAddUploadedComponent = () => {
-    if (!componentUpload.name.trim()) {
-      alert('Please give the component a name.');
-      return;
-    }
-    handleAddComponent({
-      name: componentUpload.name.trim(),
-      description: componentUpload.description.trim(),
-      category: componentUpload.category,
-      template: 'image',
-      imageUrl: componentUpload.imageUrl,
-      tokens: {},
-    });
-    setComponentUpload(null);
   };
 
   const handleEditToken = (category, originalName, updatedToken) => {
@@ -2699,18 +2642,6 @@ This document serves as our living source of truth.`
                   <div className="pd-tokens-header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                     <button onClick={() => setTokenModal({ mode: 'add', category: activeCategory, defaultLayer: activeLayer })} style={actionBtnStyle}>+ Add token</button>
                     <button style={actionBtnStyle} onClick={() => alert('Importing tokens... (mock)')}>Import</button>
-                    <label style={{ ...actionBtnStyle, display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                      Upload screenshot
-                      <input
-                        type="file"
-                        accept="image/*"
-                        style={{ display: 'none' }}
-                        onChange={(e) => {
-                          handleTokenScreenshotSelected(e.target.files?.[0]);
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
                   </div>
                 )}
               </div>
@@ -3186,23 +3117,9 @@ This document serves as our living source of truth.`
                     {activeComponentCategory} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({catComps.length})</span>
                   </h2>
                   {can(myRole, 'components', 'create') && (
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                        + Add component
-                      </button>
-                      <label className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
-                        Upload screenshot
-                        <input
-                          type="file"
-                          accept="image/*"
-                          style={{ display: 'none' }}
-                          onChange={(e) => {
-                            handleComponentScreenshotSelected(e.target.files?.[0]);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                    </div>
+                    <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
+                      + Add component
+                    </button>
                   )}
                 </div>
 
@@ -4198,150 +4115,6 @@ export default function RootLayout({ children }) {
         />
       )}
 
-      {tokenScan && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(9, 9, 12, 0.85)', backdropFilter: 'blur(10px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{
-            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-            borderRadius: '16px', padding: '2rem', width: '400px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-            display: 'flex', flexDirection: 'column', gap: '1.25rem',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Colors from screenshot</h3>
-              <button onClick={() => setTokenScan(null)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem' }}>×</button>
-            </div>
-
-            {tokenScan.scanning ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 0' }}>
-                <div className="loading-spinner" style={{ width: '20px', height: '20px' }}></div>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Sampling colors from the image…</span>
-              </div>
-            ) : tokenScan.failed ? (
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>
-                Couldn't find distinct colors in that image — try a different screenshot.
-              </p>
-            ) : (
-              <>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>
-                  These colors were sampled directly from your image. Pick the ones you want and rename them if you like.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {tokenScan.colors.map((c, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={c.include}
-                        onChange={(e) => {
-                          const colors = [...tokenScan.colors];
-                          colors[i] = { ...c, include: e.target.checked };
-                          setTokenScan({ ...tokenScan, colors });
-                        }}
-                        style={{ accentColor: 'var(--accent)' }}
-                      />
-                      <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: c.value, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
-                      <input
-                        type="text"
-                        value={c.name}
-                        onChange={(e) => {
-                          const colors = [...tokenScan.colors];
-                          colors[i] = { ...c, name: e.target.value };
-                          setTokenScan({ ...tokenScan, colors });
-                        }}
-                        style={{ flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.4rem 0.6rem', color: 'var(--text-primary)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}
-                      />
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{c.value.toUpperCase()}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                  <button
-                    onClick={() => setTokenScan(null)}
-                    style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '0.5rem 1.25rem', borderRadius: '8px', fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit' }}
-                  >
-                    Cancel
-                  </button>
-                  <button className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.82rem' }} onClick={handleAddScannedTokens}>
-                    Add {tokenScan.colors.filter(c => c.include).length} Token{tokenScan.colors.filter(c => c.include).length !== 1 ? 's' : ''}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {componentUpload && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(9, 9, 12, 0.85)', backdropFilter: 'blur(10px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{
-            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-            borderRadius: '16px', padding: '2rem', width: '400px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-            display: 'flex', flexDirection: 'column', gap: '1.25rem',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Name this component</h3>
-              <button onClick={() => setComponentUpload(null)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem' }}>×</button>
-            </div>
-
-            <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem', display: 'flex', justifyContent: 'center' }}>
-              <img src={componentUpload.imageUrl} alt="Uploaded component" style={{ maxWidth: '100%', maxHeight: '160px', objectFit: 'contain', borderRadius: '6px' }} />
-            </div>
-
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Name</label>
-              <input
-                type="text" className="form-input" value={componentUpload.name}
-                onChange={(e) => setComponentUpload({ ...componentUpload, name: e.target.value })}
-                placeholder="e.g. Pricing Card"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Description</label>
-              <input
-                type="text" className="form-input" value={componentUpload.description}
-                onChange={(e) => setComponentUpload({ ...componentUpload, description: e.target.value })}
-                placeholder="Optional"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Category</label>
-              <select
-                className="form-input" style={{ cursor: 'pointer' }}
-                value={componentUpload.category}
-                onChange={(e) => setComponentUpload({ ...componentUpload, category: e.target.value })}
-              >
-                {['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'].map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
-
-            <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', margin: 0 }}>
-              This screenshot becomes the component's preview as-is — Strata can't infer editable structure from an image.
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-              <button
-                onClick={() => setComponentUpload(null)}
-                style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '0.5rem 1.25rem', borderRadius: '8px', fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit' }}
-              >
-                Cancel
-              </button>
-              <button className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.82rem' }} onClick={handleAddUploadedComponent}>
-                Add Component
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Downstream Impact Review Bottom Panel ── */}
       <div style={{
@@ -5359,6 +5132,36 @@ function TokenModal({ modal, onClose, onSave }) {
     onSave({ name: name.trim(), value: value.trim(), type, layer });
   };
 
+  // ── Upload PNG tab — reuses the same `name`/`type` state as the manual
+  // tab above (same Name input, same CategoryDropdown), just a different
+  // way of arriving at a value.
+  const [entryTab, setEntryTab] = useState('manual');
+  const [uploadScan, setUploadScan] = useState(null); // { scanning, failed, colors: [primary,secondary,accent], selected }
+
+  const handleUploadFile = async (file) => {
+    if (!file) return;
+    setUploadScan({ scanning: true });
+    const { primaryColor, secondaryColor, accentColor, extracted } = await extractColorsFromImage(file);
+    if (!extracted) {
+      setUploadScan({ scanning: false, failed: true });
+      return;
+    }
+    const colors = [primaryColor, secondaryColor, accentColor];
+    setUploadScan({ scanning: false, colors, selected: colors[0] });
+  };
+
+  const handleUploadSubmit = () => {
+    if (!name.trim()) {
+      alert('Please give the token a name.');
+      return;
+    }
+    if (!uploadScan?.selected) {
+      alert('Please upload an image and pick a color.');
+      return;
+    }
+    onSave({ name: name.trim(), value: uploadScan.selected, type, layer: 'Brand' });
+  };
+
 
   return (
     <div style={{
@@ -5379,6 +5182,32 @@ function TokenModal({ modal, onClose, onSave }) {
           </h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem' }}>×</button>
         </div>
+
+        {!isEdit && (
+          <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '3px' }}>
+            {[{ id: 'manual', label: 'Add Manually' }, { id: 'upload', label: 'Upload PNG' }].map(t => {
+              const isActive = entryTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setEntryTab(t.id)}
+                  style={{
+                    flex: 1, padding: '0.5rem 0', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                    background: isActive ? 'var(--bg-secondary)' : 'none',
+                    color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontSize: '0.8rem', fontWeight: isActive ? 600 : 400,
+                    fontFamily: 'inherit', transition: 'all 0.15s',
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {entryTab === 'manual' && (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Token Name</label>
@@ -5477,6 +5306,95 @@ function TokenModal({ modal, onClose, onSave }) {
             </button>
           </div>
         </form>
+        )}
+
+        {entryTab === 'upload' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <label
+              style={{
+                border: '2px dashed var(--border)', borderRadius: '12px', padding: '1.75rem 1rem',
+                textAlign: 'center', cursor: 'pointer', display: 'block', background: 'var(--bg-tertiary)',
+              }}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => { handleUploadFile(e.target.files?.[0]); e.target.value = ''; }}
+              />
+              {uploadScan?.scanning ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                  <div className="loading-spinner" style={{ width: '18px', height: '18px' }}></div>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Sampling colors…</span>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop a PNG here, or click to browse</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>Colors are sampled directly from the image</div>
+                </>
+              )}
+            </label>
+
+            {uploadScan?.failed && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>
+                Couldn't find distinct colors in that image — try a different screenshot.
+              </p>
+            )}
+
+            {uploadScan?.colors && (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Pick a color</label>
+                <div style={{ display: 'flex', gap: '0.6rem' }}>
+                  {uploadScan.colors.map((c, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setUploadScan({ ...uploadScan, selected: c })}
+                      title={c}
+                      style={{
+                        width: '36px', height: '36px', borderRadius: '8px', background: c, cursor: 'pointer',
+                        border: uploadScan.selected === c ? '2px solid var(--text-primary)' : '2px solid transparent',
+                        boxShadow: uploadScan.selected === c ? '0 0 0 2px var(--bg-tertiary)' : 'none',
+                        padding: 0,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Token Name</label>
+              <input
+                type="text"
+                className="form-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. color.primary"
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Category *</label>
+              <CategoryDropdown type={type} onSelect={setType} />
+            </div>
+
+            {uploadScan?.selected && (
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>Visual Preview</span>
+                <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '48px' }}>
+                  {renderTokenPreview({ type, value: uploadScan.selected })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button type="button" onClick={onClose} style={{ ...actionBtnStyle, borderRadius: '9999px', background: 'none', padding: '0.65rem 1.3rem' }}>Cancel</button>
+              <button type="button" className="btn btn-primary" style={{ padding: '0.65rem 1.5rem' }} onClick={handleUploadSubmit}>
+                Add Token
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5681,6 +5599,43 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
     });
   };
 
+  // ── Upload PNG tab — reuses the same `name`/`category` state as the
+  // manual tab above (same Name input, same Category select).
+  const [entryTab, setEntryTab] = useState('manual');
+  const [uploadImageUrl, setUploadImageUrl] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleUploadFile = async (file) => {
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      setUploadImageUrl(dataUrl);
+    } catch (err) {
+      alert('Could not read that image — please try a different file.');
+    }
+    setUploadingImage(false);
+  };
+
+  const handleUploadSubmit = () => {
+    if (!name.trim()) {
+      alert('Please give the component a name.');
+      return;
+    }
+    if (!uploadImageUrl) {
+      alert('Please upload an image.');
+      return;
+    }
+    onSave({
+      name: name.trim(),
+      description: description.trim(),
+      category,
+      template: 'image',
+      imageUrl: uploadImageUrl,
+      tokens: {},
+    });
+  };
+
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -5702,6 +5657,31 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem' }}>×</button>
         </div>
 
+        {!isEdit && (
+          <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '3px' }}>
+            {[{ id: 'manual', label: 'Add Manually' }, { id: 'upload', label: 'Upload PNG' }].map(t => {
+              const isActive = entryTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setEntryTab(t.id)}
+                  style={{
+                    flex: 1, padding: '0.5rem 0', borderRadius: '6px', border: 'none', cursor: 'pointer',
+                    background: isActive ? 'var(--bg-secondary)' : 'none',
+                    color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontSize: '0.8rem', fontWeight: isActive ? 600 : 400,
+                    fontFamily: 'inherit', transition: 'all 0.15s',
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {entryTab === 'manual' && (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {!isEdit && (
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -5831,6 +5811,86 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
             </button>
           </div>
         </form>
+        )}
+
+        {entryTab === 'upload' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {uploadImageUrl ? (
+              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem', display: 'flex', justifyContent: 'center' }}>
+                <img src={uploadImageUrl} alt="Uploaded component" style={{ maxWidth: '100%', maxHeight: '160px', objectFit: 'contain', borderRadius: '6px' }} />
+              </div>
+            ) : (
+              <label
+                style={{
+                  border: '2px dashed var(--border)', borderRadius: '12px', padding: '1.75rem 1rem',
+                  textAlign: 'center', cursor: 'pointer', display: 'block', background: 'var(--bg-tertiary)',
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => { handleUploadFile(e.target.files?.[0]); e.target.value = ''; }}
+                />
+                {uploadingImage ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                    <div className="loading-spinner" style={{ width: '18px', height: '18px' }}></div>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Reading image…</span>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop a PNG here, or click to browse</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>This screenshot becomes the component's preview as-is</div>
+                  </>
+                )}
+              </label>
+            )}
+            {uploadImageUrl && (
+              <button
+                type="button"
+                onClick={() => setUploadImageUrl(null)}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.78rem', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+              >
+                Choose a different image
+              </button>
+            )}
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Component Name</label>
+              <input
+                type="text"
+                className="form-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Pricing Card"
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Category</label>
+              <select
+                className="form-input"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                style={{ cursor: 'pointer' }}
+              >
+                <option value="Actions & Buttons">Actions & Buttons</option>
+                <option value="Form Inputs">Form Inputs</option>
+                <option value="Display & Data">Display & Data</option>
+                <option value="Feedback & Status">Feedback & Status</option>
+                <option value="Navigation">Navigation</option>
+                <option value="Overlays">Overlays</option>
+                <option value="Layout Primitives">Layout Primitives</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+              <button type="button" onClick={onClose} style={actionBtnStyle}>Cancel</button>
+              <button type="button" className="btn btn-primary" style={{ padding: '0.4rem 1.25rem' }} onClick={handleUploadSubmit}>
+                Add Component
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
