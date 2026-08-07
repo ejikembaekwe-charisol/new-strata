@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
 import branchIcon from '../assets/branch-icon.svg';
 import { resolveMyRole, can, canViewTab, ROLES } from '../utils/permissions';
-import { extractColorsFromImage, resizeImageToDataUrl } from '../utils/colorExtract';
+import { extractColorsFromImage, extractFontSizesFromImage, resizeImageToDataUrl, suggestUniqueName } from '../utils/colorExtract';
 
 /* ── Error Boundary: prevents blank screen on render crashes ── */
 class ErrorBoundary extends React.Component {
@@ -585,6 +585,18 @@ This document serves as our living source of truth.`
     updateTokensState(updated);
   };
 
+  // Adds many tokens (e.g. a batch from the token-upload table) in one state
+  // update — calling handleAddToken in a loop would have every iteration read
+  // the same stale `activeTokens` closure and only the last token would stick.
+  const handleAddTokens = (tokens) => {
+    const updated = { ...activeTokens };
+    for (const token of tokens) {
+      const category = getCategoryForType(token.type);
+      updated[category] = [...(updated[category] || []), token];
+    }
+    updateTokensState(updated);
+  };
+
   const handleEditToken = (category, originalName, updatedToken) => {
     const originalToken = activeTokens[category]?.find(t => t.name === originalName);
     
@@ -789,11 +801,17 @@ This document serves as our living source of truth.`
     }
     if (comp.template === 'image') {
       return (
-        <img
-          src={comp.imageUrl}
-          alt={comp.name}
-          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px' }}
-        />
+        <div style={{
+          display: 'flex', alignItems: 'center', maxWidth: '100%', maxHeight: '100%',
+          borderLeft: comp.accentColor ? `4px solid ${comp.accentColor}` : 'none',
+          paddingLeft: comp.accentColor ? '0.5rem' : 0,
+        }}>
+          <img
+            src={comp.imageUrl}
+            alt={comp.name}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px' }}
+          />
+        </div>
       );
     }
     return null;
@@ -4024,7 +4042,7 @@ export default function RootLayout({ children }) {
                   }}>
                     <div style={{
                       background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                      borderRadius: '16px', padding: '2rem', width: '400px',
+                      borderRadius: '16px', padding: '2rem', width: '460px',
                       boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
                       display: 'flex', flexDirection: 'column', gap: '1.25rem',
                     }}>
@@ -4087,9 +4105,12 @@ export default function RootLayout({ children }) {
       {tokenModal && (
         <TokenModal
           modal={tokenModal}
+          activeTokens={activeTokens}
           onClose={() => setTokenModal(null)}
           onSave={(updatedToken) => {
-            if (tokenModal.mode === 'add') {
+            if (Array.isArray(updatedToken)) {
+              handleAddTokens(updatedToken);
+            } else if (tokenModal.mode === 'add') {
               handleAddToken(getCategoryForType(updatedToken.type), updatedToken);
             } else {
               handleEditToken(tokenModal.category, tokenModal.token.name, updatedToken);
@@ -4102,6 +4123,7 @@ export default function RootLayout({ children }) {
       {componentModal && (
         <ComponentModal
           activeTokens={activeTokens}
+          existingNames={components.map(c => c.name)}
           componentToEdit={componentModal.component}
           onClose={() => setComponentModal(null)}
           onSave={(compData) => {
@@ -4846,8 +4868,14 @@ const CATEGORY_GROUPS = [
   ] },
 ];
 
+// Normalizes camelCase and kebab-case variants of the same property (e.g.
+// "fontSize" / "font-size") to one key, so lookups match regardless of which
+// convention a given caller's token `type` happens to use.
+const normalizeTypeKey = (type) => (type || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+
 const getGroupDisplayForType = (type) => {
-  const group = CATEGORY_GROUPS.find(g => g.items.some(i => i.type === type));
+  const norm = normalizeTypeKey(type);
+  const group = CATEGORY_GROUPS.find(g => g.items.some(i => normalizeTypeKey(i.type) === norm));
   return group ? group.display : 'Color';
 };
 
@@ -5114,7 +5142,7 @@ const renderTokenPreview = (token) => {
 };
 
 /* ── Token Add/Edit Dialog Component ── */
-function TokenModal({ modal, onClose, onSave }) {
+function TokenModal({ modal, onClose, onSave, activeTokens }) {
   const isEdit = modal.mode === 'edit';
   const [name, setName] = useState(isEdit ? modal.token.name : '');
   const [value, setValue] = useState(isEdit ? modal.token.value : '');
@@ -5122,6 +5150,8 @@ function TokenModal({ modal, onClose, onSave }) {
   const [layer, setLayer] = useState(isEdit ? (modal.token.layer || 'Brand') : (modal.defaultLayer || 'Brand'));
 
   const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
+
+  const existingNamesForType = (t) => (activeTokens?.[getCategoryForType(t)] || []).map(tok => tok.name);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -5132,34 +5162,146 @@ function TokenModal({ modal, onClose, onSave }) {
     onSave({ name: name.trim(), value: value.trim(), type, layer });
   };
 
-  // ── Upload PNG tab — reuses the same `name`/`type` state as the manual
-  // tab above (same Name input, same CategoryDropdown), just a different
-  // way of arriving at a value.
+  // ── Upload Image tab — every detected color AND every measured text size
+  // becomes its own row: ticked by default, each with its own editable
+  // suggested name and category, so the whole batch is reviewed and created
+  // together in one submit. Font sizes are measured directly from pixel data
+  // (text-line heights) — never guessed — so an image with no readable text
+  // simply contributes no Typography rows.
   const [entryTab, setEntryTab] = useState('manual');
-  const [uploadScan, setUploadScan] = useState(null); // { scanning, failed, colors: [primary,secondary,accent], selected }
+  const [uploadScan, setUploadScan] = useState(null); // { scanning, failed, rows: [{ kind, hex|px, checked, name, type }] }
+  const [uploadImagePreview, setUploadImagePreview] = useState(null);
 
   const handleUploadFile = async (file) => {
     if (!file) return;
     setUploadScan({ scanning: true });
-    const { primaryColor, secondaryColor, accentColor, extracted } = await extractColorsFromImage(file);
-    if (!extracted) {
+    const [{ colors, extracted: colorsExtracted }, { sizes, extracted: sizesExtracted }, preview] = await Promise.all([
+      extractColorsFromImage(file, 8),
+      extractFontSizesFromImage(file, 5),
+      resizeImageToDataUrl(file).catch(() => null),
+    ]);
+    if (!colorsExtracted && !sizesExtracted) {
       setUploadScan({ scanning: false, failed: true });
       return;
     }
-    const colors = [primaryColor, secondaryColor, accentColor];
-    setUploadScan({ scanning: false, colors, selected: colors[0] });
+    setUploadImagePreview(preview);
+    const takenByType = {};
+    const nextName = (baseName, rowType) => {
+      const taken = takenByType[rowType] || existingNamesForType(rowType);
+      const rowName = suggestUniqueName(baseName, taken);
+      takenByType[rowType] = [...taken, rowName];
+      return rowName;
+    };
+    const colorRows = colors.map((hex) => ({
+      kind: 'color', hex, checked: true, name: nextName('color.upload', 'color'), type: 'color',
+    }));
+    const fontSizeRows = sizes.map((px) => ({
+      kind: 'fontSize', px, checked: true, name: nextName('font.size.upload', 'fontSize'), type: 'fontSize',
+    }));
+    setUploadScan({ scanning: false, rows: [...colorRows, ...fontSizeRows] });
+  };
+
+  const resetUpload = () => {
+    setUploadScan(null);
+    setUploadImagePreview(null);
+  };
+
+  const updateUploadRow = (index, updates) => {
+    setUploadScan((scan) => ({
+      ...scan,
+      rows: scan.rows.map((r, i) => (i === index ? { ...r, ...updates } : r)),
+    }));
+  };
+
+  const uploadRowError = (row, index, rows) => {
+    if (!row.checked) return null;
+    const trimmed = row.name.trim();
+    if (!trimmed) return 'Name required';
+    if (rows.some((r, i) => i !== index && r.checked && r.name.trim() === trimmed)) {
+      return 'Duplicate name in this batch';
+    }
+    if (existingNamesForType(row.type).includes(trimmed)) {
+      return `Already exists in ${getCategoryForType(row.type)}`;
+    }
+    return null;
+  };
+
+  const indexedUploadRows = (uploadScan?.rows || []).map((r, i) => ({ ...r, _index: i }));
+  const colorUploadRows = indexedUploadRows.filter(r => r.kind === 'color');
+  const fontSizeUploadRows = indexedUploadRows.filter(r => r.kind === 'fontSize');
+  const checkedUploadRows = uploadScan?.rows?.filter(r => r.checked) || [];
+  const uploadHasBlockingError = uploadScan?.rows?.some((r, i) => uploadRowError(r, i, uploadScan.rows)) || false;
+
+  const renderUploadRow = (row) => {
+    const i = row._index;
+    const error = uploadRowError(row, i, uploadScan.rows);
+    return (
+      <div
+        key={i}
+        style={{
+          display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+          background: 'var(--bg-tertiary)', border: `1px solid ${error ? '#EF4444' : 'var(--border)'}`,
+          borderRadius: '8px', padding: '0.6rem', opacity: row.checked ? 1 : 0.55,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={row.checked}
+          onChange={(e) => updateUploadRow(i, { checked: e.target.checked })}
+          style={{ accentColor: 'var(--accent)', width: '16px', height: '16px', flexShrink: 0, marginTop: '10px', cursor: 'pointer' }}
+        />
+        {row.kind === 'color' ? (
+          <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: row.hex, flexShrink: 0, marginTop: '6px', border: '1px solid rgba(255,255,255,0.15)' }} title={row.hex} />
+        ) : (
+          <div
+            style={{
+              width: '28px', height: '28px', borderRadius: '6px', flexShrink: 0, marginTop: '6px',
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+            }}
+            title={`${row.px}px measured text height`}
+          >
+            <span style={{ fontSize: `${Math.min(20, Math.max(9, row.px * 0.5))}px`, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1 }}>Aa</span>
+          </div>
+        )}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <div>
+            <label style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.2rem' }}>Name</label>
+            <input
+              type="text"
+              className="form-input"
+              value={row.name}
+              onChange={(e) => updateUploadRow(i, { name: e.target.value })}
+              disabled={!row.checked}
+              placeholder="e.g. color.primary"
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem' }}
+            />
+          </div>
+          <div style={{ pointerEvents: row.checked ? 'auto' : 'none' }}>
+            <label style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.2rem' }}>Category</label>
+            <CategoryDropdown type={row.type} onSelect={(t) => updateUploadRow(i, { type: t })} />
+          </div>
+          {row.kind === 'fontSize' && (
+            <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>Measured text height: ~{row.px}px</span>
+          )}
+          {error && <span style={{ fontSize: '0.7rem', color: '#EF4444' }}>{error}</span>}
+        </div>
+      </div>
+    );
   };
 
   const handleUploadSubmit = () => {
-    if (!name.trim()) {
-      alert('Please give the token a name.');
+    if (!checkedUploadRows.length) {
+      alert('Please tick at least one row to add.');
       return;
     }
-    if (!uploadScan?.selected) {
-      alert('Please upload an image and pick a color.');
-      return;
-    }
-    onSave({ name: name.trim(), value: uploadScan.selected, type, layer: 'Brand' });
+    const tokens = checkedUploadRows.map(r => ({
+      name: r.name.trim(),
+      value: r.kind === 'color' ? r.hex : `${r.px}px`,
+      type: r.type,
+      layer: 'Brand',
+    }));
+    onSave(tokens);
   };
 
 
@@ -5172,9 +5314,11 @@ function TokenModal({ modal, onClose, onSave }) {
     }}>
       <div style={{
         background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '16px', padding: '2rem', width: '400px',
+        borderRadius: '16px', padding: '2rem', width: entryTab === 'upload' ? '640px' : '480px',
+        maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
         display: 'flex', flexDirection: 'column', gap: '1.5rem',
+        transition: 'width 0.15s',
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -5185,7 +5329,7 @@ function TokenModal({ modal, onClose, onSave }) {
 
         {!isEdit && (
           <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '3px' }}>
-            {[{ id: 'manual', label: 'Add Manually' }, { id: 'upload', label: 'Upload PNG' }].map(t => {
+            {[{ id: 'manual', label: 'Add Manually' }, { id: 'upload', label: 'Upload Image' }].map(t => {
               const isActive = entryTab === t.id;
               return (
                 <button
@@ -5310,87 +5454,92 @@ function TokenModal({ modal, onClose, onSave }) {
 
         {entryTab === 'upload' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            <label
-              style={{
-                border: '2px dashed var(--border)', borderRadius: '12px', padding: '1.75rem 1rem',
-                textAlign: 'center', cursor: 'pointer', display: 'block', background: 'var(--bg-tertiary)',
-              }}
-            >
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={(e) => { handleUploadFile(e.target.files?.[0]); e.target.value = ''; }}
-              />
-              {uploadScan?.scanning ? (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
-                  <div className="loading-spinner" style={{ width: '18px', height: '18px' }}></div>
-                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Sampling colors…</span>
-                </div>
-              ) : (
-                <>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop a PNG here, or click to browse</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>Colors are sampled directly from the image</div>
-                </>
-              )}
-            </label>
+            {!uploadScan?.rows && (
+              <label
+                style={{
+                  border: '2px dashed var(--border)', borderRadius: '12px', padding: '1.75rem 1rem',
+                  textAlign: 'center', cursor: 'pointer', display: 'block', background: 'var(--bg-tertiary)',
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => { handleUploadFile(e.target.files?.[0]); e.target.value = ''; }}
+                />
+                {uploadScan?.scanning ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
+                    <div className="loading-spinner" style={{ width: '18px', height: '18px' }}></div>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Sampling colors and text sizes…</span>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop an image here, or click to browse</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>Colors and text sizes are measured directly from the image</div>
+                  </>
+                )}
+              </label>
+            )}
 
             {uploadScan?.failed && (
               <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>
-                Couldn't find distinct colors in that image — try a different screenshot.
+                Couldn't find distinct colors or readable text sizes in that image — try a different screenshot.
               </p>
             )}
 
-            {uploadScan?.colors && (
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Pick a color</label>
-                <div style={{ display: 'flex', gap: '0.6rem' }}>
-                  {uploadScan.colors.map((c, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setUploadScan({ ...uploadScan, selected: c })}
-                      title={c}
-                      style={{
-                        width: '36px', height: '36px', borderRadius: '8px', background: c, cursor: 'pointer',
-                        border: uploadScan.selected === c ? '2px solid var(--text-primary)' : '2px solid transparent',
-                        boxShadow: uploadScan.selected === c ? '0 0 0 2px var(--bg-tertiary)' : 'none',
-                        padding: 0,
-                      }}
-                    />
-                  ))}
+            {uploadScan?.rows && (
+              <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
+                <div style={{ width: '180px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem', position: 'sticky', top: 0 }}>
+                  {uploadImagePreview && (
+                    <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.5rem', display: 'flex', justifyContent: 'center' }}>
+                      <img src={uploadImagePreview} alt="Uploaded" style={{ maxWidth: '100%', maxHeight: '220px', objectFit: 'contain', borderRadius: '6px' }} />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={resetUpload}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.75rem', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+                  >
+                    Upload a different image
+                  </button>
                 </div>
-              </div>
-            )}
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Token Name</label>
-              <input
-                type="text"
-                className="form-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. color.primary"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>Category *</label>
-              <CategoryDropdown type={type} onSelect={setType} />
-            </div>
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '1rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '2px' }}>
+                  {colorUploadRows.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', margin: 0 }}>
+                        Colors detected in this image ({colorUploadRows.length})
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {colorUploadRows.map(renderUploadRow)}
+                      </div>
+                    </div>
+                  )}
 
-            {uploadScan?.selected && (
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>Visual Preview</span>
-                <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '48px' }}>
-                  {renderTokenPreview({ type, value: uploadScan.selected })}
+                  {fontSizeUploadRows.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', margin: 0 }}>
+                        Typography sizes detected in this image ({fontSizeUploadRows.length})
+                      </label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {fontSizeUploadRows.map(renderUploadRow)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
               <button type="button" onClick={onClose} style={{ ...actionBtnStyle, borderRadius: '9999px', background: 'none', padding: '0.65rem 1.3rem' }}>Cancel</button>
-              <button type="button" className="btn btn-primary" style={{ padding: '0.65rem 1.5rem' }} onClick={handleUploadSubmit}>
-                Add Token
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ padding: '0.65rem 1.5rem', opacity: (!checkedUploadRows.length || uploadHasBlockingError) ? 0.5 : 1, cursor: (!checkedUploadRows.length || uploadHasBlockingError) ? 'not-allowed' : 'pointer' }}
+                onClick={handleUploadSubmit}
+                disabled={!checkedUploadRows.length || uploadHasBlockingError}
+              >
+                {checkedUploadRows.length ? `Add ${checkedUploadRows.length} Token${checkedUploadRows.length === 1 ? '' : 's'}` : 'Add Tokens'}
               </button>
             </div>
           </div>
@@ -5401,7 +5550,7 @@ function TokenModal({ modal, onClose, onSave }) {
 }
 
 /* ── Component Wizard dialog ── */
-function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
+function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existingNames }) {
   const isEdit = !!componentToEdit;
 
   // Preset component templates
@@ -5599,11 +5748,12 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
     });
   };
 
-  // ── Upload PNG tab — reuses the same `name`/`category` state as the
+  // ── Upload Image tab — reuses the same `name`/`category` state as the
   // manual tab above (same Name input, same Category select).
   const [entryTab, setEntryTab] = useState('manual');
   const [uploadImageUrl, setUploadImageUrl] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadScan, setUploadScan] = useState(null); // { colors: [], selected }
 
   const handleUploadFile = async (file) => {
     if (!file) return;
@@ -5611,6 +5761,11 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
     try {
       const dataUrl = await resizeImageToDataUrl(file);
       setUploadImageUrl(dataUrl);
+      const { colors, extracted } = await extractColorsFromImage(file, 8);
+      setUploadScan(extracted ? { colors, selected: colors[0] } : { colors: [] });
+      if (!name.trim()) {
+        setName(suggestUniqueName('Uploaded Component', existingNames || [], ' '));
+      }
     } catch (err) {
       alert('Could not read that image — please try a different file.');
     }
@@ -5626,12 +5781,17 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
       alert('Please upload an image.');
       return;
     }
+    if ((existingNames || []).includes(name.trim())) {
+      alert(`A component named "${name.trim()}" already exists. Please choose a different name.`);
+      return;
+    }
     onSave({
       name: name.trim(),
       description: description.trim(),
       category,
       template: 'image',
       imageUrl: uploadImageUrl,
+      accentColor: uploadScan?.selected || null,
       tokens: {},
     });
   };
@@ -5645,7 +5805,7 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
     }}>
       <div style={{
         background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '16px', padding: '2rem', width: '500px',
+        borderRadius: '16px', padding: '2rem', width: '600px',
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
         display: 'flex', flexDirection: 'column', gap: '1.5rem',
@@ -5659,7 +5819,7 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
 
         {!isEdit && (
           <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '3px' }}>
-            {[{ id: 'manual', label: 'Add Manually' }, { id: 'upload', label: 'Upload PNG' }].map(t => {
+            {[{ id: 'manual', label: 'Add Manually' }, { id: 'upload', label: 'Upload Image' }].map(t => {
               const isActive = entryTab === t.id;
               return (
                 <button
@@ -5839,16 +5999,39 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit }) {
                   </div>
                 ) : (
                   <>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop a PNG here, or click to browse</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop an image here, or click to browse</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>This screenshot becomes the component's preview as-is</div>
                   </>
                 )}
               </label>
             )}
+            {uploadScan?.colors?.length > 0 && (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>
+                  Colors detected in this image ({uploadScan.colors.length})
+                </label>
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {uploadScan.colors.map((c, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setUploadScan({ ...uploadScan, selected: c })}
+                      title={c}
+                      style={{
+                        width: '36px', height: '36px', borderRadius: '8px', background: c, cursor: 'pointer',
+                        border: uploadScan.selected === c ? '2px solid var(--text-primary)' : '2px solid transparent',
+                        boxShadow: uploadScan.selected === c ? '0 0 0 2px var(--bg-tertiary)' : 'none',
+                        padding: 0,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
             {uploadImageUrl && (
               <button
                 type="button"
-                onClick={() => setUploadImageUrl(null)}
+                onClick={() => { setUploadImageUrl(null); setUploadScan(null); }}
                 style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.78rem', cursor: 'pointer', padding: 0, textAlign: 'left' }}
               >
                 Choose a different image
@@ -5912,7 +6095,7 @@ function BrandBibleSuggestionsModal({ suggestions, onClose, onApply }) {
 
   return (
     <div className="modal-overlay" style={{ zIndex: 1100 }}>
-      <div className="modal-content" style={{ maxWidth: '560px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem' }}>
+      <div className="modal-content" style={{ maxWidth: '640px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '20px', padding: '2rem' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
           <span style={{ color: 'var(--accent)' }}>✨</span> AI Brand Bible Analyzer
         </h2>

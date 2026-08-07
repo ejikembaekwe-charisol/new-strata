@@ -1,8 +1,13 @@
 /**
  * Extract dominant colors from an uploaded image using Canvas API.
  * Skips transparent, near-white, and near-black pixels for better results.
+ *
+ * `maxColors` defaults to 3 to keep existing callers (the onboarding wizard)
+ * unchanged — they only ever read primaryColor/secondaryColor/accentColor.
+ * Callers that want to show everything the image actually contains (e.g. the
+ * token/component upload pickers) can pass a higher value and read `colors`.
  */
-export function extractColorsFromImage(file) {
+export function extractColorsFromImage(file, maxColors = 3) {
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -39,20 +44,175 @@ export function extractColorsFromImage(file) {
           return rgbToHex(r, g, b);
         });
 
-      const distinct = pickDistinct(sorted, 3);
+      const distinct = pickDistinct(sorted, maxColors);
       URL.revokeObjectURL(url);
 
       resolve({
         primaryColor: distinct[0] || '#FC0694',
         secondaryColor: distinct[1] || '#1A1A24',
         accentColor: distinct[2] || '#3B82F6',
+        colors: distinct,
         extracted: distinct.length > 0,
       });
     };
 
     img.onerror = () => {
       URL.revokeObjectURL(url);
-      resolve({ primaryColor: '#FC0694', secondaryColor: '#1A1A24', accentColor: '#3B82F6', extracted: false });
+      resolve({ primaryColor: '#FC0694', secondaryColor: '#1A1A24', accentColor: '#3B82F6', colors: [], extracted: false });
+    };
+
+    img.src = url;
+  });
+}
+
+/**
+ * Suggest a name that doesn't collide with `existingNames`, incrementing a
+ * numeric suffix until it finds one that's free. `separator` lets callers
+ * match their own naming convention (e.g. "." for dot-namespaced token
+ * names, " " for human-readable component names).
+ */
+export function suggestUniqueName(baseName, existingNames = [], separator = '.') {
+  const taken = new Set(existingNames);
+  let n = 1;
+  let candidate = `${baseName}${separator}${n}`;
+  while (taken.has(candidate)) {
+    n += 1;
+    candidate = `${baseName}${separator}${n}`;
+  }
+  return candidate;
+}
+
+/**
+ * Estimate real font sizes present in an uploaded image by measuring text
+ * line heights directly from pixel data — no OCR, no font matching, just an
+ * honest geometric measurement so we never claim to detect a font we can't.
+ *
+ * Method: binarize the image (Otsu threshold), then for each row count how
+ * often the row flips between ink/background. Text rows have many small
+ * flips (individual glyph strokes); solid-color UI blocks have very few
+ * (just their left/right edges). Contiguous text-flagged rows are grouped
+ * into bands — each band's height, scaled back to the image's native
+ * resolution, is one measured text-line height. Similar heights across the
+ * image are clustered and the most common ones are returned as candidate
+ * font sizes (largest first). Returns `{ sizes: [], extracted: false }` when
+ * nothing resembling text is found (e.g. a photo with no UI text).
+ */
+export function extractFontSizesFromImage(file, maxSizes = 5) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      const naturalW = img.width || 1;
+      const naturalH = img.height || 1;
+      const maxDim = 600;
+      const scale = Math.min(1, maxDim / Math.max(naturalW, naturalH));
+      const w = Math.max(1, Math.round(naturalW * scale));
+      const h = Math.max(1, Math.round(naturalH * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const { data } = ctx.getImageData(0, 0, w, h);
+      URL.revokeObjectURL(url);
+
+      const pixelCount = w * h;
+      const gray = new Uint8ClampedArray(pixelCount);
+      const hist = new Array(256).fill(0);
+      for (let p = 0; p < pixelCount; p++) {
+        const i = p * 4;
+        const v = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+        gray[p] = v;
+        hist[v] += 1;
+      }
+
+      // Otsu's method: find the luminance threshold that best splits the
+      // image into two classes (ink vs. background).
+      let sumAll = 0;
+      for (let t = 0; t < 256; t++) sumAll += t * hist[t];
+      let sumB = 0, weightB = 0, maxVariance = 0, threshold = 127;
+      for (let t = 0; t < 256; t++) {
+        weightB += hist[t];
+        if (weightB === 0) continue;
+        const weightF = pixelCount - weightB;
+        if (weightF === 0) break;
+        sumB += t * hist[t];
+        const meanB = sumB / weightB;
+        const meanF = (sumAll - sumB) / weightF;
+        const variance = weightB * weightF * (meanB - meanF) * (meanB - meanF);
+        if (variance > maxVariance) { maxVariance = variance; threshold = t; }
+      }
+
+      const darkPixels = hist.slice(0, threshold).reduce((a, b) => a + b, 0);
+      const lightBackground = darkPixels < pixelCount / 2;
+      const isInk = (v) => (lightBackground ? v < threshold : v >= threshold);
+
+      const rowTransitions = new Array(h).fill(0);
+      for (let y = 0; y < h; y++) {
+        const rowStart = y * w;
+        let prev = isInk(gray[rowStart]);
+        let count = 0;
+        for (let x = 1; x < w; x++) {
+          const cur = isInk(gray[rowStart + x]);
+          if (cur !== prev) count += 1;
+          prev = cur;
+        }
+        rowTransitions[y] = count;
+      }
+
+      const textThreshold = Math.max(6, w * 0.02);
+      const bands = [];
+      let bandStart = null;
+      for (let y = 0; y < h; y++) {
+        const isTextRow = rowTransitions[y] >= textThreshold;
+        if (isTextRow && bandStart === null) bandStart = y;
+        if (!isTextRow && bandStart !== null) {
+          bands.push(y - bandStart);
+          bandStart = null;
+        }
+      }
+      if (bandStart !== null) bands.push(h - bandStart);
+
+      const scaleBack = naturalH / h;
+      const measuredHeights = bands
+        .filter((bandHeight) => bandHeight >= 3 && bandHeight <= 80)
+        .map((bandHeight) => Math.round(bandHeight * scaleBack))
+        // Below ~6px real-image pixels is almost always an anti-aliasing
+        // artifact or a thin divider, not readable text.
+        .filter((px) => px >= 6);
+
+      if (!measuredHeights.length) {
+        resolve({ sizes: [], extracted: false });
+        return;
+      }
+
+      // Cluster similar measured heights (within ~20%) and keep the most
+      // frequent ones — a real font size shows up on many lines, noise doesn't.
+      const clusters = [];
+      for (const height of measuredHeights.sort((a, b) => a - b)) {
+        const cluster = clusters.find((c) => Math.abs(height - c.avg) <= Math.max(2, c.avg * 0.2));
+        if (cluster) {
+          cluster.values.push(height);
+          cluster.avg = cluster.values.reduce((a, b) => a + b, 0) / cluster.values.length;
+        } else {
+          clusters.push({ values: [height], avg: height });
+        }
+      }
+
+      const sizes = clusters
+        .sort((a, b) => b.values.length - a.values.length)
+        .slice(0, maxSizes)
+        .map((c) => Math.round(c.avg))
+        .sort((a, b) => b - a);
+
+      resolve({ sizes, extracted: sizes.length > 0 });
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ sizes: [], extracted: false });
     };
 
     img.src = url;
