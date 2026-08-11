@@ -49,6 +49,7 @@ const Designers = () => {
           <h2 style={{ marginBottom: '1.5rem', fontSize: '2rem' }}>Pitch this to your team</h2>
           <p style={{ fontSize: '1rem', marginBottom: '1rem' }}>"We keep our existing frontend stack, but move design system delivery to runtime. That reduces redeployment work for UI changes and keeps production aligned with design across React and non-React apps."</p>
           <p style={{ fontSize: '1rem' }}>You do not need to manage build pipelines. Engineering wires the client once, then the same definition can power React packages, Web Components, and future native targets.</p>
+          <p style={{ fontSize: '1rem', marginTop: '1rem' }}>Don't have your system defined in Strata yet? Upload a screenshot of your current UI and we'll extract a starter set of tokens and components for you to refine.</p>
         </div>
       </div>
 

@@ -7,7 +7,7 @@ const VibeCoders = () => {
       <div className="page-header">
         <span className="section-label" style={{ color: 'var(--text-secondary)' }}>FOR VIBE CODERS</span>
         <h1>Every screen you ship should look like it came from the same product</h1>
-        <p>AI can generate a screen in minutes. It can't give your apps shared design inheritance. Strata connects your token and component source once — every app you build or generate inherits it automatically.</p>
+        <p>AI can generate a screen in minutes. It can't give your apps shared design inheritance. Strata connects your token and component source once — every app you build or generate inherits it automatically. No system yet? Upload a screenshot of any screen you've already shipped and Strata extracts real tokens and components from it to get you started.</p>
         
         <div className="cta-group" style={{ marginTop: '2rem' }}>
           <Link to="/signup" className="btn btn-primary" style={{ textDecoration: 'none' }}>Get started</Link>

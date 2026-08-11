@@ -220,6 +220,204 @@ export function extractFontSizesFromImage(file, maxSizes = 5) {
 }
 
 /**
+ * Detect distinct rectangular UI-element-shaped regions in an uploaded
+ * design screenshot (e.g. a Figma screen export) using only Canvas 2D pixel
+ * data — no OCR, no ML, no backend. This finds real geometric regions
+ * (connected blobs of near-uniform color, bounded by contrast edges); it
+ * never claims to recognize *what* a region is (button/card/etc.) — only
+ * that a distinct rectangular area was measured in the actual pixels.
+ *
+ * Method: quantize color (like `extractColorsFromImage`) and add a contrast
+ * "edge barrier" (like `extractFontSizesFromImage`'s Otsu step, but a
+ * gradient here) so two same-colored-but-separated regions don't merge.
+ * Flood-fill connected same-color, non-edge pixels into blobs, then keep
+ * only blobs shaped like UI elements (big enough, mostly-rectangular, not
+ * a hairline, not the page background) and report their bounding boxes in
+ * the original image's pixel space, plus each blob's true averaged color.
+ */
+export function detectComponentRegions(file, opts = {}) {
+  const {
+    maxWorkingDim = 900,
+    maxRegions = 20,
+    minFillRatio = 0.75,
+    maxAspectRatio = 25,
+    maxRegionFraction = 0.6,
+    edgeThreshold = 20,
+    maxBlobs = 5000,
+  } = opts;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      try {
+        const naturalW = img.width || 1;
+        const naturalH = img.height || 1;
+        const scale = Math.min(1, maxWorkingDim / Math.max(naturalW, naturalH));
+        const w = Math.max(1, Math.round(naturalW * scale));
+        const h = Math.max(1, Math.round(naturalH * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const { data } = ctx.getImageData(0, 0, w, h);
+        URL.revokeObjectURL(url);
+
+        const n = w * h;
+        const gray = new Uint8ClampedArray(n);
+        const quant = new Uint16Array(n);
+        const rArr = new Uint8ClampedArray(n);
+        const gArr = new Uint8ClampedArray(n);
+        const bArr = new Uint8ClampedArray(n);
+        const TRANSPARENT_BUCKET = 999;
+
+        for (let p = 0; p < n; p++) {
+          const i = p * 4;
+          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+          rArr[p] = r; gArr[p] = g; bArr[p] = b;
+          gray[p] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+          if (a < 128) {
+            quant[p] = TRANSPARENT_BUCKET;
+          } else {
+            const qr = Math.round(r / 32), qg = Math.round(g / 32), qb = Math.round(b / 32);
+            quant[p] = qr * 81 + qg * 9 + qb;
+          }
+        }
+
+        // Edge barrier: a real contrast measurement, not a guess — flood
+        // fill must never cross it, even when the quantized bucket matches
+        // on both sides (catches e.g. a white card on an off-white page).
+        const edge = new Uint8Array(n);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            const gx = x > 0 ? Math.abs(gray[idx] - gray[idx - 1]) : 0;
+            const gy = y > 0 ? Math.abs(gray[idx] - gray[idx - w]) : 0;
+            edge[idx] = (gx + gy) >= edgeThreshold ? 1 : 0;
+          }
+        }
+
+        const visited = new Uint8Array(n);
+        const blobs = [];
+        let blobCount = 0;
+        const stack = [];
+
+        for (let start = 0; start < n; start++) {
+          if (visited[start] || edge[start]) { visited[start] = 1; continue; }
+          if (blobCount >= maxBlobs) { visited[start] = 1; continue; }
+
+          const bucket = quant[start];
+          visited[start] = 1;
+          stack.length = 0;
+          stack.push(start);
+
+          let minX = start % w, maxX = minX, minY = Math.floor(start / w), maxY = minY;
+          let count = 0, sumR = 0, sumG = 0, sumB = 0;
+
+          while (stack.length) {
+            const cur = stack.pop();
+            const cx = cur % w, cy = (cur - cx) / w;
+            count++;
+            sumR += rArr[cur]; sumG += gArr[cur]; sumB += bArr[cur];
+            if (cx < minX) minX = cx; if (cx > maxX) maxX = cx;
+            if (cy < minY) minY = cy; if (cy > maxY) maxY = cy;
+
+            if (cx > 0) { const nb = cur - 1; if (!visited[nb] && !edge[nb] && quant[nb] === bucket) { visited[nb] = 1; stack.push(nb); } }
+            if (cx < w - 1) { const nb = cur + 1; if (!visited[nb] && !edge[nb] && quant[nb] === bucket) { visited[nb] = 1; stack.push(nb); } }
+            if (cy > 0) { const nb = cur - w; if (!visited[nb] && !edge[nb] && quant[nb] === bucket) { visited[nb] = 1; stack.push(nb); } }
+            if (cy < h - 1) { const nb = cur + w; if (!visited[nb] && !edge[nb] && quant[nb] === bucket) { visited[nb] = 1; stack.push(nb); } }
+          }
+
+          blobCount++;
+          blobs.push({ minX, maxX, minY, maxY, count, avgR: sumR / count, avgG: sumG / count, avgB: sumB / count });
+        }
+
+        const workingArea = w * h;
+        const candidates = [];
+        for (const b of blobs) {
+          const bboxW = b.maxX - b.minX + 1;
+          const bboxH = b.maxY - b.minY + 1;
+          const bboxArea = bboxW * bboxH;
+          const fillRatio = b.count / bboxArea;
+          if (bboxW < Math.max(10, w * 0.012)) continue;
+          if (bboxH < Math.max(8, h * 0.012)) continue;
+          if (fillRatio < minFillRatio) continue;
+          const aspect = Math.max(bboxW, bboxH) / Math.min(bboxW, bboxH);
+          if (aspect > maxAspectRatio) continue;
+
+          const touchesEdge = b.minX <= w * 0.01 || b.maxX >= w * 0.99 - 1 || b.minY <= h * 0.01 || b.maxY >= h * 0.99 - 1;
+          const isBackground = touchesEdge || bboxArea >= workingArea * maxRegionFraction;
+          candidates.push({ ...b, bboxW, bboxH, bboxArea, fillRatio, isBackground });
+        }
+
+        // Tight-crop fallback: a screenshot cropped close around one element
+        // can get excluded by the background-size/edge-touch rule above —
+        // without this, the single-element case would wrongly detect nothing.
+        let pool = candidates.filter((c) => !c.isBackground);
+        if (pool.length === 0 && candidates.length > 0) pool = candidates;
+
+        const totalDetected = pool.length;
+        const sorted = pool.sort((a, b2) => b2.bboxArea - a.bboxArea);
+        const top = sorted.slice(0, maxRegions);
+        const truncated = totalDetected > maxRegions;
+
+        const scaleBack = 1 / scale;
+        const regions = top.map((c) => {
+          let nx = Math.round(c.minX * scaleBack);
+          let ny = Math.round(c.minY * scaleBack);
+          let nw = Math.round(c.bboxW * scaleBack);
+          let nh = Math.round(c.bboxH * scaleBack);
+          const pad = Math.max(4, Math.round(Math.max(nw, nh) * 0.03));
+          nx = Math.max(0, nx - pad);
+          ny = Math.max(0, ny - pad);
+          nw = Math.min(naturalW - nx, nw + pad * 2);
+          nh = Math.min(naturalH - ny, nh + pad * 2);
+          return {
+            x: nx, y: ny, width: nw, height: nh,
+            dominantColor: rgbToHex(Math.round(c.avgR), Math.round(c.avgG), Math.round(c.avgB)),
+            fillRatio: c.fillRatio,
+          };
+        });
+
+        resolve({ regions, extracted: regions.length > 0, truncated, totalDetected, image: img });
+      } catch (err) {
+        URL.revokeObjectURL(url);
+        resolve({ regions: [], extracted: false, truncated: false, totalDetected: 0, image: null });
+      }
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ regions: [], extracted: false, truncated: false, totalDetected: 0, image: null });
+    };
+
+    img.src = url;
+  });
+}
+
+/**
+ * Crop one region out of an already-decoded image (as returned by
+ * `detectComponentRegions`) into its own compressed data URL. Distinct from
+ * `resizeImageToDataUrl`, which loads its own fresh Image per call from a
+ * File — here the same decoded image is cropped many times, once per
+ * detected region, without re-reading or re-decoding the source file.
+ */
+export function cropImageRegionToDataUrl(image, x, y, width, height, maxDim = 320, quality = 0.82) {
+  return new Promise((resolve) => {
+    const scale = Math.min(1, maxDim / Math.max(width, height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(image, x, y, width, height, 0, 0, canvas.width, canvas.height);
+    resolve(canvas.toDataURL('image/jpeg', quality));
+  });
+}
+
+/**
  * Downscale + compress an uploaded image into a base64 data URL, small
  * enough to persist safely in localStorage (unlike a raw File/object URL,
  * a data URL survives a page reload since it's plain JSON-serializable text).

@@ -29,7 +29,7 @@ const Pricing = () => {
           <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '2.5rem' }}>While in beta • No credit card required</p>
           
           <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2.5rem' }}>
-            {['Unlimited projects', 'Figma import', 'AI-powered token generation', 'Real-time sync to your apps', 'All export formats (Tailwind, CSS, Swift, Dart, and more)', 'Public CDN endpoints for your tokens', 'Style Dictionary and DTCG JSON compatible'].map((feature, i) => (
+            {['Unlimited projects', 'Figma import', 'Extract tokens & components from any screenshot', 'AI-powered token generation', 'Real-time sync to your apps', 'All export formats (Tailwind, CSS, Swift, Dart, and more)', 'Public CDN endpoints for your tokens', 'Style Dictionary and DTCG JSON compatible'].map((feature, i) => (
               <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '0.9rem' }}>
                 <span style={{ color: 'var(--accent)', marginTop: '2px' }}>✓</span>
                 <span>{feature}</span>

@@ -9,7 +9,7 @@ const Developers = () => {
         <h1>Component changes shouldn't need a deploy cycle to reach production</h1>
         <p>Stop blocking design changes on release cycles. Strata syncs tokens and component structure to every connected app in 3 seconds — no redeploy, no ticket, no drift.</p>
         <br />
-        <p>Strata delivers design tokens and component definitions at runtime. Wire the provider once — every connected app reflects updates in 3 seconds, no PR required.</p>
+        <p>Strata delivers design tokens and component definitions at runtime. Wire the provider once — every connected app reflects updates in 3 seconds, no PR required. Bootstrapping a new system is just as fast — upload a screenshot of an existing UI and Strata extracts a starter token and component set automatically.</p>
         
         <div className="cta-group" style={{ marginTop: '2rem' }}>
           <Link to="/docs" className="btn btn-primary" style={{ textDecoration: 'none' }}>Read docs</Link>

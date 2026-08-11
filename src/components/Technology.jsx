@@ -12,7 +12,7 @@ const Technology = () => {
         <div className="card">
           <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔌</div>
           <h3>Connect Sources</h3>
-          <p>Point Strata at Figma or your Style Dictionary. We parse and normalize your tokens and components instantly.</p>
+          <p>Point Strata at Figma or your Style Dictionary — or upload a screenshot of any web or app UI. We parse it and extract real tokens and components instantly.</p>
         </div>
         <div className="card">
           <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📦</div>

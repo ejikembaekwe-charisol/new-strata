@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
 import branchIcon from '../assets/branch-icon.svg';
 import { resolveMyRole, can, canViewTab, ROLES } from '../utils/permissions';
-import { extractColorsFromImage, extractFontSizesFromImage, resizeImageToDataUrl, suggestUniqueName } from '../utils/colorExtract';
+import { extractColorsFromImage, extractFontSizesFromImage, detectComponentRegions, cropImageRegionToDataUrl, resizeImageToDataUrl, suggestUniqueName } from '../utils/colorExtract';
 
 /* ── Error Boundary: prevents blank screen on render crashes ── */
 class ErrorBoundary extends React.Component {
@@ -648,6 +648,16 @@ This document serves as our living source of truth.`
     updateComponentsState([...components, newComp]);
   };
 
+  // Adds many components (e.g. a batch of regions detected from one design
+  // screenshot) in one state update — calling handleAddComponent in a loop
+  // would have every iteration read the same stale `components` closure and
+  // only the last one would stick. Each item also needs its own unique id:
+  // String(Date.now()) per item in a tight synchronous loop can collide.
+  const handleAddComponents = (comps) => {
+    const newComps = comps.map((c, i) => ({ id: `${Date.now()}-${i}`, ...c }));
+    updateComponentsState([...components, ...newComps]);
+  };
+
   const handleEditComponent = (updatedComp) => {
     updateComponentsState(components.map(c => c.id === updatedComp.id ? updatedComp : c));
   };
@@ -802,7 +812,7 @@ This document serves as our living source of truth.`
     if (comp.template === 'image') {
       return (
         <div style={{
-          display: 'flex', alignItems: 'center', maxWidth: '100%', maxHeight: '100%',
+          position: 'relative', display: 'flex', alignItems: 'center', maxWidth: '100%', maxHeight: '100%',
           borderLeft: comp.accentColor ? `4px solid ${comp.accentColor}` : 'none',
           paddingLeft: comp.accentColor ? '0.5rem' : 0,
         }}>
@@ -811,6 +821,19 @@ This document serves as our living source of truth.`
             alt={comp.name}
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px' }}
           />
+          {comp.accentFontSize && (
+            <span
+              title={`Detected text size: ~${comp.accentFontSize}px`}
+              style={{
+                position: 'absolute', top: '2px', right: '2px',
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '4px', padding: '0.1rem 0.35rem',
+                fontSize: '0.65rem', color: 'var(--text-secondary)', lineHeight: 1.4,
+              }}
+            >
+              Aa {comp.accentFontSize}px
+            </span>
+          )}
         </div>
       );
     }
@@ -4127,7 +4150,9 @@ export default function RootLayout({ children }) {
           componentToEdit={componentModal.component}
           onClose={() => setComponentModal(null)}
           onSave={(compData) => {
-            if (componentModal.mode === 'add') {
+            if (Array.isArray(compData)) {
+              handleAddComponents(compData);
+            } else if (componentModal.mode === 'add') {
               handleAddComponent(compData);
             } else {
               handleEditComponent({ ...componentModal.component, ...compData });
@@ -5175,30 +5200,34 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
   const handleUploadFile = async (file) => {
     if (!file) return;
     setUploadScan({ scanning: true });
-    const [{ colors, extracted: colorsExtracted }, { sizes, extracted: sizesExtracted }, preview] = await Promise.all([
-      extractColorsFromImage(file, 8),
-      extractFontSizesFromImage(file, 5),
-      resizeImageToDataUrl(file).catch(() => null),
-    ]);
-    if (!colorsExtracted && !sizesExtracted) {
+    try {
+      const [{ colors, extracted: colorsExtracted }, { sizes, extracted: sizesExtracted }, preview] = await Promise.all([
+        extractColorsFromImage(file, 8),
+        extractFontSizesFromImage(file, 5),
+        resizeImageToDataUrl(file).catch(() => null),
+      ]);
+      if (!colorsExtracted && !sizesExtracted) {
+        setUploadScan({ scanning: false, failed: true });
+        return;
+      }
+      setUploadImagePreview(preview);
+      const takenByType = {};
+      const nextName = (baseName, rowType) => {
+        const taken = takenByType[rowType] || existingNamesForType(rowType);
+        const rowName = suggestUniqueName(baseName, taken);
+        takenByType[rowType] = [...taken, rowName];
+        return rowName;
+      };
+      const colorRows = colors.map((hex) => ({
+        kind: 'color', hex, checked: true, name: nextName('color.upload', 'color'), type: 'color',
+      }));
+      const fontSizeRows = sizes.map((px) => ({
+        kind: 'fontSize', px, checked: true, name: nextName('font.size.upload', 'fontSize'), type: 'fontSize',
+      }));
+      setUploadScan({ scanning: false, rows: [...colorRows, ...fontSizeRows] });
+    } catch (err) {
       setUploadScan({ scanning: false, failed: true });
-      return;
     }
-    setUploadImagePreview(preview);
-    const takenByType = {};
-    const nextName = (baseName, rowType) => {
-      const taken = takenByType[rowType] || existingNamesForType(rowType);
-      const rowName = suggestUniqueName(baseName, taken);
-      takenByType[rowType] = [...taken, rowName];
-      return rowName;
-    };
-    const colorRows = colors.map((hex) => ({
-      kind: 'color', hex, checked: true, name: nextName('color.upload', 'color'), type: 'color',
-    }));
-    const fontSizeRows = sizes.map((px) => ({
-      kind: 'fontSize', px, checked: true, name: nextName('font.size.upload', 'fontSize'), type: 'fontSize',
-    }));
-    setUploadScan({ scanning: false, rows: [...colorRows, ...fontSizeRows] });
   };
 
   const resetUpload = () => {
@@ -5748,52 +5777,100 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
     });
   };
 
-  // ── Upload Image tab — reuses the same `name`/`category` state as the
-  // manual tab above (same Name input, same Category select).
+  // ── Upload Image tab — detects every distinct UI-element-shaped region in
+  // the uploaded screenshot (e.g. a full Figma screen export) and shows each
+  // as its own tickable row: editable name, category, and a real cropped
+  // thumbnail. A screenshot of just one button still works fine — it simply
+  // detects one region and shows a table with one row. Submitting creates
+  // every ticked row as its own component in one batch.
   const [entryTab, setEntryTab] = useState('manual');
-  const [uploadImageUrl, setUploadImageUrl] = useState(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadScan, setUploadScan] = useState(null); // { colors: [], selected }
+  const [uploadScan, setUploadScan] = useState(null); // { scanning, failed, rows: [], truncated, totalDetected }
+  const [uploadImagePreview, setUploadImagePreview] = useState(null);
 
   const handleUploadFile = async (file) => {
     if (!file) return;
-    setUploadingImage(true);
+    setUploadScan({ scanning: true });
     try {
-      const dataUrl = await resizeImageToDataUrl(file);
-      setUploadImageUrl(dataUrl);
-      const { colors, extracted } = await extractColorsFromImage(file, 8);
-      setUploadScan(extracted ? { colors, selected: colors[0] } : { colors: [] });
-      if (!name.trim()) {
-        setName(suggestUniqueName('Uploaded Component', existingNames || [], ' '));
+      const [{ regions, extracted, truncated, totalDetected, image }, preview] = await Promise.all([
+        detectComponentRegions(file),
+        resizeImageToDataUrl(file).catch(() => null),
+      ]);
+      if (!extracted) {
+        setUploadScan({ scanning: false, failed: true });
+        return;
       }
+      const cropped = await Promise.all(
+        regions.map((r) => cropImageRegionToDataUrl(image, r.x, r.y, r.width, r.height))
+      );
+      const naturalW = image.width || 1;
+      const naturalH = image.height || 1;
+      const takenNames = [...(existingNames || [])];
+      const rows = regions.map((r, i) => {
+        const rowName = suggestUniqueName('Component', takenNames, ' ');
+        takenNames.push(rowName);
+        return {
+          checked: true,
+          name: rowName,
+          category: 'Actions & Buttons',
+          imageUrl: cropped[i],
+          accentColor: r.dominantColor,
+          xPct: (r.x / naturalW) * 100,
+          yPct: (r.y / naturalH) * 100,
+          wPct: (r.width / naturalW) * 100,
+          hPct: (r.height / naturalH) * 100,
+        };
+      });
+      setUploadImagePreview(preview);
+      setUploadScan({ scanning: false, rows, truncated, totalDetected });
     } catch (err) {
-      alert('Could not read that image — please try a different file.');
+      setUploadScan({ scanning: false, failed: true });
     }
-    setUploadingImage(false);
   };
 
+  const resetUpload = () => {
+    setUploadScan(null);
+    setUploadImagePreview(null);
+  };
+
+  const updateUploadRow = (index, updates) => {
+    setUploadScan((scan) => ({
+      ...scan,
+      rows: scan.rows.map((r, i) => (i === index ? { ...r, ...updates } : r)),
+    }));
+  };
+
+  const uploadRowError = (row, index, rows) => {
+    if (!row.checked) return null;
+    const trimmed = row.name.trim();
+    if (!trimmed) return 'Name required';
+    if (rows.some((r, i) => i !== index && r.checked && r.name.trim() === trimmed)) {
+      return 'Duplicate name in this batch';
+    }
+    if ((existingNames || []).includes(trimmed)) {
+      return 'A component with this name already exists';
+    }
+    return null;
+  };
+
+  const checkedUploadRows = uploadScan?.rows?.filter((r) => r.checked) || [];
+  const uploadHasBlockingError = uploadScan?.rows?.some((r, i) => uploadRowError(r, i, uploadScan.rows)) || false;
+
   const handleUploadSubmit = () => {
-    if (!name.trim()) {
-      alert('Please give the component a name.');
+    if (!checkedUploadRows.length) {
+      alert('Please tick at least one component to add.');
       return;
     }
-    if (!uploadImageUrl) {
-      alert('Please upload an image.');
-      return;
-    }
-    if ((existingNames || []).includes(name.trim())) {
-      alert(`A component named "${name.trim()}" already exists. Please choose a different name.`);
-      return;
-    }
-    onSave({
-      name: name.trim(),
-      description: description.trim(),
-      category,
+    const comps = checkedUploadRows.map((r) => ({
+      name: r.name.trim(),
+      description: '',
+      category: r.category,
       template: 'image',
-      imageUrl: uploadImageUrl,
-      accentColor: uploadScan?.selected || null,
+      imageUrl: r.imageUrl,
+      accentColor: r.accentColor,
+      accentFontSize: null,
       tokens: {},
-    });
+    }));
+    onSave(comps);
   };
 
   return (
@@ -5975,11 +6052,7 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
 
         {entryTab === 'upload' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {uploadImageUrl ? (
-              <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.75rem', display: 'flex', justifyContent: 'center' }}>
-                <img src={uploadImageUrl} alt="Uploaded component" style={{ maxWidth: '100%', maxHeight: '160px', objectFit: 'contain', borderRadius: '6px' }} />
-              </div>
-            ) : (
+            {!uploadScan?.rows && (
               <label
                 style={{
                   border: '2px dashed var(--border)', borderRadius: '12px', padding: '1.75rem 1rem',
@@ -5992,84 +6065,170 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
                   style={{ display: 'none' }}
                   onChange={(e) => { handleUploadFile(e.target.files?.[0]); e.target.value = ''; }}
                 />
-                {uploadingImage ? (
+                {uploadScan?.scanning ? (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}>
                     <div className="loading-spinner" style={{ width: '18px', height: '18px' }}></div>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Reading image…</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Detecting components…</span>
                   </div>
                 ) : (
                   <>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop an image here, or click to browse</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>This screenshot becomes the component's preview as-is</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>Drop a design screenshot here, or click to browse</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+                      Works best with a full Figma screen export — we'll detect each distinct UI element as its own region. Detection works best when elements have visible contrast with their surroundings.
+                    </div>
                   </>
                 )}
               </label>
             )}
-            {uploadScan?.colors?.length > 0 && (
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: '0.5rem', display: 'block' }}>
-                  Colors detected in this image ({uploadScan.colors.length})
-                </label>
-                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  {uploadScan.colors.map((c, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setUploadScan({ ...uploadScan, selected: c })}
-                      title={c}
-                      style={{
-                        width: '36px', height: '36px', borderRadius: '8px', background: c, cursor: 'pointer',
-                        border: uploadScan.selected === c ? '2px solid var(--text-primary)' : '2px solid transparent',
-                        boxShadow: uploadScan.selected === c ? '0 0 0 2px var(--bg-tertiary)' : 'none',
-                        padding: 0,
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-            {uploadImageUrl && (
-              <button
-                type="button"
-                onClick={() => { setUploadImageUrl(null); setUploadScan(null); }}
-                style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.78rem', cursor: 'pointer', padding: 0, textAlign: 'left' }}
-              >
-                Choose a different image
-              </button>
+
+            {uploadScan?.failed && (
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>
+                Couldn't detect any distinct regions in that image — it works best when elements have visible contrast with their surroundings. Try a different screenshot.
+              </p>
             )}
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Component Name</label>
-              <input
-                type="text"
-                className="form-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Pricing Card"
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Category</label>
-              <select
-                className="form-input"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                style={{ cursor: 'pointer' }}
-              >
-                <option value="Actions & Buttons">Actions & Buttons</option>
-                <option value="Form Inputs">Form Inputs</option>
-                <option value="Display & Data">Display & Data</option>
-                <option value="Feedback & Status">Feedback & Status</option>
-                <option value="Navigation">Navigation</option>
-                <option value="Overlays">Overlays</option>
-                <option value="Layout Primitives">Layout Primitives</option>
-              </select>
-            </div>
+            {uploadScan?.rows && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', margin: 0 }}>
+                    Regions detected in this image ({uploadScan.rows.length})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={resetUpload}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
+                  >
+                    Upload a different image
+                  </button>
+                </div>
+
+                {uploadScan.truncated && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: 0 }}>
+                    Showing the {uploadScan.rows.length} largest of {uploadScan.totalDetected} detected regions.
+                  </p>
+                )}
+
+                {uploadImagePreview && (
+                  <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.5rem' }}>
+                    <div style={{ position: 'relative', width: '100%', lineHeight: 0 }}>
+                      <img src={uploadImagePreview} alt="Uploaded design" style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '6px' }} />
+                      {uploadScan.rows.map((row, i) => (
+                        <div
+                          key={i}
+                          onClick={() => updateUploadRow(i, { checked: !row.checked })}
+                          title={row.name}
+                          style={{
+                            position: 'absolute',
+                            left: `${row.xPct}%`, top: `${row.yPct}%`, width: `${row.wPct}%`, height: `${row.hPct}%`,
+                            border: `2px solid ${row.checked ? 'var(--accent)' : 'rgba(255,255,255,0.35)'}`,
+                            background: row.checked ? 'rgba(252,6,148,0.12)' : 'rgba(0,0,0,0.15)',
+                            borderRadius: '3px', cursor: 'pointer', boxSizing: 'border-box',
+                          }}
+                        >
+                          <span style={{
+                            position: 'absolute', top: '-9px', left: '-9px',
+                            width: '18px', height: '18px', borderRadius: '50%',
+                            background: row.checked ? 'var(--accent)' : 'var(--bg-secondary)',
+                            border: '1px solid var(--border)', color: '#fff',
+                            fontSize: '0.62rem', fontWeight: 700, lineHeight: '16px', textAlign: 'center',
+                          }}>
+                            {i + 1}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '2px' }}>
+                  {uploadScan.rows.map((row, i) => {
+                    const error = uploadRowError(row, i, uploadScan.rows);
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+                          background: 'var(--bg-tertiary)', border: `1px solid ${error ? '#EF4444' : 'var(--border)'}`,
+                          borderRadius: '8px', padding: '0.6rem', opacity: row.checked ? 1 : 0.55,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={row.checked}
+                          onChange={(e) => updateUploadRow(i, { checked: e.target.checked })}
+                          style={{ accentColor: 'var(--accent)', width: '16px', height: '16px', flexShrink: 0, marginTop: '10px', cursor: 'pointer' }}
+                        />
+                        <div style={{ position: 'relative', flexShrink: 0, marginTop: '2px' }}>
+                          <div style={{
+                            width: '64px', height: '48px', borderRadius: '6px', flexShrink: 0,
+                            border: '1px solid rgba(255,255,255,0.15)', background: 'var(--bg-secondary)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                          }}>
+                            <img
+                              src={row.imageUrl}
+                              alt={row.name}
+                              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                            />
+                          </div>
+                          <span style={{
+                            position: 'absolute', top: '-7px', left: '-7px',
+                            width: '16px', height: '16px', borderRadius: '50%',
+                            background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                            fontSize: '0.6rem', fontWeight: 700, lineHeight: '14px', textAlign: 'center',
+                          }}>
+                            {i + 1}
+                          </span>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                          <div>
+                            <label style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.2rem' }}>Name</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={row.name}
+                              onChange={(e) => updateUploadRow(i, { name: e.target.value })}
+                              disabled={!row.checked}
+                              placeholder="e.g. Pricing Card"
+                              style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.2rem' }}>Category</label>
+                            <select
+                              className="form-input"
+                              value={row.category}
+                              onChange={(e) => updateUploadRow(i, { category: e.target.value })}
+                              disabled={!row.checked}
+                              style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', cursor: 'pointer' }}
+                            >
+                              <option value="Actions & Buttons">Actions & Buttons</option>
+                              <option value="Form Inputs">Form Inputs</option>
+                              <option value="Display & Data">Display & Data</option>
+                              <option value="Feedback & Status">Feedback & Status</option>
+                              <option value="Navigation">Navigation</option>
+                              <option value="Overlays">Overlays</option>
+                              <option value="Layout Primitives">Layout Primitives</option>
+                            </select>
+                          </div>
+                          {error && <span style={{ fontSize: '0.7rem', color: '#EF4444' }}>{error}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
               <button type="button" onClick={onClose} style={actionBtnStyle}>Cancel</button>
-              <button type="button" className="btn btn-primary" style={{ padding: '0.4rem 1.25rem' }} onClick={handleUploadSubmit}>
-                Add Component
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ padding: '0.4rem 1.25rem', opacity: (!checkedUploadRows.length || uploadHasBlockingError) ? 0.5 : 1, cursor: (!checkedUploadRows.length || uploadHasBlockingError) ? 'not-allowed' : 'pointer' }}
+                onClick={handleUploadSubmit}
+                disabled={!checkedUploadRows.length || uploadHasBlockingError}
+              >
+                {checkedUploadRows.length ? `Add ${checkedUploadRows.length} Component${checkedUploadRows.length === 1 ? '' : 's'}` : 'Add Components'}
               </button>
             </div>
           </div>
