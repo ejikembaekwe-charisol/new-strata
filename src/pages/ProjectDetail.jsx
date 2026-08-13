@@ -64,11 +64,14 @@ const actionBtnStyle = {
   color: 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit',
 };
 
-const computeInitials = (name) => {
-  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+// Invited teammates only give us an email up front (no name yet), so derive
+// avatar initials from the email's local part instead, e.g. "jordan.lee@…" → "JL".
+const computeInitialsFromEmail = (email) => {
+  const local = (email || '').split('@')[0];
+  const parts = local.split(/[._\-+]+/).filter(Boolean);
   if (parts.length === 0) return '';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
 };
 
 // Sidebar shows token TYPES
@@ -362,7 +365,12 @@ function ProjectDetailInner() {
   const [transferOwnershipOpen, setTransferOwnershipOpen] = useState(false);
   const [transferTargetId, setTransferTargetId] = useState('');
   const [projectNameDraft, setProjectNameDraft] = useState(project?.name || '');
-  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'Designer' });
+  const [inviteForm, setInviteForm] = useState({ email: '', role: 'Designer' });
+  // Session-only: dismissing just hides it for this visit — it comes back on
+  // the next page refresh, so it keeps catching the user's eye rather than
+  // vanishing for good after one click.
+  const [uploadBannerDismissed, setUploadBannerDismissed] = useState(false);
+  const dismissUploadBanner = () => setUploadBannerDismissed(true);
 
   // Handoff state variables
   const [expandedCard, setExpandedCard] = useState(null);
@@ -505,8 +513,7 @@ export const ThemeProvider = ({ children }) => {
   const [componentModal, setComponentModal] = useState(null); // { mode: 'add'|'edit', component? }
   const [editingTokenName, setEditingTokenName] = useState(null);
   const [editingTokenValue, setEditingTokenValue] = useState('');
-  const [presetsExpanded, setPresetsExpanded] = useState(true);
-  const [customExpanded, setCustomExpanded] = useState(true);
+  const [selectedComponentIds, setSelectedComponentIds] = useState(() => new Set());
 
   // Keep the Settings tab's name draft in sync once the project loads
   React.useEffect(() => {
@@ -664,6 +671,13 @@ This document serves as our living source of truth.`
 
   const handleDeleteComponent = (compId) => {
     updateComponentsState(components.filter(c => c.id !== compId));
+    setSelectedComponentIds(prev => { const next = new Set(prev); next.delete(compId); return next; });
+  };
+
+  const handleDeleteComponents = (compIds) => {
+    const ids = new Set(compIds);
+    updateComponentsState(components.filter(c => !ids.has(c.id)));
+    setSelectedComponentIds(new Set());
   };
 
   // Recursive token value resolver for references (e.g. {brand.color.primary})
@@ -737,21 +751,31 @@ This document serves as our living source of truth.`
     return chain;
   };
 
+  // Turns a component's whole `tokens` map into a resolved React style object,
+  // so any CSS property the user mapped (not just the original six) actually
+  // shows up in the live preview.
+  const resolveMappedStyle = (comp) => {
+    const out = {};
+    for (const [key, tokenName] of Object.entries(comp.tokens || {})) {
+      if (!tokenName) continue;
+      const resolved = resolveTokenValue(tokenName);
+      if (!resolved) continue;
+      out[cssPropToStyleKey(cssPropForTokenKey(key))] = resolved;
+    }
+    return out;
+  };
+
   // Live Component Preview Renderer
   const renderLivePreview = (comp) => {
+    const mapped = resolveMappedStyle(comp);
     const style = {
-      background: resolveTokenValue(comp.tokens?.bg),
-      color: resolveTokenValue(comp.tokens?.textColor),
-      padding: resolveTokenValue(comp.tokens?.padding),
-      borderRadius: resolveTokenValue(comp.tokens?.borderRadius),
-      fontFamily: resolveTokenValue(comp.tokens?.fontFamily),
-      fontSize: resolveTokenValue(comp.tokens?.fontSize),
       border: 'none',
       cursor: 'pointer',
       display: 'inline-block',
       textAlign: 'center',
       fontWeight: 500,
       transition: 'opacity 0.2s',
+      ...mapped,
     };
 
     if (comp.template === 'button') {
@@ -763,7 +787,7 @@ This document serves as our living source of truth.`
     }
     if (comp.template === 'badge') {
       return (
-        <span style={{ ...style, display: 'inline-block', textTransform: 'uppercase', fontSize: '0.7rem', padding: '0.2rem 0.6rem', fontWeight: 700, letterSpacing: '0.05em' }}>
+        <span style={{ ...style, display: 'inline-block', textTransform: 'uppercase', fontSize: '0.7rem', padding: '0.2rem 0.6rem', fontWeight: 700, letterSpacing: '0.05em', ...mapped }}>
           New
         </span>
       );
@@ -771,17 +795,13 @@ This document serves as our living source of truth.`
     if (comp.template === 'card') {
       return (
         <div style={{
-          background: resolveTokenValue(comp.tokens?.bg) || 'var(--bg-secondary)',
-          color: resolveTokenValue(comp.tokens?.textColor),
-          padding: resolveTokenValue(comp.tokens?.padding),
-          borderRadius: resolveTokenValue(comp.tokens?.borderRadius),
-          fontFamily: resolveTokenValue(comp.tokens?.fontFamily),
-          fontSize: resolveTokenValue(comp.tokens?.fontSize),
+          background: 'var(--bg-secondary)',
           border: '1px solid var(--border)',
           boxShadow: 'var(--shadow-md)',
           textAlign: 'left',
           width: '100%',
           maxWidth: '240px',
+          ...mapped,
         }}>
           <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Card Title</div>
           <div style={{ opacity: 0.7, fontSize: '0.85em' }}>This is a token-mapped card component.</div>
@@ -793,18 +813,20 @@ This document serves as our living source of truth.`
         <input
           type="text"
           placeholder="Placeholder..."
-          style={{
-            background: 'var(--bg-tertiary)',
-            color: resolveTokenValue(comp.tokens?.textColor) || 'var(--text-primary)',
-            padding: resolveTokenValue(comp.tokens?.padding),
-            borderRadius: resolveTokenValue(comp.tokens?.borderRadius),
-            fontFamily: resolveTokenValue(comp.tokens?.fontFamily),
-            fontSize: resolveTokenValue(comp.tokens?.fontSize),
-            border: `1px solid ${resolveTokenValue(comp.tokens?.bg) || 'var(--border)'}`,
-            outline: 'none',
-            width: '100%',
-            maxWidth: '200px',
-          }}
+          style={(() => {
+            // The input template renders its mapped background-color as the
+            // field's border instead, so the field itself stays legible.
+            const { background, backgroundColor, ...rest } = mapped;
+            return {
+              color: 'var(--text-primary)',
+              outline: 'none',
+              width: '100%',
+              maxWidth: '200px',
+              ...rest,
+              background: 'var(--bg-tertiary)',
+              border: `1px solid ${background || backgroundColor || 'var(--border)'}`,
+            };
+          })()}
           disabled
         />
       );
@@ -2660,6 +2682,12 @@ This document serves as our living source of truth.`
 
           {activeTab === 'tokens' && (
             <>
+              {!uploadBannerDismissed && (
+                <UploadAnnouncementBanner
+                  message="✨ New: Upload a screenshot of any UI to extract real color and typography tokens — look for the Upload Image tab when adding a token."
+                  onDismiss={dismissUploadBanner}
+                />
+              )}
               {/* Token table header */}
               <div className="pd-tokens-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -3025,61 +3053,112 @@ This document serves as our living source of truth.`
             });
 
             const catComps = mappedComponents.filter(comp => comp.category === activeComponentCategory);
-            const presetComps = catComps.filter(comp => comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4');
-            const customComps = catComps.filter(comp => !comp.isPreset && !String(comp.id).startsWith('preset-') && comp.id !== '1' && comp.id !== '2' && comp.id !== '3' && comp.id !== '4');
+            const isPresetComp = (comp) => comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4';
 
-            const renderComponentCard = (comp) => (
-              <div key={comp.id} style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: '16px',
-                padding: '1.5rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '1.25rem',
-                position: 'relative',
-              }}>
-                {/* Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>{comp.name}</h4>
-                      {(comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4') && (
+            const selectedInCat = catComps.filter(c => selectedComponentIds.has(c.id));
+            const deletableSelected = selectedInCat.filter(c => !isPresetComp(c));
+            const allCatSelected = catComps.length > 0 && catComps.every(c => selectedComponentIds.has(c.id));
+
+            const toggleComponentSelected = (compId) => setSelectedComponentIds(prev => {
+              const next = new Set(prev);
+              if (next.has(compId)) next.delete(compId); else next.add(compId);
+              return next;
+            });
+            const toggleAllInCategory = () => setSelectedComponentIds(prev => {
+              const next = new Set(prev);
+              if (allCatSelected) catComps.forEach(c => next.delete(c.id));
+              else catComps.forEach(c => next.add(c.id));
+              return next;
+            });
+
+            const COMPONENT_TABLE_COLS = '36px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.5fr) 76px';
+
+            const renderComponentRow = (comp, i, arr) => {
+              const preset = isPresetComp(comp);
+              const mappedCount = Object.values(comp.tokens || {}).filter(Boolean).length;
+              const isSelected = selectedComponentIds.has(comp.id);
+              return (
+                <div
+                  key={comp.id}
+                  className="pd-component-row"
+                  style={{
+                    display: 'grid', gridTemplateColumns: COMPONENT_TABLE_COLS, gap: '0.75rem',
+                    alignItems: 'center', padding: '0.75rem 1rem',
+                    borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
+                    background: isSelected ? 'var(--accent-glow)' : 'transparent',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleComponentSelected(comp.id)}
+                    style={{ accentColor: 'var(--accent)', width: '14px', height: '14px', cursor: 'pointer' }}
+                  />
+
+                  {/* Name + description */}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)',
+                        background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px',
+                        padding: '0.25rem 0.5rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {comp.name}
+                      </span>
+                      {preset && (
                         <span style={{
-                          fontSize: '0.65rem', background: 'var(--accent-glow)', color: 'var(--accent)',
-                          padding: '0.15rem 0.45rem', borderRadius: '4px', border: '1px solid rgba(252,6,148,0.2)',
-                          fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em'
+                          fontSize: '0.6rem', background: 'var(--accent-glow)', color: 'var(--accent)',
+                          padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid rgba(252,6,148,0.2)',
+                          fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0,
                         }}>
                           Preset
                         </span>
                       )}
                     </div>
-                    <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{comp.description}</p>
+                    {comp.description && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.3rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {comp.description}
+                      </div>
+                    )}
                   </div>
-                  {can(myRole, 'components', 'edit') && (
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
-                    <button
-                      onClick={() => setComponentModal({ mode: 'edit', component: comp })}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--text-secondary)', padding: '0.2rem',
-                        display: 'flex', alignItems: 'center',
-                      }}
-                      title="Edit component"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                    </button>
-                    {(comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4') ? (
+
+                  {/* Type + mapped count */}
+                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {comp.template === 'image' ? 'Uploaded image' : comp.template + ' template'}
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                      {mappedCount} token{mappedCount === 1 ? '' : 's'} mapped
+                    </span>
+                  </div>
+
+                  {/* Live preview */}
+                  <div style={{
+                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px',
+                    minHeight: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: '0.4rem', overflow: 'hidden',
+                  }}>
+                    {renderLivePreview(comp)}
+                  </div>
+
+                  {/* Tools */}
+                  <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'flex-end' }}>
+                    {can(myRole, 'components', 'edit') && (
                       <button
-                        style={{
-                          background: 'none', border: 'none', cursor: 'not-allowed',
-                          color: 'var(--text-tertiary)', padding: '0.2rem',
-                          display: 'flex', alignItems: 'center', opacity: 0.3
-                        }}
-                        title="Preset components cannot be deleted"
+                        onClick={() => setComponentModal({ mode: 'edit', component: comp })}
+                        title="Edit component"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                    )}
+                    {can(myRole, 'components', 'edit') && (preset ? (
+                      <button
                         disabled
+                        title="Preset components cannot be deleted"
+                        style={{ background: 'none', border: 'none', cursor: 'not-allowed', color: 'var(--text-tertiary)', padding: '0.25rem', display: 'flex', alignItems: 'center', opacity: 0.3 }}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
@@ -3087,81 +3166,51 @@ This document serves as our living source of truth.`
                       </button>
                     ) : (
                       <button
-                        onClick={() => {
-                          if (window.confirm(`Delete component "${comp.name}"?`)) {
-                            handleDeleteComponent(comp.id);
-                          }
-                        }}
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: 'rgba(239, 68, 68, 0.6)', padding: '0.2rem',
-                          display: 'flex', alignItems: 'center',
-                        }}
+                        onClick={() => { if (window.confirm('Delete component "' + comp.name + '"?')) handleDeleteComponent(comp.id); }}
                         title="Delete component"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239, 68, 68, 0.75)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                         </svg>
                       </button>
-                    )}
-                  </div>
-                  )}
-                </div>
-
-                {/* Canvas/Preview Area */}
-                <div style={{
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '10px',
-                  height: '140px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '1rem',
-                  overflow: 'hidden',
-                  position: 'relative',
-                }}>
-                  <div style={{ position: 'absolute', top: '6px', left: '8px', fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Live Canvas
-                  </div>
-                  {renderLivePreview(comp)}
-                </div>
-
-                {/* Mapped Tokens List */}
-                <div>
-                  <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-                    Mapped Tokens
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {Object.entries(comp.tokens || {}).map(([prop, tokenName]) => {
-                      if (!tokenName) return null;
-                      return (
-                        <div key={prop} style={{
-                          display: 'flex', alignItems: 'center', gap: '0.35rem',
-                          background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                          padding: '0.25rem 0.5rem', borderRadius: '6px', fontSize: '0.72rem'
-                        }}>
-                          <span style={{ color: 'var(--text-tertiary)' }}>{prop}:</span>
-                          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 500 }}>{tokenName}</span>
-                        </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 </div>
-              </div>
-            );
+              );
+            };
 
             return (
               <div>
-                <div className="pd-components-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2rem' }}>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {!uploadBannerDismissed && (
+                  <UploadAnnouncementBanner
+                    message="✨ New: Upload a screenshot of a full screen and we'll detect the distinct components in it — look for the Upload Image tab when adding a component."
+                    onDismiss={dismissUploadBanner}
+                  />
+                )}
+                <div className="pd-components-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', gap: '1rem', flexWrap: 'wrap' }}>
+                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
                     {activeComponentCategory} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({catComps.length})</span>
                   </h2>
-                  {can(myRole, 'components', 'create') && (
-                    <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                      + Add component
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {deletableSelected.length > 0 && can(myRole, 'components', 'edit') && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Delete ' + deletableSelected.length + ' component' + (deletableSelected.length === 1 ? '' : 's') + '?')) {
+                            handleDeleteComponents(deletableSelected.map(c => c.id));
+                          }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '0.8rem', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                      >
+                        Delete {deletableSelected.length} selected
+                      </button>
+                    )}
+                    {can(myRole, 'components', 'create') && (
+                      <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
+                        + Add component
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {catComps.length === 0 ? (
@@ -3180,103 +3229,28 @@ This document serves as our living source of truth.`
                     )}
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                    {/* Presets Accordion */}
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
-                      <button
-                        type="button"
-                        onClick={() => setPresetsExpanded(!presetsExpanded)}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          width: '100%', padding: '1rem 1.25rem', background: 'var(--bg-tertiary)',
-                          border: 'none', borderBottom: presetsExpanded ? '1px solid var(--border)' : 'none',
-                          color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 600,
-                          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <svg
-                            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                            style={{ transform: presetsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-secondary)' }}
-                          >
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                          <span>System Presets</span>
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '0.2rem 0.5rem', borderRadius: '100px', border: '1px solid var(--border)' }}>
-                          {presetComps.length}
-                        </span>
-                      </button>
-                      {presetsExpanded && (
-                        <div style={{ padding: '1.25rem' }}>
-                          {presetComps.length === 0 ? (
-                            <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', margin: 0, textAlign: 'center', padding: '1.5rem 0' }}>
-                              No presets in this category.
-                            </p>
-                          ) : (
-                            <div className="pd-component-grid" style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-                              gap: '1.25rem',
-                            }}>
-                              {presetComps.map(renderComponentCard)}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+                    <div
+                      className="pd-component-row pd-component-row-head"
+                      style={{
+                        display: 'grid', gridTemplateColumns: COMPONENT_TABLE_COLS, gap: '0.75rem',
+                        alignItems: 'center', padding: '0.7rem 1rem',
+                        background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allCatSelected}
+                        onChange={toggleAllInCategory}
+                        title="Select all in this category"
+                        style={{ accentColor: 'var(--accent)', width: '14px', height: '14px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Component</span>
+                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Type</span>
+                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Preview</span>
+                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em', textAlign: 'right' }}>Tools</span>
                     </div>
-
-                    {/* Custom Components Accordion */}
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
-                      <button
-                        type="button"
-                        onClick={() => setCustomExpanded(!customExpanded)}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          width: '100%', padding: '1rem 1.25rem', background: 'var(--bg-tertiary)',
-                          border: 'none', borderBottom: customExpanded ? '1px solid var(--border)' : 'none',
-                          color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 600,
-                          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <svg
-                            width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                            style={{ transform: customExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-secondary)' }}
-                          >
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                          <span>Custom Components</span>
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '0.2rem 0.5rem', borderRadius: '100px', border: '1px solid var(--border)' }}>
-                          {customComps.length}
-                        </span>
-                      </button>
-                      {customExpanded && (
-                        <div style={{ padding: '1.25rem' }}>
-                          {customComps.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-secondary)' }}>
-                              <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', margin: '0 0 1rem 0' }}>
-                                No custom components created in this category yet.
-                              </p>
-                              {can(myRole, 'components', 'create') && (
-                                <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.4rem 1rem' }}>
-                                  Create Custom Component
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="pd-component-grid" style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-                              gap: '1.25rem',
-                            }}>
-                              {customComps.map(renderComponentCard)}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    {catComps.map(renderComponentRow)}
                   </div>
                 )}
               </div>
@@ -3946,8 +3920,8 @@ export default function RootLayout({ children }) {
             const canAssignRoles = can(myRole, 'collaboration', 'assignRoles') || can(myRole, 'collaboration', 'manageMembers');
 
             const handleInviteSubmit = () => {
-              if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
-                alert('Please fill in a name and email.');
+              if (!inviteForm.email.trim()) {
+                alert('Please fill in an email.');
                 return;
               }
               const base = members.length
@@ -3955,14 +3929,14 @@ export default function RootLayout({ children }) {
                 : [{ id: user.email, name: user.name, email: user.email, initials: user.initials, role: 'Owner', joinedAt: new Date().toISOString() }];
               const newMember = {
                 id: String(Date.now()),
-                name: inviteForm.name.trim(),
+                name: '',
                 email: inviteForm.email.trim(),
-                initials: computeInitials(inviteForm.name),
+                initials: computeInitialsFromEmail(inviteForm.email),
                 role: inviteForm.role,
                 joinedAt: new Date().toISOString(),
               };
               updateProject(id, { members: [...base, newMember] });
-              setInviteForm({ name: '', email: '', role: 'Designer' });
+              setInviteForm({ email: '', role: 'Designer' });
               setInviteModalOpen(false);
             };
 
@@ -4014,11 +3988,13 @@ export default function RootLayout({ children }) {
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-primary)' }}>
-                              {m.name}{isSelf ? ' (you)' : ''}
+                              {m.name || m.email}{isSelf ? ' (you)' : ''}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {m.email}
-                            </div>
+                            {m.name && (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {m.email}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
@@ -4039,7 +4015,7 @@ export default function RootLayout({ children }) {
                           )}
                           {canRemove && m.role !== 'Owner' && !isSelf && (
                             <button
-                              onClick={() => handleRemoveMember(m.id, m.name)}
+                              onClick={() => handleRemoveMember(m.id, m.name || m.email)}
                               title="Remove member"
                               style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}
                             >
@@ -4072,14 +4048,6 @@ export default function RootLayout({ children }) {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Invite teammate</h3>
                         <button onClick={() => setInviteModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem' }}>×</button>
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Name</label>
-                        <input
-                          type="text" className="form-input" value={inviteForm.name}
-                          onChange={(e) => setInviteForm(f => ({ ...f, name: e.target.value }))}
-                          placeholder="e.g. Jordan Lee"
-                        />
                       </div>
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Email</label>
@@ -4691,7 +4659,20 @@ export default function RootLayout({ children }) {
           .pd-bible-cover-label { font-size: 0.65rem; white-space: nowrap; }
 
           .pd-components-header { flex-wrap: wrap; gap: 0.75rem; }
-          .pd-component-grid { grid-template-columns: 1fr !important; }
+          /* The component table collapses to stacked cards on narrow screens —
+             a 5-column grid can't stay legible at phone widths. */
+          .pd-component-row {
+            grid-template-columns: 20px 1fr auto !important;
+            grid-template-areas: "check name tools" ". type type" ". preview preview" !important;
+            row-gap: 0.5rem !important;
+          }
+          .pd-component-row > *:nth-child(1) { grid-area: check; }
+          .pd-component-row > *:nth-child(2) { grid-area: name; }
+          .pd-component-row > *:nth-child(3) { grid-area: type; }
+          .pd-component-row > *:nth-child(4) { grid-area: preview; }
+          .pd-component-row > *:nth-child(5) { grid-area: tools; }
+          .pd-component-row-head > *:nth-child(3),
+          .pd-component-row-head > *:nth-child(4) { display: none; }
 
           .pd-handoff-card { padding: 1.25rem !important; }
           .pd-codeassets-card { padding: 1.25rem !important; }
@@ -4903,6 +4884,52 @@ const getGroupDisplayForType = (type) => {
   const group = CATEGORY_GROUPS.find(g => g.items.some(i => normalizeTypeKey(i.type) === norm));
   return group ? group.display : 'Color';
 };
+
+// ── Component style-property mapping ──────────────────────────────────────
+// A component's `tokens` object maps a CSS property to a token name. The six
+// keys below predate the free-form property table, so they're still written
+// and read as-is (existing saved components keep working); any property added
+// since is stored under its real CSS property name.
+const LEGACY_TOKEN_KEY_TO_CSS = {
+  bg: 'background-color',
+  textColor: 'color',
+  padding: 'padding',
+  borderRadius: 'border-radius',
+  fontFamily: 'font-family',
+  fontSize: 'font-size',
+};
+
+const cssPropForTokenKey = (key) => LEGACY_TOKEN_KEY_TO_CSS[key] || key;
+
+// "padding-top" → "paddingTop", so it can be handed to a React style object.
+const cssPropToStyleKey = (prop) => prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+
+// Every CSS property a component can map, grouped exactly like the token
+// sidebar. Derived from CATEGORY_GROUPS so the two never drift apart.
+const CSS_PROPERTY_GROUPS = CATEGORY_GROUPS.map(g => ({
+  display: g.display,
+  properties: g.items.map(i => i.type),
+}));
+
+/* ── Announcement bar promoting the Upload Image tab ── */
+function UploadAnnouncementBanner({ message, onDismiss }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem',
+      background: 'var(--accent-glow)', border: '1px solid rgba(252,6,148,0.25)',
+      borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1.25rem',
+    }}>
+      <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>{message}</span>
+      <button
+        onClick={onDismiss}
+        title="Dismiss"
+        style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '1.1rem', flexShrink: 0, lineHeight: 1, padding: '0.1rem' }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
 
 /* ── Searchable, grouped Category dropdown for the Token modal ── */
 function CategoryDropdown({ type, onSelect }) {
@@ -5578,6 +5605,23 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
   );
 }
 
+// Every CSS property a component can map to a token, plus the token
+// category each one draws its options from. `key` is the internal storage
+// key inside `comp.tokens` (kept as-is for backward compatibility with
+// already-saved components); `cssName` is what's shown in the table's
+// Property column.
+// The properties a brand-new component starts with. These six use the legacy
+// storage keys (see LEGACY_TOKEN_KEY_TO_CSS) so components saved before the
+// free-form property table keep loading unchanged; every other property the
+// user adds is stored under its real CSS property name.
+const DEFAULT_COMPONENT_PROPERTY_KEYS = ['bg', 'textColor', 'padding', 'borderRadius', 'fontFamily', 'fontSize'];
+
+// "background-color" → "Background Color"
+const humanizeCssProp = (prop) => prop
+  .split('-')
+  .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+  .join(' ');
+
 /* ── Component Wizard dialog ── */
 function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existingNames }) {
   const isEdit = !!componentToEdit;
@@ -5698,6 +5742,15 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
     return available[0] || '';
   };
 
+  // Any CSS property can be mapped, so the Value options come from whichever
+  // token category that property belongs to (e.g. padding-top → Spacing),
+  // rather than from a hardcoded per-property token type.
+  const getTokensForProperty = (cssProp) => {
+    const category = getCategoryForType(cssProp);
+    const list = activeTokens?.[category];
+    return Array.isArray(list) ? list.map(t => t.name).filter(Boolean) : [];
+  };
+
   const getInitialCategory = () => {
     if (!isEdit) return 'Actions & Buttons';
     let cat = componentToEdit.category;
@@ -5721,13 +5774,50 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
   const [category, setCategory] = useState(getInitialCategory());
   const [template, setTemplate] = useState(isEdit ? componentToEdit.template : 'button');
 
-  // Token mappings
-  const [bg, setBg] = useState(isEdit ? componentToEdit.tokens?.bg || '' : '');
-  const [textColor, setTextColor] = useState(isEdit ? componentToEdit.tokens?.textColor || '' : '');
-  const [padding, setPadding] = useState(isEdit ? componentToEdit.tokens?.padding || '' : '');
-  const [borderRadius, setBorderRadius] = useState(isEdit ? componentToEdit.tokens?.borderRadius || '' : '');
-  const [fontFamily, setFontFamily] = useState(isEdit ? componentToEdit.tokens?.fontFamily || '' : '');
-  const [fontSize, setFontSize] = useState(isEdit ? componentToEdit.tokens?.fontSize || '' : '');
+  // Token mappings — one row per mapped CSS property. A row's `key` is either
+  // a legacy storage key or a raw CSS property name; `cssPropForTokenKey`
+  // resolves either to the property shown in the table. Edit mode lists every
+  // property already saved on the component (so free-form ones round-trip),
+  // while add mode starts from the familiar six.
+  const [tokenRows, setTokenRows] = useState(() => {
+    if (isEdit) {
+      return Object.entries(componentToEdit.tokens || {})
+        .filter(([, value]) => value)
+        .map(([key, value]) => ({ key, value }));
+    }
+    return DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({ key, value: '' }));
+  });
+  const [checkedRowKeys, setCheckedRowKeys] = useState(() => new Set());
+
+  const updateRowValue = (key, value) => setTokenRows(rows => rows.map(r => (r.key === key ? { ...r, value } : r)));
+  const addRow = (key) => setTokenRows(rows => [...rows, { key, value: '' }]);
+
+  // Repointing a row at a different CSS property: the row's storage key
+  // becomes that property name, and the mapped token is cleared unless it's
+  // still valid for the new property's token category.
+  const changeRowProperty = (oldKey, newCssProp) => setTokenRows(rows => {
+    if (rows.some(r => r.key !== oldKey && cssPropForTokenKey(r.key) === newCssProp)) return rows;
+    return rows.map(r => {
+      if (r.key !== oldKey) return r;
+      const stillValid = getTokensForProperty(newCssProp).includes(r.value);
+      return { key: newCssProp, value: stillValid ? r.value : '' };
+    });
+  });
+  const removeRow = (key) => {
+    setTokenRows(rows => rows.filter(r => r.key !== key));
+    setCheckedRowKeys(prev => { const next = new Set(prev); next.delete(key); return next; });
+  };
+  const toggleRowChecked = (key) => setCheckedRowKeys(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const allRowsChecked = tokenRows.length > 0 && tokenRows.every(r => checkedRowKeys.has(r.key));
+  const toggleAllRowsChecked = () => setCheckedRowKeys(allRowsChecked ? new Set() : new Set(tokenRows.map(r => r.key)));
+  const removeCheckedRows = () => {
+    setTokenRows(rows => rows.filter(r => !checkedRowKeys.has(r.key)));
+    setCheckedRowKeys(new Set());
+  };
 
   const handlePresetChange = (presetId) => {
     setSelectedPreset(presetId);
@@ -5738,20 +5828,14 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
       setCategory(preset.category);
       setTemplate(preset.template);
       if (preset.id === 'custom') {
-        setBg('');
-        setTextColor('');
-        setPadding('');
-        setBorderRadius('');
-        setFontFamily('');
-        setFontSize('');
+        setTokenRows(DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({ key, value: '' })));
       } else {
-        setBg(findToken('color', preset.tokens.bg));
-        setTextColor(findToken('color', preset.tokens.textColor));
-        setPadding(findToken('spacing', preset.tokens.padding));
-        setBorderRadius(findToken('borderRadius', preset.tokens.borderRadius));
-        setFontFamily(findToken('fontFamily', preset.tokens.fontFamily));
-        setFontSize(findToken('fontSize', preset.tokens.fontSize));
+        setTokenRows(DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({
+          key,
+          value: findToken(getDefaultTypeForCategory(getCategoryForType(cssPropForTokenKey(key))), preset.tokens[key] || []),
+        })));
       }
+      setCheckedRowKeys(new Set());
     }
   };
 
@@ -5761,19 +5845,14 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
       alert('Please enter a component name');
       return;
     }
+    const tokens = {};
+    tokenRows.forEach(r => { tokens[r.key] = r.value; });
     onSave({
       name: name.trim(),
       description: description.trim() || 'Custom component',
       category,
       template,
-      tokens: {
-        bg,
-        textColor,
-        padding,
-        borderRadius,
-        fontFamily,
-        fontSize,
-      }
+      tokens,
     });
   };
 
@@ -5994,51 +6073,141 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
           </div>
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-            <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.85rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Token Mappings</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Background Color</label>
-                <select className="form-input" value={bg} onChange={(e) => setBg(e.target.value)}>
-                  <option value="">-- None --</option>
-                  {getTokensOfType('color').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Text Color</label>
-                <select className="form-input" value={textColor} onChange={(e) => setTextColor(e.target.value)}>
-                  <option value="">-- None --</option>
-                  {getTokensOfType('color').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Padding (Spacing)</label>
-                <select className="form-input" value={padding} onChange={(e) => setPadding(e.target.value)}>
-                  <option value="">-- None --</option>
-                  {getTokensOfType('spacing').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Border Radius</label>
-                <select className="form-input" value={borderRadius} onChange={(e) => setBorderRadius(e.target.value)}>
-                  <option value="">-- None --</option>
-                  {getTokensOfType('borderRadius').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Font Family</label>
-                <select className="form-input" value={fontFamily} onChange={(e) => setFontFamily(e.target.value)}>
-                  <option value="">-- None --</option>
-                  {getTokensOfType('fontFamily').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>Font Size</label>
-                <select className="form-input" value={fontSize} onChange={(e) => setFontSize(e.target.value)}>
-                  <option value="">-- None --</option>
-                  {getTokensOfType('fontSize').map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Token Mappings</h4>
+              {checkedRowKeys.size > 0 && (
+                <button
+                  type="button"
+                  onClick={removeCheckedRows}
+                  style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
+                >
+                  Remove {checkedRowKeys.size} selected
+                </button>
+              )}
             </div>
+
+            <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+              <div style={{
+                display: 'grid', gridTemplateColumns: '24px 1.1fr 1fr 1.3fr 56px', gap: '0.5rem', alignItems: 'center',
+                padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', borderBottom: tokenRows.length ? '1px solid var(--border)' : 'none',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={allRowsChecked}
+                  onChange={toggleAllRowsChecked}
+                  disabled={!tokenRows.length}
+                  style={{ accentColor: 'var(--accent)', cursor: tokenRows.length ? 'pointer' : 'default', width: '14px', height: '14px' }}
+                />
+                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em' }}>Property</span>
+                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em' }}>Name</span>
+                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em' }}>Value</span>
+                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em', textAlign: 'right' }}>Tools</span>
+              </div>
+
+              {tokenRows.length === 0 && (
+                <div style={{ padding: '1rem 0.75rem', fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                  No properties mapped yet — add one below.
+                </div>
+              )}
+
+              {tokenRows.map((row, i) => {
+                const cssProp = cssPropForTokenKey(row.key);
+                const tokenOptions = getTokensForProperty(cssProp);
+                const usedProps = tokenRows.map(r => cssPropForTokenKey(r.key));
+                return (
+                  <div
+                    key={row.key}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '24px 1.1fr 1fr 1.3fr 56px', gap: '0.5rem', alignItems: 'center',
+                      padding: '0.5rem 0.75rem', borderBottom: i < tokenRows.length - 1 ? '1px solid var(--border)' : 'none',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checkedRowKeys.has(row.key)}
+                      onChange={() => toggleRowChecked(row.key)}
+                      style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '14px', height: '14px' }}
+                    />
+                    <select
+                      value={cssProp}
+                      onChange={(e) => changeRowProperty(row.key, e.target.value)}
+                      title="CSS property this row maps"
+                      style={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-primary)',
+                        background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px',
+                        padding: '0.25rem 0.3rem', maxWidth: '100%', cursor: 'pointer',
+                      }}
+                    >
+                      {CSS_PROPERTY_GROUPS.map(group => (
+                        <optgroup key={group.display} label={group.display}>
+                          {group.properties.map(p => (
+                            <option key={p} value={p} disabled={p !== cssProp && usedProps.includes(p)}>{p}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {humanizeCssProp(cssProp)}
+                    </span>
+                    <select
+                      className="form-input"
+                      value={row.value}
+                      onChange={(e) => updateRowValue(row.key, e.target.value)}
+                      title={tokenOptions.length ? undefined : `No ${getCategoryForType(cssProp)} tokens defined yet`}
+                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.4rem' }}
+                    >
+                      <option value="">
+                        {tokenOptions.length ? '-- None --' : `No ${getCategoryForType(cssProp)} tokens yet`}
+                      </option>
+                      {tokenOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                      <span
+                        title={row.value ? `Linked to ${row.value}` : 'Not linked to a token yet'}
+                        style={{ color: row.value ? 'var(--accent)' : 'var(--text-tertiary)', opacity: row.value ? 1 : 0.4, display: 'flex', alignItems: 'center', padding: '0.2rem' }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                        </svg>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeRow(row.key)}
+                        title="Remove property"
+                        style={{ background: 'none', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center' }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {(() => {
+              const usedProps = new Set(tokenRows.map(r => cssPropForTokenKey(r.key)));
+              const groups = CSS_PROPERTY_GROUPS
+                .map(g => ({ ...g, properties: g.properties.filter(p => !usedProps.has(p)) }))
+                .filter(g => g.properties.length > 0);
+              if (!groups.length) return null;
+              return (
+                <select
+                  value=""
+                  onChange={(e) => { if (e.target.value) addRow(e.target.value); }}
+                  className="form-input"
+                  style={{ marginTop: '0.75rem', fontSize: '0.78rem', maxWidth: '260px', cursor: 'pointer' }}
+                >
+                  <option value="">+ Add token property…</option>
+                  {groups.map(g => (
+                    <optgroup key={g.display} label={g.display}>
+                      {g.properties.map(p => <option key={p} value={p}>{p}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              );
+            })()}
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>

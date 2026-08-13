@@ -3,6 +3,7 @@ import Hero from '../components/Hero';
 import Stats from '../components/Stats';
 import Problem from '../components/Problem';
 import Technology from '../components/Technology';
+import ImportShowcase from '../components/ImportShowcase';
 import Testimonials from '../components/Testimonials';
 import CTA from '../components/CTA';
 
@@ -31,6 +32,7 @@ const Home = () => {
       <Stats />
       <Problem />
       <Technology />
+      <ImportShowcase />
       <Testimonials />
       <CTA />
     </>
