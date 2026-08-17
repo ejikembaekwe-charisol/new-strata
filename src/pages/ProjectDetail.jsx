@@ -105,7 +105,21 @@ const MAIN_TABS = [
   { id: 'components', label: 'Components', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
   { id: 'settings', label: 'Settings', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> },
   { id: 'collaboration', label: 'Collaboration', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+  { id: 'branch', label: 'Branch & Publish', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> },
 ];
+
+// Which sidebar group a component falls under in the Components tree.
+const componentTreeGroup = (comp) => {
+  switch (comp.template) {
+    case 'button': return 'Button';
+    case 'card': return 'Container / Layout';
+    case 'badge': return 'Text / Typography';
+    case 'image': return 'Fragment';
+    default: return 'Other';
+  }
+};
+
+const COMPONENT_TREE_GROUPS = ['Button', 'Container / Layout', 'Fragment', 'Other', 'Text / Typography'];
 
 // Flat token store: { Color: [{name, value, type, layer}, ...], Typography: [...], ... }
 const MOCK_TOKENS = {
@@ -371,6 +385,12 @@ function ProjectDetailInner() {
   // vanishing for good after one click.
   const [uploadBannerDismissed, setUploadBannerDismissed] = useState(false);
   const dismissUploadBanner = () => setUploadBannerDismissed(true);
+
+  // Components tree (sidebar) + the component currently open in the editor
+  const [componentSearch, setComponentSearch] = useState('');
+  const [expandedComponentGroups, setExpandedComponentGroups] = useState(() => new Set(['Button']));
+  const [selectedComponentId, setSelectedComponentId] = useState(null);
+  const [selectedPropertyKeys, setSelectedPropertyKeys] = useState(() => new Set());
 
   // Handoff state variables
   const [expandedCard, setExpandedCard] = useState(null);
@@ -1559,44 +1579,93 @@ This document serves as our living source of truth.`
     );
   });
 
-  // Shared button list for Component categories — same rationale as above.
-  const renderComponentCategoryButtons = () => ['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'].map(cat => {
-    const count = components.filter(comp => {
-      let compCat = comp.category;
-      if (compCat === 'Atom') {
-        if (comp.template === 'button') compCat = 'Actions & Buttons';
-        else if (comp.template === 'input') compCat = 'Form Inputs';
-        else if (comp.template === 'badge') compCat = 'Feedback & Status';
-        else compCat = 'Actions & Buttons';
-      } else if (compCat === 'Molecule') {
-        compCat = 'Display & Data';
-      } else if (compCat === 'Organism') {
-        compCat = 'Navigation';
-      }
-      return compCat === cat;
-    }).length;
+  // Components sidebar: a search box over a collapsible tree of components
+  // grouped by kind, with the open component highlighted.
+  const renderComponentCategoryButtons = () => {
+    const query = componentSearch.trim().toLowerCase();
+    const matching = query
+      ? components.filter(c => (c.name || '').toLowerCase().includes(query))
+      : components;
+
+    const toggleGroup = (group) => setExpandedComponentGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
 
     return (
-      <button
-        key={cat}
-        className="pd-sidebar-category-btn"
-        onClick={() => { setActiveComponentCategory(cat); setMobileNavExpanded(false); }}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          width: '100%', background: activeComponentCategory === cat ? 'var(--accent-glow)' : 'none',
-          border: activeComponentCategory === cat ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
-          borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-          color: activeComponentCategory === cat ? 'var(--accent)' : 'var(--text-secondary)',
-          fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-        }}
-      >
-        <span className="pd-sidebar-category-label">{cat}</span>
-        <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-          {count}
-        </span>
-      </button>
+      <>
+        <input
+          value={componentSearch}
+          onChange={(e) => setComponentSearch(e.target.value)}
+          placeholder="Search components..."
+          style={{
+            width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '0.5rem 0.625rem', marginBottom: '0.75rem',
+            color: 'var(--text-primary)', fontSize: '0.8rem', fontFamily: 'inherit', outline: 'none',
+          }}
+        />
+        {COMPONENT_TREE_GROUPS.map(group => {
+          const groupComps = matching.filter(c => componentTreeGroup(c) === group);
+          if (query && groupComps.length === 0) return null;
+          const isOpen = query ? true : expandedComponentGroups.has(group);
+          const hasSelected = groupComps.some(c => c.id === selectedComponentId);
+          return (
+            <div key={group}>
+              <button
+                className="pd-sidebar-category-btn"
+                onClick={() => toggleGroup(group)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  width: '100%', background: 'none', border: '1px solid transparent',
+                  borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
+                  color: hasSelected ? 'var(--accent)' : 'var(--text-secondary)',
+                  fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  fontWeight: hasSelected ? 600 : 400,
+                }}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                  style={{ flexShrink: 0, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+                <span className="pd-sidebar-category-label" style={{ flex: 1 }}>{group}</span>
+                {groupComps.length > 0 && (
+                  <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+                    {groupComps.length}
+                  </span>
+                )}
+              </button>
+              {isOpen && groupComps.map(comp => {
+                const isActive = comp.id === selectedComponentId;
+                return (
+                  <button
+                    key={comp.id}
+                    onClick={() => {
+                      setSelectedComponentId(comp.id);
+                      setSelectedPropertyKeys(new Set());
+                      setMobileNavExpanded(false);
+                    }}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      background: isActive ? 'rgba(252,6,148,0.08)' : 'none',
+                      border: 'none', borderRadius: '6px',
+                      padding: '0.4rem 0.625rem 0.4rem 1.6rem', marginBottom: '0.1rem',
+                      color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit',
+                      fontWeight: isActive ? 600 : 400,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {comp.name}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </>
     );
-  });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
@@ -1714,6 +1783,24 @@ This document serves as our living source of truth.`
             <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
           </svg>
           <span className="pd-btn-label">{brandBibleDirty ? 'Sync' : 'Synced'}</span>
+        </button>
+
+        {/* Publish changes button */}
+        <button
+          className="pd-header-publish"
+          onClick={() => setActiveTab('branch')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'var(--accent)', border: '1px solid var(--accent)',
+            borderRadius: '6px', padding: '0.4rem 0.875rem',
+            color: '#fff', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span className="pd-btn-label">Publish changes</span>
         </button>
 
         {/* Export button */}
@@ -1889,12 +1976,9 @@ This document serves as our living source of truth.`
             </div>
           )}
 
-          {/* Component categories */}
+          {/* Component tree */}
           {activeTab === 'components' && (
             <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
-              <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
-                Categories
-              </div>
               {renderComponentCategoryButtons()}
             </div>
           )}
@@ -3033,151 +3117,48 @@ This document serves as our living source of truth.`
           )}
 
           {activeTab === 'components' && (() => {
-            const categoriesList = ['Actions & Buttons', 'Form Inputs', 'Display & Data', 'Feedback & Status', 'Navigation', 'Overlays', 'Layout Primitives'];
-            
-            // Map legacy categories on-the-fly for backward compatibility
-            const mappedComponents = components.map(comp => {
-              let cat = comp.category;
-              if (cat === 'Atom') {
-                if (comp.template === 'button') cat = 'Actions & Buttons';
-                else if (comp.template === 'input') cat = 'Form Inputs';
-                else if (comp.template === 'badge') cat = 'Feedback & Status';
-                else cat = 'Actions & Buttons';
-              } else if (cat === 'Molecule') {
-                if (comp.template === 'card') cat = 'Display & Data';
-                else cat = 'Display & Data';
-              } else if (cat === 'Organism') {
-                cat = 'Navigation';
-              }
-              return { ...comp, category: cat };
-            });
+            // The component open in the editor — falls back to the first one so
+            // the page is never blank while components exist.
+            const selected = components.find(c => c.id === selectedComponentId) || components[0] || null;
 
-            const catComps = mappedComponents.filter(comp => comp.category === activeComponentCategory);
-            const isPresetComp = (comp) => comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4';
+            const propertyRows = selected
+              ? Object.keys(selected.tokens || {}).map(key => ({
+                  key,
+                  cssName: cssPropForTokenKey(key),
+                  tokenName: selected.tokens[key] || '',
+                }))
+              : [];
 
-            const selectedInCat = catComps.filter(c => selectedComponentIds.has(c.id));
-            const deletableSelected = selectedInCat.filter(c => !isPresetComp(c));
-            const allCatSelected = catComps.length > 0 && catComps.every(c => selectedComponentIds.has(c.id));
-
-            const toggleComponentSelected = (compId) => setSelectedComponentIds(prev => {
+            const allPropsSelected = propertyRows.length > 0 && propertyRows.every(r => selectedPropertyKeys.has(r.key));
+            const togglePropSelected = (key) => setSelectedPropertyKeys(prev => {
               const next = new Set(prev);
-              if (next.has(compId)) next.delete(compId); else next.add(compId);
+              if (next.has(key)) next.delete(key); else next.add(key);
               return next;
             });
-            const toggleAllInCategory = () => setSelectedComponentIds(prev => {
+            const toggleAllProps = () => setSelectedPropertyKeys(prev => {
               const next = new Set(prev);
-              if (allCatSelected) catComps.forEach(c => next.delete(c.id));
-              else catComps.forEach(c => next.add(c.id));
+              if (allPropsSelected) propertyRows.forEach(r => next.delete(r.key));
+              else propertyRows.forEach(r => next.add(r.key));
               return next;
             });
 
-            const COMPONENT_TABLE_COLS = '36px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.5fr) 76px';
+            const PROP_TABLE_COLS = '48px minmax(0, 1.35fr) minmax(0, 1.35fr) minmax(0, 1fr) 92px';
 
-            const renderComponentRow = (comp, i, arr) => {
-              const preset = isPresetComp(comp);
-              const mappedCount = Object.values(comp.tokens || {}).filter(Boolean).length;
-              const isSelected = selectedComponentIds.has(comp.id);
-              return (
-                <div
-                  key={comp.id}
-                  className="pd-component-row"
-                  style={{
-                    display: 'grid', gridTemplateColumns: COMPONENT_TABLE_COLS, gap: '0.75rem',
-                    alignItems: 'center', padding: '0.75rem 1rem',
-                    borderBottom: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
-                    background: isSelected ? 'var(--accent-glow)' : 'transparent',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggleComponentSelected(comp.id)}
-                    style={{ accentColor: 'var(--accent)', width: '14px', height: '14px', cursor: 'pointer' }}
-                  />
+            // Same treatment as the header's Export button, so the panel's
+            // controls sit in the app's dark palette.
+            const toolbarBtn = {
+              display: 'flex', alignItems: 'center', gap: '0.45rem',
+              background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px',
+              padding: '0.5rem 0.85rem', color: 'var(--text-secondary)', fontSize: '0.82rem',
+              fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+            };
+            const toolbarIconBtn = { ...toolbarBtn, padding: '0.5rem 0.6rem' };
 
-                  {/* Name + description */}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span style={{
-                        fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)',
-                        background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px',
-                        padding: '0.25rem 0.5rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {comp.name}
-                      </span>
-                      {preset && (
-                        <span style={{
-                          fontSize: '0.6rem', background: 'var(--accent-glow)', color: 'var(--accent)',
-                          padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid rgba(252,6,148,0.2)',
-                          fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0,
-                        }}>
-                          Preset
-                        </span>
-                      )}
-                    </div>
-                    {comp.description && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.3rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {comp.description}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Type + mapped count */}
-                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                      {comp.template === 'image' ? 'Uploaded image' : comp.template + ' template'}
-                    </span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                      {mappedCount} token{mappedCount === 1 ? '' : 's'} mapped
-                    </span>
-                  </div>
-
-                  {/* Live preview */}
-                  <div style={{
-                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px',
-                    minHeight: '52px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '0.4rem', overflow: 'hidden',
-                  }}>
-                    {renderLivePreview(comp)}
-                  </div>
-
-                  {/* Tools */}
-                  <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'flex-end' }}>
-                    {can(myRole, 'components', 'edit') && (
-                      <button
-                        onClick={() => setComponentModal({ mode: 'edit', component: comp })}
-                        title="Edit component"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                        </svg>
-                      </button>
-                    )}
-                    {can(myRole, 'components', 'edit') && (preset ? (
-                      <button
-                        disabled
-                        title="Preset components cannot be deleted"
-                        style={{ background: 'none', border: 'none', cursor: 'not-allowed', color: 'var(--text-tertiary)', padding: '0.25rem', display: 'flex', alignItems: 'center', opacity: 0.3 }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                        </svg>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => { if (window.confirm('Delete component "' + comp.name + '"?')) handleDeleteComponent(comp.id); }}
-                        title="Delete component"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(239, 68, 68, 0.75)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                        </svg>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
+            const fieldBox = {
+              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px',
+              padding: '0.55rem 0.7rem', color: 'var(--text-secondary)',
+              fontFamily: 'var(--font-mono)', fontSize: '0.8rem', width: '100%',
+              outline: 'none', minWidth: 0,
             };
 
             return (
@@ -3188,70 +3169,215 @@ This document serves as our living source of truth.`
                     onDismiss={dismissUploadBanner}
                   />
                 )}
-                <div className="pd-components-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', gap: '1rem', flexWrap: 'wrap' }}>
-                  <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                    {activeComponentCategory} <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>({catComps.length})</span>
-                  </h2>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    {deletableSelected.length > 0 && can(myRole, 'components', 'edit') && (
-                      <button
-                        onClick={() => {
-                          if (window.confirm('Delete ' + deletableSelected.length + ' component' + (deletableSelected.length === 1 ? '' : 's') + '?')) {
-                            handleDeleteComponents(deletableSelected.map(c => c.id));
-                          }
-                        }}
-                        style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '0.8rem', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
-                      >
-                        Delete {deletableSelected.length} selected
-                      </button>
-                    )}
-                    {can(myRole, 'components', 'create') && (
-                      <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                        + Add component
-                      </button>
-                    )}
-                  </div>
-                </div>
 
-                {catComps.length === 0 ? (
+                {!selected ? (
                   <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '1px dashed var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
                     <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: 'var(--text-tertiary)' }}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                     </div>
-                    <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', fontWeight: 600 }}>No components in this category</h3>
+                    <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', fontWeight: 600 }}>No components yet</h3>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginBottom: '1.5rem' }}>
-                      Add a component to {activeComponentCategory} to reference your tokens.
+                      Add a component to start mapping tokens to its style properties.
                     </p>
                     {can(myRole, 'components', 'create') && (
                       <button onClick={() => setComponentModal({ mode: 'add' })} className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '0.6rem 1.25rem' }}>
-                        Create first {activeComponentCategory.toLowerCase().slice(0, -1)}
+                        Create first component
                       </button>
                     )}
                   </div>
                 ) : (
-                  <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
-                    <div
-                      className="pd-component-row pd-component-row-head"
-                      style={{
-                        display: 'grid', gridTemplateColumns: COMPONENT_TABLE_COLS, gap: '0.75rem',
-                        alignItems: 'center', padding: '0.7rem 1rem',
-                        background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={allCatSelected}
-                        onChange={toggleAllInCategory}
-                        title="Select all in this category"
-                        style={{ accentColor: 'var(--accent)', width: '14px', height: '14px', cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Component</span>
-                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Type</span>
-                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em' }}>Preview</span>
-                      <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.04em', textAlign: 'right' }}>Tools</span>
+                  <>
+                    {/* Component editor panel: breadcrumb, then info left / actions right */}
+                    <div className="pd-component-toolbar" style={{
+                      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                      borderRadius: '12px', padding: '1.1rem 1.25rem',
+                      display: 'flex', flexDirection: 'column', gap: '0.85rem',
+                      marginBottom: '1.25rem',
+                    }}>
+                      {/* Breadcrumb */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{project.name}</span>
+                        <span style={{ color: 'var(--text-tertiary)' }}>›</span>
+                        <span style={{ color: 'var(--text-tertiary)' }}>Component</span>
+                        <span style={{ color: 'var(--text-tertiary)' }}>›</span>
+                        <span style={{ color: 'var(--text-tertiary)' }}>{componentTreeGroup(selected)}</span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                        {/* Info */}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                            <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                              {selected.name}
+                            </h2>
+                            <span style={{
+                              display: 'flex', alignItems: 'center', gap: '0.35rem',
+                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                              borderRadius: '9999px', padding: '0.2rem 0.6rem',
+                              color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 500,
+                            }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                              Type: {selected.template}
+                            </span>
+                          </div>
+                          {selected.description && (
+                            <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 0' }}>
+                              {selected.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-tertiary)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                            </svg>
+                            Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                          </span>
+
+                          <button
+                            style={toolbarBtn}
+                            onClick={() => setComponentModal({ mode: 'edit', component: selected })}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Add Token
+                          </button>
+
+                          <button
+                            style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
+                            title="Undo isn't available yet — edit history isn't tracked"
+                            disabled
+                          >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
+                          </button>
+                          <button
+                            style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
+                            title="Redo isn't available yet — edit history isn't tracked"
+                            disabled
+                          >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 014-4h12"/></svg>
+                          </button>
+
+                          <button style={toolbarBtn} onClick={() => setActiveTab('handoff')}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            Preview
+                          </button>
+
+                          <button style={toolbarBtn} onClick={() => setActiveTab('branch')}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ color: 'var(--accent)' }}>
+                              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                            </svg>
+                            Unpublished changes
+                          </button>
+
+                          {can(myRole, 'components', 'create') && (
+                            <button
+                              onClick={() => setComponentModal({ mode: 'add' })}
+                              className="btn btn-primary"
+                              style={{ fontSize: '0.82rem', padding: '0.5rem 0.95rem', whiteSpace: 'nowrap' }}
+                            >
+                              + Add component
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    {catComps.map(renderComponentRow)}
-                  </div>
+
+                    {/* Property mapping table */}
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+                      <div
+                        className="pd-component-row pd-component-row-head"
+                        style={{
+                          display: 'grid', gridTemplateColumns: PROP_TABLE_COLS, gap: '0.75rem',
+                          alignItems: 'center', padding: '0.9rem 1rem',
+                          background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allPropsSelected}
+                          onChange={toggleAllProps}
+                          title="Select all properties"
+                          style={{ accentColor: 'var(--accent)', width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Property Name</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Name</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Value</span>
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Tools</span>
+                      </div>
+
+                      {propertyRows.length === 0 ? (
+                        <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
+                          No properties mapped on this component yet.
+                        </div>
+                      ) : propertyRows.map((row, i) => (
+                        <div
+                          key={row.key}
+                          className="pd-component-row"
+                          style={{
+                            display: 'grid', gridTemplateColumns: PROP_TABLE_COLS, gap: '0.75rem',
+                            alignItems: 'center', padding: '0.85rem 1rem',
+                            borderBottom: i < propertyRows.length - 1 ? '1px solid var(--border)' : 'none',
+                            background: selectedPropertyKeys.has(row.key) ? 'var(--accent-glow)' : 'transparent',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPropertyKeys.has(row.key)}
+                            onChange={() => togglePropSelected(row.key)}
+                            style={{ accentColor: 'var(--accent)', width: '16px', height: '16px', cursor: 'pointer' }}
+                          />
+
+                          <div style={{ ...fieldBox, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.cssName}</div>
+                          <div style={{ ...fieldBox, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.cssName}</div>
+
+                          <div style={{ minWidth: 0 }}>
+                            <span style={{
+                              display: 'inline-block', maxWidth: '100%',
+                              background: '#DCE7FF', color: '#2563EB',
+                              borderRadius: '9999px', padding: '0.3rem 0.75rem',
+                              fontSize: '0.8rem', fontWeight: 500,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              {row.tokenName || row.cssName}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                            {can(myRole, 'components', 'edit') && (
+                              <button
+                                onClick={() => setComponentModal({ mode: 'edit', component: selected })}
+                                title="Map a token to this property"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563EB', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
+                              >
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                                </svg>
+                              </button>
+                            )}
+                            {can(myRole, 'components', 'edit') && (
+                              <button
+                                onClick={() => {
+                                  if (!window.confirm('Remove the "' + row.cssName + '" property from ' + selected.name + '?')) return;
+                                  const nextTokens = { ...(selected.tokens || {}) };
+                                  delete nextTokens[row.key];
+                                  handleEditComponent({ ...selected, tokens: nextTokens });
+                                }}
+                                title="Remove this property"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
+                              >
+                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             );
