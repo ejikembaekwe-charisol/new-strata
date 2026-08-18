@@ -403,6 +403,7 @@ function ProjectDetailInner() {
   // drawer — it swaps only the preview surface, unlike the app-wide isLightTheme.
   const [previewComponentId, setPreviewComponentId] = useState(null);
   const [previewOnLight, setPreviewOnLight] = useState(false);
+  const previewDrawerRef = useRef(null);
 
   // Handoff state variables
   const [expandedCard, setExpandedCard] = useState(null);
@@ -554,12 +555,26 @@ export const ThemeProvider = ({ children }) => {
     }
   }, [project?.id, project?.name]);
 
-  // Escape closes the Component Preview drawer.
+  // Escape, or a click outside it, closes the Component Preview drawer.
+  // A `mousedown` listener rather than a backdrop element: a backdrop would
+  // swallow the click, so switching straight to another component would take
+  // two clicks. This way the drawer closes and the new row's click still
+  // lands, so it just swaps. On mobile the drawer fills the screen, so there
+  // is no "outside" to hit and this never fires there.
   React.useEffect(() => {
     if (!previewComponentId) return;
     const onKey = (e) => { if (e.key === 'Escape') setPreviewComponentId(null); };
+    const onDown = (e) => {
+      if (previewDrawerRef.current && !previewDrawerRef.current.contains(e.target)) {
+        setPreviewComponentId(null);
+      }
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDown);
+    };
   }, [previewComponentId]);
 
   // Initialize brandData once project is found
@@ -4442,7 +4457,7 @@ export default function RootLayout({ children }) {
           });
 
         return (
-          <div className="pd-preview-drawer" style={{
+          <div ref={previewDrawerRef} className="pd-preview-drawer" style={{
             position: 'fixed', top: '52px', right: 0, bottom: 0, width: '380px',
             background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)',
             boxShadow: '-12px 0 32px rgba(0,0,0,0.4)', zIndex: 400,
