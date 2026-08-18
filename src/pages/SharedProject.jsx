@@ -323,7 +323,10 @@ const SANDBOX_RADII = [
 ];
 
 const AUDIENCE_TABS = [
-  { id: 'overview', name: 'Overview' },
+  // id stays 'overview' — it's the "no particular persona" case the card
+  // selection keys off. Only the label changes, so it doesn't read as a
+  // duplicate of the Overview *content* tab.
+  { id: 'overview', name: 'Everyone' },
   { id: 'developers', name: 'Developers' },
   { id: 'designers', name: 'Designers' },
   { id: 'design-teams', name: 'Design Teams' },
@@ -1243,37 +1246,6 @@ const SharedProject = () => {
         </div>
       </div>
 
-      {/* ── Audience Switcher ── */}
-      <div className="sp-audience-switcher" style={{
-        display: 'flex', gap: '0.25rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '100px', padding: '0.3rem', width: 'fit-content', marginBottom: '0.75rem',
-      }}>
-        {AUDIENCE_TABS.map(tab => {
-          const isActive = tab.id === activeAudience;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => { setActiveAudience(tab.id); setActiveTab('overview'); }}
-              style={{
-                display: 'block', padding: '0.45rem 1.1rem', borderRadius: '100px',
-                background: isActive ? 'var(--text-primary)' : 'transparent',
-                color: isActive ? 'var(--bg)' : 'var(--text-secondary)',
-                fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s ease',
-                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-              }}
-            >
-              {tab.name}
-            </button>
-          );
-        })}
-      </div>
-
-      {AUDIENCE_STRAPLINES[activeAudience] && (
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '0 0 1.5rem 0' }}>
-          {AUDIENCE_STRAPLINES[activeAudience]}
-        </p>
-      )}
-
       {/* ── NPM-style Tab Header ── */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '1.5rem', overflowX: 'auto', gap: '0.5rem' }}>
         {[
@@ -1304,6 +1276,41 @@ const SharedProject = () => {
           </button>
         ))}
       </div>
+
+      {/* Persona pills — only the Overview tab varies by audience */}
+      {activeTab === 'overview' && (
+        <>
+        {/* ── Audience Switcher ── */}
+        <div className="sp-audience-switcher" style={{
+          display: 'flex', gap: '0.25rem', background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+          borderRadius: '100px', padding: '0.3rem', width: 'fit-content', marginBottom: '0.75rem',
+        }}>
+          {AUDIENCE_TABS.map(tab => {
+            const isActive = tab.id === activeAudience;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveAudience(tab.id)}
+                style={{
+                  display: 'block', padding: '0.45rem 1.1rem', borderRadius: '100px',
+                  background: isActive ? 'var(--text-primary)' : 'transparent',
+                  color: isActive ? 'var(--bg)' : 'var(--text-secondary)',
+                  fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', transition: 'all 0.15s ease',
+                  border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {tab.name}
+              </button>
+            );
+          })}
+        </div>
+        {AUDIENCE_STRAPLINES[activeAudience] && (
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '0 0 1.5rem 0' }}>
+            {AUDIENCE_STRAPLINES[activeAudience]}
+          </p>
+        )}
+        </>
+      )}
 
       {/* ── Main Layout: Content Grid with Stats Sidebar ── */}
       <div className="sp-main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2.5rem' }}>
