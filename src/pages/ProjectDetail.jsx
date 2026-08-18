@@ -366,7 +366,6 @@ function ProjectDetailInner() {
   const [activeTab, setActiveTab] = useState('tokens');
   const [activeCategory, setActiveCategory] = useState('Color');  // token type
   const [activeLayer, setActiveLayer] = useState('Brand');          // Brand | Semantic | Component
-  const [activeComponentCategory, setActiveComponentCategory] = useState('Actions & Buttons');
   const [tokenTableSearch, setTokenTableSearch] = useState('');
   const [copiedToken, setCopiedToken] = useState(null);
   const [mobileNavExpanded, setMobileNavExpanded] = useState(false);
@@ -386,15 +385,19 @@ function ProjectDetailInner() {
   const [uploadBannerDismissed, setUploadBannerDismissed] = useState(false);
   const dismissUploadBanner = () => setUploadBannerDismissed(true);
 
-  // Components tree (sidebar) + the component currently open in the editor
+  // Components tree in the sidebar. Opening a component shows the preview
+  // drawer (previewComponentId) — there is no separate in-page detail view.
   const [componentSearch, setComponentSearch] = useState('');
   const [expandedComponentGroups, setExpandedComponentGroups] = useState(() => new Set(['Button']));
-  const [selectedComponentId, setSelectedComponentId] = useState(null);
-  const [selectedPropertyKeys, setSelectedPropertyKeys] = useState(() => new Set());
 
   // Component group filter, driven by the mobile bottom navbar. Defaults to
   // 'All' so the desktop view — which has no group-filter control — is unchanged.
   const [activeComponentGroup, setActiveComponentGroup] = useState('All');
+
+  // Kebab menu on a component card (mobile). Holds the trigger's measured
+  // screen position because the rows live in an `overflow: hidden` container,
+  // which would clip an absolutely-positioned panel — so the menu is `fixed`.
+  const [componentMenu, setComponentMenu] = useState(null); // { id, top, right }
 
   // Component Preview drawer. `previewOnLight` is deliberately local to the
   // drawer — it swaps only the preview surface, unlike the app-wide isLightTheme.
@@ -1626,7 +1629,7 @@ This document serves as our living source of truth.`
           const groupComps = matching.filter(c => componentTreeGroup(c) === group);
           if (query && groupComps.length === 0) return null;
           const isOpen = query ? true : expandedComponentGroups.has(group);
-          const hasSelected = groupComps.some(c => c.id === selectedComponentId);
+          const hasSelected = groupComps.some(c => c.id === previewComponentId);
           return (
             <div key={group}>
               <button
@@ -1653,13 +1656,12 @@ This document serves as our living source of truth.`
                 )}
               </button>
               {isOpen && groupComps.map(comp => {
-                const isActive = comp.id === selectedComponentId;
+                const isActive = comp.id === previewComponentId;
                 return (
                   <button
                     key={comp.id}
                     onClick={() => {
-                      setSelectedComponentId(comp.id);
-                      setSelectedPropertyKeys(new Set());
+                      setPreviewComponentId(comp.id);
                       setMobileNavExpanded(false);
                     }}
                     style={{
@@ -1698,10 +1700,9 @@ This document serves as our living source of truth.`
         className="pd-sidebar-category-btn"
         onClick={() => {
           setActiveComponentGroup(group);
-          // Clear the open component, otherwise we'd filter a list the user
-          // can't see — which is the whole point of tapping a group.
-          setSelectedComponentId(null);
-          setSelectedPropertyKeys(new Set());
+          // Close any open preview so the newly filtered list is visible —
+          // on mobile the drawer covers the whole screen.
+          setPreviewComponentId(null);
           setMobileNavExpanded(false);
         }}
         style={{
@@ -3160,10 +3161,6 @@ This document serves as our living source of truth.`
           )}
 
           {activeTab === 'components' && (() => {
-            // No fallback: with nothing picked the page lists every component,
-            // and picking one opens it in the editor.
-            const selected = components.find(c => c.id === selectedComponentId) || null;
-
             // Rows on screen, narrowed by the group chosen in the mobile bar.
             const visibleComponents = activeComponentGroup === 'All'
               ? components
@@ -3187,29 +3184,6 @@ This document serves as our living source of truth.`
             });
             const LIST_TABLE_COLS = '40px minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.2fr) 90px 104px';
 
-            const propertyRows = selected
-              ? Object.keys(selected.tokens || {}).map(key => ({
-                  key,
-                  cssName: cssPropForTokenKey(key),
-                  tokenName: selected.tokens[key] || '',
-                }))
-              : [];
-
-            const allPropsSelected = propertyRows.length > 0 && propertyRows.every(r => selectedPropertyKeys.has(r.key));
-            const togglePropSelected = (key) => setSelectedPropertyKeys(prev => {
-              const next = new Set(prev);
-              if (next.has(key)) next.delete(key); else next.add(key);
-              return next;
-            });
-            const toggleAllProps = () => setSelectedPropertyKeys(prev => {
-              const next = new Set(prev);
-              if (allPropsSelected) propertyRows.forEach(r => next.delete(r.key));
-              else propertyRows.forEach(r => next.add(r.key));
-              return next;
-            });
-
-            const PROP_TABLE_COLS = '48px minmax(0, 1.35fr) minmax(0, 1.35fr) minmax(0, 1fr) 92px';
-
             // Same treatment as the header's Export button, so the panel's
             // controls sit in the app's dark palette.
             const toolbarBtn = {
@@ -3219,14 +3193,6 @@ This document serves as our living source of truth.`
               fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
             };
             const toolbarIconBtn = { ...toolbarBtn, padding: '0.5rem 0.6rem' };
-
-            const fieldBox = {
-              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '10px',
-              padding: '0.55rem 0.7rem', color: 'var(--text-secondary)',
-              fontFamily: 'var(--font-mono)', fontSize: '0.8rem', width: '100%',
-              outline: 'none', minWidth: 0,
-            };
-
             // ── Shared panel chrome ──────────────────────────────────────────
             // The all-components list and the single-component editor both use
             // this, so the page header can't drift apart between the two views.
@@ -3255,19 +3221,6 @@ This document serves as our living source of truth.`
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 014-4h12"/></svg>
                 </button>
               </>
-            );
-            // Opens the Component Preview drawer for `target`. Disabled when
-            // there's nothing to preview (list view with no row ticked).
-            const renderPreviewBtn = (target) => (
-              <button
-                style={target ? toolbarBtn : { ...toolbarBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
-                onClick={() => target && setPreviewComponentId(target.id)}
-                disabled={!target}
-                title={target ? 'Preview ' + target.name : 'Tick a component to preview it'}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                Preview
-              </button>
             );
             const unpublishedBtn = (
               <button style={toolbarBtn} onClick={() => setActiveTab('branch')}>
@@ -3331,7 +3284,7 @@ This document serves as our living source of truth.`
                       </button>
                     )}
                   </div>
-                ) : !selected ? (
+                ) : (
                   <>
                     {/* All components — click a row to open its property editor */}
                     {renderComponentPanel(
@@ -3379,7 +3332,6 @@ This document serves as our living source of truth.`
                         )}
                         {savedIndicator}
                         {undoRedoBtns}
-                        {renderPreviewBtn(components.find(c => selectedComponentIds.has(c.id)) || null)}
                         {unpublishedBtn}
                         {addComponentBtn}
                       </>
@@ -3419,8 +3371,8 @@ This document serves as our living source of truth.`
                               borderBottom: i < visibleComponents.length - 1 ? '1px solid var(--border)' : 'none',
                               cursor: 'pointer',
                             }}
-                            onClick={() => { setSelectedComponentId(comp.id); setSelectedPropertyKeys(new Set()); }}
-                            title={'Open ' + comp.name}
+                            onClick={() => setPreviewComponentId(comp.id)}
+                            title={'View ' + comp.name}
                           >
                             <input
                               type="checkbox"
@@ -3431,8 +3383,8 @@ This document serves as our living source of truth.`
                             />
 
                             <button
-                              onClick={() => { setSelectedComponentId(comp.id); setSelectedPropertyKeys(new Set()); }}
-                              title={'Open ' + comp.name}
+                              onClick={() => setPreviewComponentId(comp.id)}
+                              title={'View ' + comp.name}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0,
                                 background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -3475,10 +3427,70 @@ This document serves as our living source of truth.`
                             </span>
 
                             <div
-                              style={{ display: 'flex', gap: '0.2rem', justifyContent: 'flex-end' }}
+                              style={{ display: 'flex', gap: '0.2rem', justifyContent: 'flex-end', alignItems: 'center' }}
                               onClick={(e) => e.stopPropagation()}
                             >
+                              {/* Mobile: the three actions collapse into a kebab */}
                               <button
+                                className="pd-component-row-kebab"
+                                title={'Actions for ' + comp.name}
+                                onClick={(e) => {
+                                  const r = e.currentTarget.getBoundingClientRect();
+                                  setComponentMenu(prev => prev && prev.id === comp.id
+                                    ? null
+                                    : { id: comp.id, top: r.bottom + 6, right: window.innerWidth - r.right });
+                                }}
+                                style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.25rem', alignItems: 'center' }}
+                              >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                                  <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                                </svg>
+                              </button>
+
+                              {componentMenu && componentMenu.id === comp.id && (
+                                <>
+                                  <div
+                                    onClick={() => setComponentMenu(null)}
+                                    style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 160, background: 'transparent' }}
+                                  />
+                                  <div style={{
+                                    position: 'fixed', top: componentMenu.top, right: componentMenu.right,
+                                    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                                    borderRadius: '8px', padding: '0.25rem', minWidth: '150px',
+                                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 161,
+                                    display: 'flex', flexDirection: 'column', gap: '0.1rem',
+                                  }}>
+                                    <button
+                                      style={menuItemStyle}
+                                      onClick={() => { setPreviewComponentId(comp.id); setComponentMenu(null); }}
+                                    >
+                                      Preview
+                                    </button>
+                                    {can(myRole, 'components', 'edit') && (
+                                      <button
+                                        style={menuItemStyle}
+                                        onClick={() => { setComponentModal({ mode: 'edit', component: comp }); setComponentMenu(null); }}
+                                      >
+                                        Edit component
+                                      </button>
+                                    )}
+                                    {can(myRole, 'components', 'edit') && !preset && (
+                                      <button
+                                        style={{ ...menuItemStyle, color: '#EF4444' }}
+                                        onClick={() => {
+                                          setComponentMenu(null);
+                                          if (window.confirm('Delete component "' + comp.name + '"?')) handleDeleteComponent(comp.id);
+                                        }}
+                                      >
+                                        Delete component
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+
+                              <button
+                                className="pd-component-row-actions"
                                 onClick={() => setPreviewComponentId(comp.id)}
                                 title={'Preview ' + comp.name}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
@@ -3489,6 +3501,7 @@ This document serves as our living source of truth.`
                               </button>
                               {can(myRole, 'components', 'edit') && (
                                 <button
+                                  className="pd-component-row-actions"
                                   onClick={() => setComponentModal({ mode: 'edit', component: comp })}
                                   title="Edit component"
                                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
@@ -3500,6 +3513,7 @@ This document serves as our living source of truth.`
                               )}
                               {can(myRole, 'components', 'edit') && (preset ? (
                                 <button
+                                  className="pd-component-row-actions"
                                   disabled
                                   title="Preset components cannot be deleted"
                                   style={{ background: 'none', border: 'none', cursor: 'not-allowed', color: 'var(--text-tertiary)', padding: '0.25rem', display: 'flex', alignItems: 'center', opacity: 0.3 }}
@@ -3510,6 +3524,7 @@ This document serves as our living source of truth.`
                                 </button>
                               ) : (
                                 <button
+                                  className="pd-component-row-actions"
                                   onClick={() => { if (window.confirm('Delete component "' + comp.name + '"?')) handleDeleteComponent(comp.id); }}
                                   title="Delete component"
                                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
@@ -3529,154 +3544,6 @@ This document serves as our living source of truth.`
                         No components in this group.
                       </p>
                     )}
-                  </>
-                ) : (
-                  <>
-                    {/* Component editor panel: breadcrumb, then info left / actions right */}
-                    {renderComponentPanel(
-                      <>
-                        <button
-                          onClick={() => { setSelectedComponentId(null); setSelectedPropertyKeys(new Set()); }}
-                          title="Back to all components"
-                          style={{
-                            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                            color: 'var(--accent)', fontSize: '0.78rem', fontFamily: 'inherit',
-                          }}
-                        >
-                          Component
-                        </button>
-                        <span style={{ color: 'var(--text-tertiary)' }}>›</span>
-                        <span style={{ color: 'var(--text-tertiary)' }}>{componentTreeGroup(selected)}</span>
-                      </>,
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                          <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                            {selected.name}
-                          </h2>
-                          <span style={{
-                            display: 'flex', alignItems: 'center', gap: '0.35rem',
-                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                            borderRadius: '9999px', padding: '0.2rem 0.6rem',
-                            color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 500,
-                          }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                            Type: {selected.template}
-                          </span>
-                        </div>
-                        {selected.description && (
-                          <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 0' }}>
-                            {selected.description}
-                          </p>
-                        )}
-                      </>,
-                      <>
-                        {savedIndicator}
-                        <button
-                          style={toolbarBtn}
-                          onClick={() => setComponentModal({ mode: 'edit', component: selected })}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                          Add Token
-                        </button>
-                        {undoRedoBtns}
-                        {renderPreviewBtn(selected)}
-                        {unpublishedBtn}
-                        {addComponentBtn}
-                      </>
-                    )}
-
-                    {/* Property mapping table */}
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
-                      <div
-                        className="pd-component-row pd-component-row-head"
-                        style={{
-                          display: 'grid', gridTemplateColumns: PROP_TABLE_COLS, gap: '0.75rem',
-                          alignItems: 'center', padding: '0.9rem 1rem',
-                          background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={allPropsSelected}
-                          onChange={toggleAllProps}
-                          title="Select all properties"
-                          style={{ accentColor: 'var(--accent)', width: '16px', height: '16px', cursor: 'pointer' }}
-                        />
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Property Name</span>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Name</span>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Value</span>
-                        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Tools</span>
-                      </div>
-
-                      {propertyRows.length === 0 ? (
-                        <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
-                          No properties mapped on this component yet.
-                        </div>
-                      ) : propertyRows.map((row, i) => (
-                        <div
-                          key={row.key}
-                          className="pd-component-row"
-                          style={{
-                            display: 'grid', gridTemplateColumns: PROP_TABLE_COLS, gap: '0.75rem',
-                            alignItems: 'center', padding: '0.85rem 1rem',
-                            borderBottom: i < propertyRows.length - 1 ? '1px solid var(--border)' : 'none',
-                            background: selectedPropertyKeys.has(row.key) ? 'var(--accent-glow)' : 'transparent',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedPropertyKeys.has(row.key)}
-                            onChange={() => togglePropSelected(row.key)}
-                            style={{ accentColor: 'var(--accent)', width: '16px', height: '16px', cursor: 'pointer' }}
-                          />
-
-                          <div style={{ ...fieldBox, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.cssName}</div>
-                          <div style={{ ...fieldBox, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.cssName}</div>
-
-                          <div style={{ minWidth: 0 }}>
-                            <span style={{
-                              display: 'inline-block', maxWidth: '100%',
-                              background: '#DCE7FF', color: '#2563EB',
-                              borderRadius: '9999px', padding: '0.3rem 0.75rem',
-                              fontSize: '0.8rem', fontWeight: 500,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>
-                              {row.tokenName || row.cssName}
-                            </span>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                            {can(myRole, 'components', 'edit') && (
-                              <button
-                                onClick={() => setComponentModal({ mode: 'edit', component: selected })}
-                                title="Map a token to this property"
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563EB', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
-                              >
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-                                </svg>
-                              </button>
-                            )}
-                            {can(myRole, 'components', 'edit') && (
-                              <button
-                                onClick={() => {
-                                  if (!window.confirm('Remove the "' + row.cssName + '" property from ' + selected.name + '?')) return;
-                                  const nextTokens = { ...(selected.tokens || {}) };
-                                  delete nextTokens[row.key];
-                                  handleEditComponent({ ...selected, tokens: nextTokens });
-                                }}
-                                title="Remove this property"
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
-                              >
-                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                   </>
                 )}
               </div>
@@ -4602,6 +4469,19 @@ export default function RootLayout({ children }) {
               >
                 {previewOnLight ? '🌙' : '☀️'}
               </button>
+              {can(myRole, 'components', 'edit') && (
+                // Full-screen on mobile hides the row this was opened from, so
+                // without this the drawer would be a dead end for editing.
+                <button
+                  onClick={() => { setComponentModal({ mode: 'edit', component: comp }); setPreviewComponentId(null); }}
+                  title={'Edit ' + comp.name}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.2rem', display: 'flex', alignItems: 'center' }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+              )}
               <button
                 onClick={() => setPreviewComponentId(null)}
                 title="Close preview"
@@ -5107,7 +4987,9 @@ export default function RootLayout({ children }) {
           }
           .pd-mobile-category-row .pd-sidebar-category-count { display: none; }
           /* A 380px drawer would be a squeezed sliver on a phone */
-          .pd-preview-drawer { width: 100% !important; }
+          /* Full-screen on a phone — a 380px side panel is a sliver there,
+             and top:0 covers the app header so it truly fills the screen. */
+          .pd-preview-drawer { width: 100% !important; top: 0 !important; }
 
           /* Expanded nav overlay — the rail's hamburger toggle opens this */
           .pd-mobile-nav-backdrop {
@@ -5239,20 +5121,10 @@ export default function RootLayout({ children }) {
           .pd-component-list-row > *:nth-child(5) { grid-area: props; }
           .pd-component-list-row > *:nth-child(6) { grid-area: tools; }
           .pd-component-list-row-head { display: none !important; }
-
-          /* Property editor table: stack Property / Name / Value under the
-             checkbox, keeping the tools on the first line. */
-          .pd-component-row {
-            grid-template-columns: 20px 1fr auto !important;
-            grid-template-areas: "check prop tools" ". name name" ". value value" !important;
-            row-gap: 0.5rem !important;
-          }
-          .pd-component-row > *:nth-child(1) { grid-area: check; }
-          .pd-component-row > *:nth-child(2) { grid-area: prop; }
-          .pd-component-row > *:nth-child(3) { grid-area: name; }
-          .pd-component-row > *:nth-child(4) { grid-area: value; }
-          .pd-component-row > *:nth-child(5) { grid-area: tools; }
-          .pd-component-row-head { display: none !important; }
+          /* Three icons crowd the card's top-right corner, so they collapse
+             into a kebab menu here. Desktop keeps them inline in the column. */
+          .pd-component-row-actions { display: none !important; }
+          .pd-component-row-kebab { display: flex !important; }
 
           .pd-handoff-card { padding: 1.25rem !important; }
           .pd-codeassets-card { padding: 1.25rem !important; }
