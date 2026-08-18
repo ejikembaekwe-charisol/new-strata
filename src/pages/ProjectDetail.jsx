@@ -392,6 +392,15 @@ function ProjectDetailInner() {
   const [selectedComponentId, setSelectedComponentId] = useState(null);
   const [selectedPropertyKeys, setSelectedPropertyKeys] = useState(() => new Set());
 
+  // Component group filter, driven by the mobile bottom navbar. Defaults to
+  // 'All' so the desktop view — which has no group-filter control — is unchanged.
+  const [activeComponentGroup, setActiveComponentGroup] = useState('All');
+
+  // Component Preview drawer. `previewOnLight` is deliberately local to the
+  // drawer — it swaps only the preview surface, unlike the app-wide isLightTheme.
+  const [previewComponentId, setPreviewComponentId] = useState(null);
+  const [previewOnLight, setPreviewOnLight] = useState(false);
+
   // Handoff state variables
   const [expandedCard, setExpandedCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -541,6 +550,14 @@ export const ThemeProvider = ({ children }) => {
       setProjectNameDraft(project.name);
     }
   }, [project?.id, project?.name]);
+
+  // Escape closes the Component Preview drawer.
+  React.useEffect(() => {
+    if (!previewComponentId) return;
+    const onKey = (e) => { if (e.key === 'Escape') setPreviewComponentId(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [previewComponentId]);
 
   // Initialize brandData once project is found
   React.useEffect(() => {
@@ -1667,6 +1684,44 @@ This document serves as our living source of truth.`
     );
   };
 
+  // Flat component-group chips for the mobile bottom navbar. The desktop
+  // sidebar keeps its tree (renderComponentCategoryButtons) — this is the
+  // bar-only equivalent, matching how the token types render there.
+  const renderComponentGroupChips = () => ['All', ...COMPONENT_TREE_GROUPS].map(group => {
+    const count = group === 'All'
+      ? components.length
+      : components.filter(c => componentTreeGroup(c) === group).length;
+    const isActive = activeComponentGroup === group;
+    return (
+      <button
+        key={group}
+        className="pd-sidebar-category-btn"
+        onClick={() => {
+          setActiveComponentGroup(group);
+          // Clear the open component, otherwise we'd filter a list the user
+          // can't see — which is the whole point of tapping a group.
+          setSelectedComponentId(null);
+          setSelectedPropertyKeys(new Set());
+          setMobileNavExpanded(false);
+        }}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', background: isActive ? 'var(--accent-glow)' : 'none',
+          border: isActive ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
+          borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
+          color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+          fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+          gap: '0.5rem',
+        }}
+      >
+        <span className="pd-sidebar-category-label">{group}</span>
+        <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+          {count}
+        </span>
+      </button>
+    );
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
 
@@ -2003,23 +2058,9 @@ This document serves as our living source of truth.`
                 {renderMainTabButtons()}
               </div>
 
-              {activeTab === 'tokens' && (
-                <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
-                  <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
-                    Token Type
-                  </div>
-                  {renderTokenTypeCategoryButtons()}
-                </div>
-              )}
-
-              {activeTab === 'components' && (
-                <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
-                  <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
-                    Categories
-                  </div>
-                  {renderComponentCategoryButtons()}
-                </div>
-              )}
+              {/* Categories aren't duplicated here — they live in the inline
+                  "Browse" card on the page itself, so the same tree isn't
+                  rendered three times off one shared expand/collapse state. */}
 
               {/* Branch selector / Sync / Export / Account — bottom of the full menu */}
               <div className="pd-mobile-nav-bottom">
@@ -3051,15 +3092,17 @@ This document serves as our living source of truth.`
                               <div
                                 onClick={() => setActiveDropdown(null)}
                                 style={{
+                                  // Above the mobile token-type bar (z-index 150),
+                                  // which this menu would otherwise open behind.
                                   position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                                  zIndex: 100, background: 'transparent',
+                                  zIndex: 160, background: 'transparent',
                                 }}
                               />
                               <div style={{
                                 position: 'absolute', top: '100%', right: 0,
                                 background: 'var(--bg-secondary)', border: '1px solid var(--border)',
                                 borderRadius: '8px', padding: '0.25rem', minWidth: '120px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 101,
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 161,
                                 display: 'flex', flexDirection: 'column', gap: '0.1rem',
                               }}>
                                 <button
@@ -3111,15 +3154,38 @@ This document serves as our living source of truth.`
             </>
           )}
 
-          {/* CSS property (Token Type) list — placed at the bottom on mobile, below the token cards */}
+          {/* Token types live in a fixed bottom navbar on mobile */}
           {activeTab === 'tokens' && (
             <div className="pd-mobile-category-row">{renderTokenTypeCategoryButtons()}</div>
           )}
 
           {activeTab === 'components' && (() => {
-            // The component open in the editor — falls back to the first one so
-            // the page is never blank while components exist.
-            const selected = components.find(c => c.id === selectedComponentId) || components[0] || null;
+            // No fallback: with nothing picked the page lists every component,
+            // and picking one opens it in the editor.
+            const selected = components.find(c => c.id === selectedComponentId) || null;
+
+            // Rows on screen, narrowed by the group chosen in the mobile bar.
+            const visibleComponents = activeComponentGroup === 'All'
+              ? components
+              : components.filter(c => componentTreeGroup(c) === activeComponentGroup);
+
+            const isPresetComp = (comp) => comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4';
+            // Selection helpers work on what's visible, so "select all" can't
+            // silently tick rows hidden by the group filter.
+            const deletableSelected = visibleComponents.filter(c => selectedComponentIds.has(c.id) && !isPresetComp(c));
+            const allComponentsSelected = visibleComponents.length > 0 && visibleComponents.every(c => selectedComponentIds.has(c.id));
+            const toggleComponentSelected = (compId) => setSelectedComponentIds(prev => {
+              const next = new Set(prev);
+              if (next.has(compId)) next.delete(compId); else next.add(compId);
+              return next;
+            });
+            const toggleAllComponents = () => setSelectedComponentIds(prev => {
+              const next = new Set(prev);
+              if (allComponentsSelected) visibleComponents.forEach(c => next.delete(c.id));
+              else visibleComponents.forEach(c => next.add(c.id));
+              return next;
+            });
+            const LIST_TABLE_COLS = '40px minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.2fr) 90px 104px';
 
             const propertyRows = selected
               ? Object.keys(selected.tokens || {}).map(key => ({
@@ -3161,6 +3227,86 @@ This document serves as our living source of truth.`
               outline: 'none', minWidth: 0,
             };
 
+            // ── Shared panel chrome ──────────────────────────────────────────
+            // The all-components list and the single-component editor both use
+            // this, so the page header can't drift apart between the two views.
+            const savedIndicator = (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-tertiary)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </span>
+            );
+            const undoRedoBtns = (
+              <>
+                <button
+                  style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
+                  title="Undo isn't available yet — edit history isn't tracked"
+                  disabled
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
+                </button>
+                <button
+                  style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
+                  title="Redo isn't available yet — edit history isn't tracked"
+                  disabled
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 014-4h12"/></svg>
+                </button>
+              </>
+            );
+            // Opens the Component Preview drawer for `target`. Disabled when
+            // there's nothing to preview (list view with no row ticked).
+            const renderPreviewBtn = (target) => (
+              <button
+                style={target ? toolbarBtn : { ...toolbarBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
+                onClick={() => target && setPreviewComponentId(target.id)}
+                disabled={!target}
+                title={target ? 'Preview ' + target.name : 'Tick a component to preview it'}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                Preview
+              </button>
+            );
+            const unpublishedBtn = (
+              <button style={toolbarBtn} onClick={() => setActiveTab('branch')}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ color: 'var(--accent)' }}>
+                  <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+                Unpublished changes
+              </button>
+            );
+            const addComponentBtn = can(myRole, 'components', 'create') ? (
+              <button
+                onClick={() => setComponentModal({ mode: 'add' })}
+                className="btn btn-primary"
+                style={{ fontSize: '0.82rem', padding: '0.5rem 0.95rem', whiteSpace: 'nowrap' }}
+              >
+                + Add component
+              </button>
+            ) : null;
+
+            const renderComponentPanel = (breadcrumbTail, info, actions) => (
+              <div className="pd-component-toolbar" style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '12px', padding: '1.1rem 1.25rem',
+                display: 'flex', flexDirection: 'column', gap: '0.85rem',
+                marginBottom: '1.25rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{project.name}</span>
+                  <span style={{ color: 'var(--text-tertiary)' }}>›</span>
+                  {breadcrumbTail}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                  <div style={{ minWidth: 0 }}>{info}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>{actions}</div>
+                </div>
+              </div>
+            );
+
             return (
               <div>
                 {!uploadBannerDismissed && (
@@ -3170,7 +3316,7 @@ This document serves as our living source of truth.`
                   />
                 )}
 
-                {!selected ? (
+                {components.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '4rem 2rem', border: '1px dashed var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
                     <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: 'var(--text-tertiary)' }}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -3185,105 +3331,259 @@ This document serves as our living source of truth.`
                       </button>
                     )}
                   </div>
-                ) : (
+                ) : !selected ? (
                   <>
-                    {/* Component editor panel: breadcrumb, then info left / actions right */}
-                    <div className="pd-component-toolbar" style={{
-                      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                      borderRadius: '12px', padding: '1.1rem 1.25rem',
-                      display: 'flex', flexDirection: 'column', gap: '0.85rem',
-                      marginBottom: '1.25rem',
-                    }}>
-                      {/* Breadcrumb */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.78rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{project.name}</span>
-                        <span style={{ color: 'var(--text-tertiary)' }}>›</span>
-                        <span style={{ color: 'var(--text-tertiary)' }}>Component</span>
-                        <span style={{ color: 'var(--text-tertiary)' }}>›</span>
-                        <span style={{ color: 'var(--text-tertiary)' }}>{componentTreeGroup(selected)}</span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                        {/* Info */}
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                            <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                              {selected.name}
-                            </h2>
-                            <span style={{
-                              display: 'flex', alignItems: 'center', gap: '0.35rem',
-                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                              borderRadius: '9999px', padding: '0.2rem 0.6rem',
-                              color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 500,
-                            }}>
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-                              Type: {selected.template}
-                            </span>
-                          </div>
-                          {selected.description && (
-                            <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 0' }}>
-                              {selected.description}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-tertiary)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                              <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                            </svg>
-                            Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                    {/* All components — click a row to open its property editor */}
+                    {renderComponentPanel(
+                      <span style={{ color: 'var(--text-tertiary)' }}>Components</span>,
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                          <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                            {activeComponentGroup === 'All' ? 'All components' : activeComponentGroup}
+                          </h2>
+                          <span style={{
+                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                            borderRadius: '9999px', padding: '0.2rem 0.6rem',
+                            color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 500,
+                          }}>
+                            {visibleComponents.length} total
                           </span>
-
-                          <button
-                            style={toolbarBtn}
-                            onClick={() => setComponentModal({ mode: 'edit', component: selected })}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            Add Token
-                          </button>
-
-                          <button
-                            style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
-                            title="Undo isn't available yet — edit history isn't tracked"
-                            disabled
-                          >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
-                          </button>
-                          <button
-                            style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
-                            title="Redo isn't available yet — edit history isn't tracked"
-                            disabled
-                          >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 014-4h12"/></svg>
-                          </button>
-
-                          <button style={toolbarBtn} onClick={() => setActiveTab('handoff')}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            Preview
-                          </button>
-
-                          <button style={toolbarBtn} onClick={() => setActiveTab('branch')}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ color: 'var(--accent)' }}>
-                              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-                              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                            </svg>
-                            Unpublished changes
-                          </button>
-
-                          {can(myRole, 'components', 'create') && (
+                          {activeComponentGroup !== 'All' && (
+                            // The group chips are mobile-only, so without this a
+                            // filter set on a phone would be stuck on desktop.
                             <button
-                              onClick={() => setComponentModal({ mode: 'add' })}
-                              className="btn btn-primary"
-                              style={{ fontSize: '0.82rem', padding: '0.5rem 0.95rem', whiteSpace: 'nowrap' }}
+                              onClick={() => setActiveComponentGroup('All')}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '0.75rem', fontFamily: 'inherit' }}
                             >
-                              + Add component
+                              Show all
                             </button>
                           )}
                         </div>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 0' }}>
+                          Pick a component to map tokens to its style properties.
+                        </p>
+                      </>,
+                      <>
+                        {deletableSelected.length > 0 && can(myRole, 'components', 'edit') && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm('Delete ' + deletableSelected.length + ' component' + (deletableSelected.length === 1 ? '' : 's') + '?')) {
+                                handleDeleteComponents(deletableSelected.map(c => c.id));
+                                setSelectedComponentIds(new Set());
+                              }
+                            }}
+                            style={{ ...toolbarBtn, color: '#EF4444' }}
+                          >
+                            Delete {deletableSelected.length} selected
+                          </button>
+                        )}
+                        {savedIndicator}
+                        {undoRedoBtns}
+                        {renderPreviewBtn(components.find(c => selectedComponentIds.has(c.id)) || null)}
+                        {unpublishedBtn}
+                        {addComponentBtn}
+                      </>
+                    )}
+
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+                      <div className="pd-component-list-row pd-component-list-row-head" style={{
+                        display: 'grid', gridTemplateColumns: LIST_TABLE_COLS, gap: '0.75rem',
+                        alignItems: 'center', padding: '0.9rem 1rem',
+                        background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={allComponentsSelected}
+                          onChange={toggleAllComponents}
+                          title="Select all components"
+                          style={{ accentColor: 'var(--accent)', width: '15px', height: '15px', cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Component</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Type</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Preview</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Properties</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right' }}>Tools</span>
                       </div>
+
+                      {visibleComponents.map((comp, i) => {
+                        const mapped = Object.values(comp.tokens || {}).filter(Boolean).length;
+                        const preset = isPresetComp(comp);
+                        const isChecked = selectedComponentIds.has(comp.id);
+                        return (
+                          <div
+                            key={comp.id}
+                            className={'pd-component-list-row' + (isChecked ? ' pd-component-list-row-selected' : '')}
+                            style={{
+                              display: 'grid', gridTemplateColumns: LIST_TABLE_COLS, gap: '0.75rem',
+                              alignItems: 'center', padding: '0.8rem 1rem',
+                              borderBottom: i < visibleComponents.length - 1 ? '1px solid var(--border)' : 'none',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => { setSelectedComponentId(comp.id); setSelectedPropertyKeys(new Set()); }}
+                            title={'Open ' + comp.name}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleComponentSelected(comp.id)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ accentColor: 'var(--accent)', width: '15px', height: '15px', cursor: 'pointer' }}
+                            />
+
+                            <button
+                              onClick={() => { setSelectedComponentId(comp.id); setSelectedPropertyKeys(new Set()); }}
+                              title={'Open ' + comp.name}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0,
+                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500,
+                                fontFamily: 'inherit', textAlign: 'left',
+                              }}
+                            >
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.name}</span>
+                              {preset && (
+                                <span style={{
+                                  fontSize: '0.58rem', background: 'var(--accent-glow)', color: 'var(--accent)',
+                                  padding: '0.1rem 0.35rem', borderRadius: '4px', border: '1px solid rgba(252,6,148,0.2)',
+                                  fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0,
+                                }}>Preset</span>
+                              )}
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0, color: 'var(--text-tertiary)' }}>
+                                <polyline points="9 18 15 12 9 6"/>
+                              </svg>
+                            </button>
+
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {comp.template === 'image' ? 'Uploaded image' : comp.template}
+                            </span>
+
+                            <div style={{
+                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px',
+                              minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              padding: '0.35rem', overflow: 'hidden',
+                              // Decorative here: the button template carries its own
+                              // onClick alert and the input template is `disabled`
+                              // (which swallows clicks without bubbling), both of
+                              // which would otherwise block the row from opening.
+                              pointerEvents: 'none',
+                            }}>
+                              {renderLivePreview(comp)}
+                            </div>
+
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                              {mapped} mapped
+                            </span>
+
+                            <div
+                              style={{ display: 'flex', gap: '0.2rem', justifyContent: 'flex-end' }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => setPreviewComponentId(comp.id)}
+                                title={'Preview ' + comp.name}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                                </svg>
+                              </button>
+                              {can(myRole, 'components', 'edit') && (
+                                <button
+                                  onClick={() => setComponentModal({ mode: 'edit', component: comp })}
+                                  title="Edit component"
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                  </svg>
+                                </button>
+                              )}
+                              {can(myRole, 'components', 'edit') && (preset ? (
+                                <button
+                                  disabled
+                                  title="Preset components cannot be deleted"
+                                  style={{ background: 'none', border: 'none', cursor: 'not-allowed', color: 'var(--text-tertiary)', padding: '0.25rem', display: 'flex', alignItems: 'center', opacity: 0.3 }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                  </svg>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => { if (window.confirm('Delete component "' + comp.name + '"?')) handleDeleteComponent(comp.id); }}
+                                  title="Delete component"
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                  </svg>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                    {visibleComponents.length === 0 && (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '1rem 0 0' }}>
+                        No components in this group.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Component editor panel: breadcrumb, then info left / actions right */}
+                    {renderComponentPanel(
+                      <>
+                        <button
+                          onClick={() => { setSelectedComponentId(null); setSelectedPropertyKeys(new Set()); }}
+                          title="Back to all components"
+                          style={{
+                            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                            color: 'var(--accent)', fontSize: '0.78rem', fontFamily: 'inherit',
+                          }}
+                        >
+                          Component
+                        </button>
+                        <span style={{ color: 'var(--text-tertiary)' }}>›</span>
+                        <span style={{ color: 'var(--text-tertiary)' }}>{componentTreeGroup(selected)}</span>
+                      </>,
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                          <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                            {selected.name}
+                          </h2>
+                          <span style={{
+                            display: 'flex', alignItems: 'center', gap: '0.35rem',
+                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                            borderRadius: '9999px', padding: '0.2rem 0.6rem',
+                            color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 500,
+                          }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                            Type: {selected.template}
+                          </span>
+                        </div>
+                        {selected.description && (
+                          <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 0' }}>
+                            {selected.description}
+                          </p>
+                        )}
+                      </>,
+                      <>
+                        {savedIndicator}
+                        <button
+                          style={toolbarBtn}
+                          onClick={() => setComponentModal({ mode: 'edit', component: selected })}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          Add Token
+                        </button>
+                        {undoRedoBtns}
+                        {renderPreviewBtn(selected)}
+                        {unpublishedBtn}
+                        {addComponentBtn}
+                      </>
+                    )}
 
                     {/* Property mapping table */}
                     <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
@@ -3382,6 +3682,11 @@ This document serves as our living source of truth.`
               </div>
             );
           })()}
+
+          {/* Component groups live in a fixed bottom navbar on mobile */}
+          {activeTab === 'components' && (
+            <div className="pd-mobile-category-row">{renderComponentGroupChips()}</div>
+          )}
 
           {activeTab === 'handoff' && (() => {
             const formats = [
@@ -3912,11 +4217,6 @@ export default function RootLayout({ children }) {
             );
           })()}
 
-          {/* Component categories — placed at the bottom on mobile, below the component cards */}
-          {activeTab === 'components' && (
-            <div className="pd-mobile-category-row">{renderComponentCategoryButtons()}</div>
-          )}
-
           {activeTab === 'settings' && (
             <div style={{ maxWidth: '480px' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1.5rem' }}>Project settings</h2>
@@ -4255,6 +4555,126 @@ export default function RootLayout({ children }) {
           }}
         />
       )}
+
+      {/* ── Component Preview drawer ── */}
+      {(() => {
+        const comp = components.find(c => c.id === previewComponentId);
+        if (!comp) return null;
+
+        const rows = Object.entries(comp.tokens || {})
+          .filter(([, tokenName]) => tokenName)
+          .map(([key, tokenName]) => {
+            const cssName = cssPropForTokenKey(key);
+            return {
+              key,
+              cssName,
+              tokenName,
+              resolved: resolveTokenValue(tokenName),
+              category: getGroupDisplayForType(cssName),
+            };
+          });
+
+        return (
+          <div className="pd-preview-drawer" style={{
+            position: 'fixed', top: '52px', right: 0, bottom: 0, width: '380px',
+            background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)',
+            boxShadow: '-12px 0 32px rgba(0,0,0,0.4)', zIndex: 400,
+            display: 'flex', flexDirection: 'column',
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0,
+              padding: '0.9rem 1rem', borderBottom: '1px solid var(--border)',
+            }}>
+              <span style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)' }}>Component Preview</span>
+              <span style={{
+                background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '9999px',
+                padding: '0.15rem 0.5rem', color: 'var(--text-secondary)', fontSize: '0.68rem', fontWeight: 500,
+                whiteSpace: 'nowrap',
+              }}>
+                {rows.length} {rows.length === 1 ? 'property' : 'properties'}
+              </span>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={() => setPreviewOnLight(v => !v)}
+                title={previewOnLight ? 'Preview on a dark background' : 'Preview on a light background'}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '0.2rem', display: 'flex', fontSize: '0.95rem' }}
+              >
+                {previewOnLight ? '🌙' : '☀️'}
+              </button>
+              <button
+                onClick={() => setPreviewComponentId(null)}
+                title="Close preview"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '1.25rem', lineHeight: 1, padding: '0 0.2rem' }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
+                  {comp.name}
+                </div>
+                <div style={{
+                  background: previewOnLight ? '#F4F4F6' : 'var(--bg)',
+                  border: '1px solid var(--border)', borderRadius: '10px',
+                  minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '1.25rem', overflow: 'hidden',
+                }}>
+                  {renderLivePreview(comp)}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
+                  Properties ({rows.length})
+                </div>
+                {rows.length === 0 ? (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>
+                    No properties mapped on this component yet.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {rows.map(r => (
+                      <div key={r.key} style={{
+                        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                        borderRadius: '10px', padding: '0.65rem 0.75rem',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.cssName}
+                          </span>
+                          <div style={{ flex: 1 }} />
+                          <span style={{
+                            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '5px',
+                            padding: '0.1rem 0.4rem', color: 'var(--text-secondary)', fontSize: '0.63rem',
+                            fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0,
+                          }}>
+                            {r.category}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem' }}>
+                          {/^#[0-9A-Fa-f]{3,8}$/.test(r.resolved) && (
+                            <span style={{ width: '14px', height: '14px', borderRadius: '4px', background: r.resolved, border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 }} />
+                          )}
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {r.resolved || '—'}
+                          </span>
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--accent)', marginTop: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          → {r.tokenName}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
 
       {/* ── Downstream Impact Review Bottom Panel ── */}
@@ -4605,6 +5025,19 @@ export default function RootLayout({ children }) {
       )}
 
       <style dangerouslySetInnerHTML={{ __html: `
+        /* All-components list: the whole row opens the component, so it needs a
+           hover affordance. Selection lives in a class rather than an inline
+           style so hover can layer over it without needing !important. */
+        .pd-component-list-row:not(.pd-component-list-row-head):hover {
+          background: rgba(255,255,255,0.045);
+        }
+        .pd-component-list-row.pd-component-list-row-selected {
+          background: var(--accent-glow);
+        }
+        .pd-component-list-row.pd-component-list-row-selected:hover {
+          background: rgba(252,6,148,0.16);
+        }
+
         /* Mobile-only surfaces, collapsed on desktop by default */
         .pd-mobile-category-row, .pd-sidebar-rail-bottom, .pd-mobile-nav-toggle { display: none; }
 
@@ -4647,7 +5080,12 @@ export default function RootLayout({ children }) {
             color: var(--text-secondary); cursor: pointer;
           }
 
-          /* Token Type / Component category lists move out of the rail into a fixed bottom navbar */
+          /* Category lists move out of the rail on mobile. Token types are a
+             flat chip list, so they go in a fixed bottom navbar. The component
+             list is a search box + tree, which a horizontal flex strip can't
+             hold (the input claims the full width and pushes the groups
+             off-screen), so it gets an inline collapsible card instead.
+             Padding-bottom clears the bottom bars. */
           .pd-sidebar-categories { display: none !important; }
           .pd-main { padding-bottom: 4.5rem !important; }
           .pd-mobile-category-row {
@@ -4668,6 +5106,8 @@ export default function RootLayout({ children }) {
             border-radius: 100px !important;
           }
           .pd-mobile-category-row .pd-sidebar-category-count { display: none; }
+          /* A 380px drawer would be a squeezed sliver on a phone */
+          .pd-preview-drawer { width: 100% !important; }
 
           /* Expanded nav overlay — the rail's hamburger toggle opens this */
           .pd-mobile-nav-backdrop {
@@ -4687,7 +5127,6 @@ export default function RootLayout({ children }) {
             justify-content: flex-start !important; padding: 0.5rem 0.625rem !important;
           }
           .pd-mobile-nav-overlay .pd-sidebar-tab-label { display: inline !important; }
-          .pd-mobile-nav-overlay .pd-sidebar-categories { display: block !important; }
           .pd-mobile-nav-bottom {
             margin-top: auto; padding: 1rem 0.75rem 0; border-top: 1px solid var(--border);
             display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
@@ -4784,21 +5223,36 @@ export default function RootLayout({ children }) {
           .pd-bible-download-btn { border-radius: 100px !important; align-self: flex-start; }
           .pd-bible-cover-label { font-size: 0.65rem; white-space: nowrap; }
 
-          .pd-components-header { flex-wrap: wrap; gap: 0.75rem; }
-          /* The component table collapses to stacked cards on narrow screens —
-             a 5-column grid can't stay legible at phone widths. */
+
+          /* All-components list: 6 columns can't stay legible on a phone, so
+             each row becomes a stacked card. Its header row is dropped — the
+             labels mean nothing once the columns are stacked. */
+          .pd-component-list-row {
+            grid-template-columns: 20px 1fr auto !important;
+            grid-template-areas: "check name tools" ". type props" ". preview preview" !important;
+            row-gap: 0.5rem !important;
+          }
+          .pd-component-list-row > *:nth-child(1) { grid-area: check; }
+          .pd-component-list-row > *:nth-child(2) { grid-area: name; }
+          .pd-component-list-row > *:nth-child(3) { grid-area: type; }
+          .pd-component-list-row > *:nth-child(4) { grid-area: preview; }
+          .pd-component-list-row > *:nth-child(5) { grid-area: props; }
+          .pd-component-list-row > *:nth-child(6) { grid-area: tools; }
+          .pd-component-list-row-head { display: none !important; }
+
+          /* Property editor table: stack Property / Name / Value under the
+             checkbox, keeping the tools on the first line. */
           .pd-component-row {
             grid-template-columns: 20px 1fr auto !important;
-            grid-template-areas: "check name tools" ". type type" ". preview preview" !important;
+            grid-template-areas: "check prop tools" ". name name" ". value value" !important;
             row-gap: 0.5rem !important;
           }
           .pd-component-row > *:nth-child(1) { grid-area: check; }
-          .pd-component-row > *:nth-child(2) { grid-area: name; }
-          .pd-component-row > *:nth-child(3) { grid-area: type; }
-          .pd-component-row > *:nth-child(4) { grid-area: preview; }
+          .pd-component-row > *:nth-child(2) { grid-area: prop; }
+          .pd-component-row > *:nth-child(3) { grid-area: name; }
+          .pd-component-row > *:nth-child(4) { grid-area: value; }
           .pd-component-row > *:nth-child(5) { grid-area: tools; }
-          .pd-component-row-head > *:nth-child(3),
-          .pd-component-row-head > *:nth-child(4) { display: none; }
+          .pd-component-row-head { display: none !important; }
 
           .pd-handoff-card { padding: 1.25rem !important; }
           .pd-codeassets-card { padding: 1.25rem !important; }
