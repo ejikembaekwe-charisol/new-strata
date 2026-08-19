@@ -309,19 +309,6 @@ const getTokenTier = (token) => {
   return 'semantic';
 };
 
-const flattenTokensMap = (tObject) => {
-  const flat = {};
-  if (!tObject) return flat;
-  for (const cat in tObject) {
-    if (Array.isArray(tObject[cat])) {
-      tObject[cat].forEach(t => {
-        flat[t.name] = t;
-      });
-    }
-  }
-  return flat;
-};
-
 const SANDBOX_COLORS = ['#FC0694', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6'];
 const SANDBOX_RADII = [
   { label: '4px', value: '4px' },
@@ -399,9 +386,6 @@ const SharedProject = () => {
       tokens: project?.tokens || {}
     }
   ];
-
-  const [baseVersion, setBaseVersion] = useState(versionsList[1]?.version || versionsList[0]?.version || '1.2.0');
-  const [targetVersion, setTargetVersion] = useState(versionsList[0]?.version || '1.2.0');
 
   // Placed after every hook: bailing out earlier would change the hook count
   // between a found and a not-found project and break React's hook order.
@@ -671,44 +655,6 @@ const SharedProject = () => {
     printWindow.document.close();
   };
 
-  const getVersionDiff = () => {
-    const baseObj = versionsList.find(v => v.version === baseVersion);
-    const targetObj = versionsList.find(v => v.version === targetVersion);
-    
-    if (!baseObj || !targetObj) return { added: [], modified: [], deleted: [] };
-    
-    const baseTokens = flattenTokensMap(baseObj.tokens);
-    const targetTokens = flattenTokensMap(targetObj.tokens);
-    
-    const added = [];
-    const modified = [];
-    const deleted = [];
-    
-    Object.keys(targetTokens).forEach(name => {
-      const targetToken = targetTokens[name];
-      const baseToken = baseTokens[name];
-      
-      if (!baseToken) {
-        added.push(targetToken);
-      } else if (baseToken.value !== targetToken.value) {
-        modified.push({
-          name,
-          type: targetToken.type,
-          oldValue: baseToken.value,
-          newValue: targetToken.value
-        });
-      }
-    });
-    
-    Object.keys(baseTokens).forEach(name => {
-      if (!targetTokens[name]) {
-        deleted.push(baseTokens[name]);
-      }
-    });
-    
-    return { added, modified, deleted };
-  };
-
   const renderLivePreview = (comp) => {
     const style = {
       background: resolveTokenValue(comp.tokens?.bg),
@@ -860,7 +806,6 @@ const SharedProject = () => {
   });
 
   const projectSlug = (project.name || 'design-system').toLowerCase().replace(/\s+/g, '-');
-  const { added, modified, deleted } = getVersionDiff();
 
   // Full design system as a single Markdown file — meant to be dropped straight
   // into a repo or pasted into an AI prompt, so an agent/LLM has the whole
@@ -1212,12 +1157,6 @@ const SharedProject = () => {
         </div>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{latestVersion?.date}</span>
       </div>
-      <button
-        onClick={() => setActiveTab('versions')}
-        style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', padding: 0, textAlign: 'left' }}
-      >
-        View full version history &rarr;
-      </button>
     </div>
   );
 
@@ -1314,8 +1253,7 @@ const SharedProject = () => {
           { id: 'overview', name: 'Overview' },
           { id: 'brand', name: 'Brand System' },
           { id: 'tokens', name: 'Tokens' },
-          { id: 'components', name: 'Components & Spec' },
-          { id: 'versions', name: 'Versions & Diff' }
+          { id: 'components', name: 'Components & Spec' }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1781,145 +1719,6 @@ const SharedProject = () => {
                       {copiedToken === 'Snippet' ? 'Copied!' : 'Copy Code'}
                     </button>
                   </div>
-                </div>
-              </div>
-
-            </div>
-          )}
-
-          {/* VERSIONS & DIFF TAB */}
-          {activeTab === 'versions' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
-              
-              {/* Diff calculation workspace */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
-              }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Version Difference Engine</h3>
-                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Compare design tokens across any two published versions to review changes.</p>
-                </div>
-                
-                {/* Selectors dropdowns */}
-                <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem', borderRadius: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Base Version (Old)</span>
-                    <select 
-                      value={baseVersion} 
-                      onChange={(e) => setBaseVersion(e.target.value)}
-                      style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.85rem', outline: 'none' }}
-                    >
-                      {versionsList.map(v => (
-                        <option key={v.version} value={v.version}>{v.version} ({v.date})</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <span style={{ color: 'var(--text-tertiary)', fontSize: '1.25rem', marginTop: '1rem' }}>➔</span>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>Target Version (New)</span>
-                    <select 
-                      value={targetVersion} 
-                      onChange={(e) => setTargetVersion(e.target.value)}
-                      style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.75rem', fontSize: '0.85rem', outline: 'none' }}
-                    >
-                      {versionsList.map(v => (
-                        <option key={v.version} value={v.version}>{v.version} ({v.date})</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Diff Result List */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem' }}>
-                    <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10B981', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 600 }}>{added.length} Added</span>
-                    <span style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 600 }}>{modified.length} Modified</span>
-                    <span style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', padding: '0.2rem 0.6rem', borderRadius: '100px', fontWeight: 600 }}>{deleted.length} Deleted</span>
-                  </div>
-
-                  {added.length === 0 && modified.length === 0 && deleted.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '2rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
-                      No differences found. The tokens in both versions match exactly.
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '400px', overflowY: 'auto' }}>
-                      
-                      {/* Added section */}
-                      {added.map(t => (
-                        <div key={t.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(16, 185, 129, 0.04)', border: '1px solid rgba(16, 185, 129, 0.15)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#10B981', fontWeight: 600 }}>+ {t.name}</span>
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>{t.type}</span>
-                          </div>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t.value}</span>
-                        </div>
-                      ))}
-
-                      {/* Modified section */}
-                      {modified.map(t => (
-                        <div key={t.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(245, 158, 11, 0.04)', border: '1px solid rgba(245, 158, 11, 0.15)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#F59E0B', fontWeight: 600 }}>~ {t.name}</span>
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>{t.type}</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                            <span style={{ color: 'var(--text-tertiary)', textDecoration: 'line-through' }}>{t.oldValue}</span>
-                            <span style={{ color: 'var(--text-tertiary)' }}>➔</span>
-                            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{t.newValue}</span>
-                          </div>
-                        </div>
-                      ))}
-
-                      {/* Deleted section */}
-                      {deleted.map(t => (
-                        <div key={t.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(239, 68, 68, 0.04)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: '#EF4444', fontWeight: 600, textDecoration: 'line-through' }}>- {t.name}</span>
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>{t.type}</span>
-                          </div>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>{t.value}</span>
-                        </div>
-                      ))}
-
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Version History Changelog List */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem'
-              }}>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Published Release Timeline</h3>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative', paddingLeft: '1rem', borderLeft: '2px solid var(--border)' }}>
-                  {versionsList.map((v, idx) => (
-                    <div key={v.version} style={{ position: 'relative', paddingBottom: idx === versionsList.length - 1 ? 0 : '1rem' }}>
-                      {/* Timeline dot */}
-                      <span style={{
-                        position: 'absolute', left: '-21px', top: '4px',
-                        width: '10px', height: '10px', borderRadius: '50%',
-                        background: idx === 0 ? 'var(--accent)' : 'var(--bg-secondary)',
-                        border: '2px solid var(--accent)', display: 'inline-block'
-                      }}></span>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>v{v.version}</span>
-                          {idx === 0 && <span style={{ fontSize: '0.6rem', padding: '0.15rem 0.4rem', borderRadius: '100px', background: 'rgba(59, 130, 246, 0.1)', color: 'var(--accent)', border: '1px solid rgba(59, 130, 246, 0.2)', fontWeight: 600 }}>Latest</span>}
-                        </div>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{v.date}</span>
-                      </div>
-                      
-                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                        {v.description || 'Design system release.'}
-                      </p>
-                    </div>
-                  ))}
                 </div>
               </div>
 
