@@ -14,6 +14,11 @@ const TYPE_COLORS = {
   easing: '#14B8A6',
 };
 
+// Live sites are only shown green when they actually say they're live.
+const siteStatusColor = (status) => String(status || '').toLowerCase() === 'live'
+  ? '#10B981'
+  : 'var(--text-tertiary)';
+
 const getMockProject = (id) => {
   const systems = [
     { id: '1', name: 'My Design', color: '#1a237e', description: 'Internal branding system for our key corporate web dashboard.' },
@@ -25,7 +30,10 @@ const getMockProject = (id) => {
     { id: '7', name: 'Something Light', color: '#7c3aed', description: 'Minimalist brand guideline focusing on light weights and pastel components.' }
   ];
   
-  const sys = systems.find(s => String(s.id) === String(id)) || systems[0];
+  // No fallback to systems[0] — an unknown id must not render someone else's
+  // system under a URL that isn't theirs.
+  const sys = systems.find(s => String(s.id) === String(id));
+  if (!sys) return null;
   
   const weeklyDownloads = {
     '1': 820,
@@ -188,7 +196,7 @@ const getMockProject = (id) => {
       bodyFont: 'Inter',
       toneKeywords: ['Clean', 'Minimalist', 'Explore'],
       voice: 'Conversational, reliable, clear.',
-      manifesto: '## Brand Vision\nWe strive to build cohesive experiences at the speed of thought. By linking code components directly to visual design keys, we create a unified single source of truth.\n\n### Core Tenets\n* **Synchronized Delivery**: Design shifts manifest immediately in dev builds.\n* **Clear Accessibility**: Text contrast meets WCAG AAA defaults.\n* **Dynamic Motion**: Micro-interactions are smooth, satisfying, and intentional.'
+      manifesto: '## Brand Vision\nWe strive to build cohesive experiences at the speed of thought. By linking code components directly to visual design keys, we create a unified single source of truth.\n\n### Core Tenets\n* **Synchronized Delivery**: Design shifts manifest immediately in dev builds.\n\n* **Dynamic Motion**: Micro-interactions are smooth, satisfying, and intentional.'
     },
     tokens: tokens120,
     components: [
@@ -359,22 +367,59 @@ const SharedProject = () => {
   const [sandboxDark, setSandboxDark] = useState(true);
   const [componentSearch, setComponentSearch] = useState('');
 
-  // Find project in context, or fallback to mock project
+  // Find project in context, or fallback to one of the demo systems. Null when
+  // the id matches neither — rendered as a not-found view below. Every value
+  // derived from it is null-safe so the hooks below still run unconditionally.
   const project = projects.find(p => String(p.id) === String(id)) || getMockProject(id);
-  const brand = project.brand || {};
-  const tokensMap = project.tokens || {};
 
-  const versionsList = project.versions || [
+  const brand = project?.brand || {};
+  const tokensMap = project?.tokens || {};
+
+  const showcaseSites = project?.showcaseSites || [];
+
+  // Only colours the project actually defines — no invented palette. project.color
+  // is real (the project's own avatar colour); the hard-coded hexes were not.
+  const glanceSwatches = [
+    { label: 'Primary', value: brand.primaryColor || project?.color },
+    { label: 'Secondary', value: brand.secondaryColor },
+    { label: 'Accent', value: brand.accentColor },
+  ].filter(c => c.value);
+
+  const brandSwatches = [
+    { label: 'Primary', value: brand.primaryColor },
+    { label: 'Secondary', value: brand.secondaryColor },
+    { label: 'Accent', value: brand.accentColor },
+  ].filter(c => c.value);
+
+  const versionsList = project?.versions || [
     {
       version: '1.2.0',
-      date: project.updated || 'Just now',
+      date: project?.updated || 'Just now',
       description: 'Current release containing baseline tokens.',
-      tokens: project.tokens || {}
+      tokens: project?.tokens || {}
     }
   ];
 
   const [baseVersion, setBaseVersion] = useState(versionsList[1]?.version || versionsList[0]?.version || '1.2.0');
   const [targetVersion, setTargetVersion] = useState(versionsList[0]?.version || '1.2.0');
+
+  // Placed after every hook: bailing out earlier would change the hook count
+  // between a found and a not-found project and break React's hook order.
+  if (!project) {
+    return (
+      <div className="page-container">
+        <div style={{ maxWidth: '520px', margin: '0 auto', padding: '10rem 1.5rem', textAlign: 'center' }}>
+          <h1 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>This design system isn't available</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '2rem' }}>
+            It may have been removed, or the link may be wrong.
+          </p>
+          <Link to="/explore" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600 }}>
+            ← Back to Explore
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const handleCopy = (text, label) => {
     navigator.clipboard.writeText(text);
@@ -437,6 +482,14 @@ const SharedProject = () => {
     return '';
   };
 
+  // Sidebar palette rows — only values the project actually has.
+  const paletteRows = [
+    { label: 'Primary', value: brand.primaryColor || project?.color },
+    { label: 'Accent', value: brand.accentColor },
+    { label: 'Surface', value: resolveTokenValue('color.surface') },
+    { label: 'Secondary', value: brand.secondaryColor },
+  ].filter(c => c.value);
+
   const handlePrintBrandBible = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=1000');
     if (!printWindow) {
@@ -448,7 +501,7 @@ const SharedProject = () => {
       `<span style="background: #e2e8f0; color: #1e293b; padding: 4px 10px; border-radius: 100px; font-size: 13px; font-weight: 500; margin-right: 6px; display: inline-block;">${k}</span>`
     ).join('');
 
-    const manifestoHtml = (brand.manifesto || '## Brand Vision\nWe strive to build cohesive experiences at the speed of thought. By linking code components directly to visual design keys, we create a unified single source of truth.\n\n### Core Tenets\n* **Synchronized Delivery**: Design shifts manifest immediately in dev builds.\n* **Clear Accessibility**: Text contrast meets WCAG AAA defaults.\n* **Dynamic Motion**: Micro-interactions are smooth, satisfying, and intentional.')
+    const manifestoHtml = (brand.manifesto || '## Brand Vision\nWe strive to build cohesive experiences at the speed of thought. By linking code components directly to visual design keys, we create a unified single source of truth.\n\n### Core Tenets\n* **Synchronized Delivery**: Design shifts manifest immediately in dev builds.\n\n* **Dynamic Motion**: Micro-interactions are smooth, satisfying, and intentional.')
       .replace(/^## (.*)$/gm, '<h2 style="font-size: 24px; color: #1e293b; margin-top: 24px; margin-bottom: 12px; font-family: ' + (brand.headingFont || 'Outfit') + ', sans-serif;">$1</h2>')
       .replace(/^### (.*)$/gm, '<h3 style="font-size: 18px; color: #334155; margin-top: 18px; margin-bottom: 8px; font-family: ' + (brand.headingFont || 'Outfit') + ', sans-serif;">$1</h3>')
       .replace(/^\* (.*)$/gm, '<li style="margin-bottom: 6px;">$1</li>')
@@ -1002,10 +1055,14 @@ const SharedProject = () => {
         <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Connected live surfaces powered by this system.</p>
       </div>
 
+      {showcaseSites.length === 0 && (
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>
+          No live sites have been linked yet.
+        </p>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1.25rem' }}>
-        {(project.showcaseSites || [
-          { name: 'Muzingo Web Player', url: 'https://muzingo.io', status: 'Live' }
-        ]).map(site => (
+        {showcaseSites.map(site => (
           <a
             key={site.name}
             href={site.url}
@@ -1017,14 +1074,16 @@ const SharedProject = () => {
               gap: '0.75rem', textDecoration: 'none', transition: 'all 0.2s ease'
             }}
           >
-            <div style={{ width: '100%', height: '72px', borderRadius: '10px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)' }} />
+            <div style={{ width: '100%', height: '72px', borderRadius: '10px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem' }}>
+              {site.image || ''}
+            </div>
             <div>
               <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{site.name}</h4>
               <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{site.url}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.25rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10B981', display: 'inline-block' }}></span>
-              <span style={{ fontSize: '0.65rem', color: '#10B981', fontWeight: 600 }}>{site.status}</span>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: siteStatusColor(site.status), display: 'inline-block' }}></span>
+              <span style={{ fontSize: '0.65rem', color: siteStatusColor(site.status), fontWeight: 600 }}>{site.status || 'Unknown'}</span>
             </div>
           </a>
         ))}
@@ -1094,12 +1153,11 @@ const SharedProject = () => {
         <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Brand at a Glance</h3>
         <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Color, type, and voice — exactly as they'll ship.</p>
       </div>
+      {glanceSwatches.length === 0 && (
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>No brand colours defined for this system.</p>
+      )}
       <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        {[
-          { label: 'Primary', value: brand.primaryColor || project.color || '#FC0694' },
-          { label: 'Secondary', value: brand.secondaryColor || '#1A1A24' },
-          { label: 'Accent', value: brand.accentColor || '#3B82F6' },
-        ].map(c => (
+        {glanceSwatches.map(c => (
           <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '0.6rem 1rem', flex: '1 0 140px' }}>
             <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: c.value, border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }} />
             <div>
@@ -1109,16 +1167,20 @@ const SharedProject = () => {
           </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Heading</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: brand.headingFont || 'Outfit', color: 'var(--text-primary)' }}>{brand.headingFont || 'Outfit'}</div>
+      {(brand.headingFont || brand.bodyFont) ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Heading</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 800, fontFamily: brand.headingFont || 'inherit', color: brand.headingFont ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{brand.headingFont || 'Not defined'}</div>
+          </div>
+          <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Body</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 400, fontFamily: brand.bodyFont || 'inherit', color: brand.bodyFont ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{brand.bodyFont || 'Not defined'}</div>
+          </div>
         </div>
-        <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '1rem' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Body</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 400, fontFamily: brand.bodyFont || 'Inter', color: 'var(--text-primary)' }}>{brand.bodyFont || 'Inter'}</div>
-        </div>
-      </div>
+      ) : (
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>No typography defined for this system.</p>
+      )}
       {(brand.toneKeywords?.length > 0 || brand.voice) && (
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
           {brand.toneKeywords?.length > 0 && (
@@ -1360,12 +1422,11 @@ const SharedProject = () => {
               }}>
                 <div>
                   <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>Brand Color Swatches</h3>
+                  {brandSwatches.length === 0 && (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No brand colours defined for this system.</p>
+                  )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
-                    {[
-                      { label: 'Primary', value: brand.primaryColor || '#FC0694' },
-                      { label: 'Secondary', value: brand.secondaryColor || '#1A1A24' },
-                      { label: 'Accent', value: brand.accentColor || '#3B82F6' }
-                    ].map(c => (
+                    {brandSwatches.map(c => (
                       <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--bg-tertiary)', padding: '0.5rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
                         <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: c.value, border: '1px solid rgba(255,255,255,0.1)' }} />
                         <div>
@@ -1387,17 +1448,29 @@ const SharedProject = () => {
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                   <div>
                     <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>Heading Typography</h3>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Family: {brand.headingFont || 'Outfit'}</span>
-                    <span style={{ fontSize: '1.75rem', fontWeight: 800, fontFamily: brand.headingFont || 'Outfit', color: 'var(--text-primary)', display: 'block', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-                      The quick brown fox jumps.
-                    </span>
+                    {brand.headingFont ? (
+                      <>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Family: {brand.headingFont}</span>
+                        <span style={{ fontSize: '1.75rem', fontWeight: 800, fontFamily: brand.headingFont, color: 'var(--text-primary)', display: 'block', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+                          The quick brown fox jumps.
+                        </span>
+                      </>
+                    ) : (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No heading font defined.</p>
+                    )}
                   </div>
                   <div>
                     <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>Body Typography</h3>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Family: {brand.bodyFont || 'Inter'}</span>
-                    <span style={{ fontSize: '0.9rem', lineHeight: 1.6, fontFamily: brand.bodyFont || 'Inter', color: 'var(--text-secondary)', display: 'block' }}>
-                      Strata compiles modular, structured design variables directly from brand assets. Every UI token maintains dynamic reference parameters back to global design layers.
-                    </span>
+                    {brand.bodyFont ? (
+                      <>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Family: {brand.bodyFont}</span>
+                        <span style={{ fontSize: '0.9rem', lineHeight: 1.6, fontFamily: brand.bodyFont, color: 'var(--text-secondary)', display: 'block' }}>
+                          Strata compiles modular, structured design variables directly from brand assets. Every UI token maintains dynamic reference parameters back to global design layers.
+                        </span>
+                      </>
+                    ) : (
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No body font defined.</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1414,8 +1487,11 @@ const SharedProject = () => {
                 
                 <div>
                   <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Keywords</span>
+                  {(brand.toneKeywords || []).length === 0 && (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No tone keywords defined.</p>
+                  )}
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {(brand.toneKeywords || ['Modern', 'Cohesive']).map(k => (
+                    {(brand.toneKeywords || []).map(k => (
                       <span key={k} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.3rem 0.8rem', borderRadius: '100px', fontSize: '0.78rem', fontWeight: 500 }}>
                         {k}
                       </span>
@@ -1425,8 +1501,8 @@ const SharedProject = () => {
                 
                 <div>
                   <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>Voice Guidelines</span>
-                  <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    {brand.voice || 'Conversational, reliable, clear and accessible.'}
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: brand.voice ? 'var(--text-secondary)' : 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                    {brand.voice || 'No voice guidelines defined.'}
                   </p>
                 </div>
               </div>
@@ -1864,12 +1940,10 @@ const SharedProject = () => {
                   borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem'
                 }}>
                   <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Brand Palette</h3>
-                  {[
-                    { label: 'Primary', value: brand.primaryColor || project.color || '#FC0694' },
-                    { label: 'Accent', value: brand.accentColor || '#3B82F6' },
-                    { label: 'Surface', value: resolveTokenValue('color.surface') || '#13131A' },
-                    { label: 'Secondary', value: brand.secondaryColor || '#1A1A24' },
-                  ].map(c => (
+                  {paletteRows.length === 0 && (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>No brand colours defined.</span>
+                  )}
+                  {paletteRows.map(c => (
                     <div key={c.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                         <div style={{ width: '16px', height: '16px', borderRadius: '4px', background: c.value, border: '1px solid rgba(255,255,255,0.1)' }} />
@@ -1910,20 +1984,26 @@ const SharedProject = () => {
                   borderRadius: '20px', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem'
                 }}>
                   <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>Adopted By</h3>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                    {(project.showcaseSites || []).slice(0, 3).map((site, i) => (
-                      <div key={site.name} style={{
-                        width: '30px', height: '30px', borderRadius: '50%',
-                        background: SANDBOX_COLORS[i % SANDBOX_COLORS.length],
-                        border: '2px solid var(--bg-secondary)', marginLeft: i === 0 ? 0 : '-8px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#fff', fontSize: '0.75rem', fontWeight: 700,
-                      }}>{site.name.charAt(0)}</div>
-                    ))}
-                    <span style={{
-                      marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 600,
-                    }}>+{(project.showcaseSites?.length || 3) * 4}</span>
-                  </div>
+                  {showcaseSites.length === 0 ? (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>No sites linked yet.</span>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      {showcaseSites.slice(0, 3).map((site, i) => (
+                        <div key={site.name} style={{
+                          width: '30px', height: '30px', borderRadius: '50%',
+                          background: SANDBOX_COLORS[i % SANDBOX_COLORS.length],
+                          border: '2px solid var(--bg-secondary)', marginLeft: i === 0 ? 0 : '-8px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#fff', fontSize: '0.75rem', fontWeight: 700,
+                        }}>{site.name.charAt(0)}</div>
+                      ))}
+                      {showcaseSites.length > 3 && (
+                        <span style={{
+                          marginLeft: '0.5rem', fontSize: '0.75rem', color: 'var(--text-tertiary)', fontWeight: 600,
+                        }}>+{showcaseSites.length - 3}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -1956,16 +2036,8 @@ const SharedProject = () => {
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Weekly Downloads</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>{(project.weeklyDownloads || 1420).toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Total Downloads</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>{(project.totalDownloads || 28400).toLocaleString()}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Live Sites Using It</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10B981' }}>{project.showcaseSites ? project.showcaseSites.length : 3} Connected</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: showcaseSites.length ? '#10B981' : 'var(--text-tertiary)' }}>{showcaseSites.length} Connected</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Current Version</span>
@@ -1973,7 +2045,7 @@ const SharedProject = () => {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>License</span>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{project.license || 'MIT'}</span>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 500, color: project.license ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>{project.license || 'Not specified'}</span>
                     </div>
                   </div>
                 </div>
