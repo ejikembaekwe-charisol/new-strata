@@ -1567,7 +1567,16 @@ This document serves as our living source of truth.`
       key={tab.id}
       className={`pd-sidebar-tab-btn${activeTab === tab.id ? ' pd-sidebar-tab-btn-active' : ''}`}
       title={tab.label}
-      onClick={() => { setActiveTab(tab.id); setMobileNavExpanded(false); }}
+      onClick={() => {
+        setActiveTab(tab.id);
+        setMobileNavExpanded(false);
+        // Entering Components always lands on the full list, so the tab isn't
+        // a no-op when a group filter or a preview is already active.
+        if (tab.id === 'components') {
+          setActiveComponentGroup('All');
+          setPreviewComponentId(null);
+        }
+      }}
       style={{
         display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
         background: activeTab === tab.id ? 'var(--bg-tertiary)' : 'none',
@@ -1645,18 +1654,28 @@ This document serves as our living source of truth.`
           if (query && groupComps.length === 0) return null;
           const isOpen = query ? true : expandedComponentGroups.has(group);
           const hasSelected = groupComps.some(c => c.id === previewComponentId);
+          const isFiltered = activeComponentGroup === group;
+          const highlight = isFiltered || hasSelected;
           return (
             <div key={group}>
               <button
                 className="pd-sidebar-category-btn"
-                onClick={() => toggleGroup(group)}
+                onClick={() => {
+                  // Picking a group filters the list to it, and closes any open
+                  // preview so that filtered list is actually visible.
+                  setActiveComponentGroup(group);
+                  setPreviewComponentId(null);
+                  toggleGroup(group);
+                }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  width: '100%', background: 'none', border: '1px solid transparent',
+                  width: '100%',
+                  background: isFiltered ? 'var(--accent-glow)' : 'none',
+                  border: isFiltered ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
                   borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-                  color: hasSelected ? 'var(--accent)' : 'var(--text-secondary)',
+                  color: highlight ? 'var(--accent)' : 'var(--text-secondary)',
                   fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                  fontWeight: hasSelected ? 600 : 400,
+                  fontWeight: highlight ? 600 : 400,
                 }}
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -3197,7 +3216,7 @@ This document serves as our living source of truth.`
               else visibleComponents.forEach(c => next.add(c.id));
               return next;
             });
-            const LIST_TABLE_COLS = '40px minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1.2fr) 90px 104px';
+            const LIST_TABLE_COLS = '40px minmax(0, 1.4fr) minmax(0, 0.8fr) 90px 104px';
 
             // Same treatment as the header's Export button, so the panel's
             // controls sit in the app's dark palette.
@@ -3367,7 +3386,6 @@ This document serves as our living source of truth.`
                         />
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Component</span>
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Type</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Preview</span>
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Properties</span>
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right' }}>Tools</span>
                       </div>
@@ -3423,19 +3441,6 @@ This document serves as our living source of truth.`
                             <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {comp.template === 'image' ? 'Uploaded image' : comp.template}
                             </span>
-
-                            <div style={{
-                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px',
-                              minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              padding: '0.35rem', overflow: 'hidden',
-                              // Decorative here: the button template carries its own
-                              // onClick alert and the input template is `disabled`
-                              // (which swallows clicks without bubbling), both of
-                              // which would otherwise block the row from opening.
-                              pointerEvents: 'none',
-                            }}>
-                              {renderLivePreview(comp)}
-                            </div>
 
                             <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
                               {mapped} mapped
@@ -5121,20 +5126,19 @@ export default function RootLayout({ children }) {
           .pd-bible-cover-label { font-size: 0.65rem; white-space: nowrap; }
 
 
-          /* All-components list: 6 columns can't stay legible on a phone, so
+          /* All-components list: the columns can't stay legible on a phone, so
              each row becomes a stacked card. Its header row is dropped — the
              labels mean nothing once the columns are stacked. */
           .pd-component-list-row {
             grid-template-columns: 20px 1fr auto !important;
-            grid-template-areas: "check name tools" ". type props" ". preview preview" !important;
+            grid-template-areas: "check name tools" ". type props" !important;
             row-gap: 0.5rem !important;
           }
           .pd-component-list-row > *:nth-child(1) { grid-area: check; }
           .pd-component-list-row > *:nth-child(2) { grid-area: name; }
           .pd-component-list-row > *:nth-child(3) { grid-area: type; }
-          .pd-component-list-row > *:nth-child(4) { grid-area: preview; }
-          .pd-component-list-row > *:nth-child(5) { grid-area: props; }
-          .pd-component-list-row > *:nth-child(6) { grid-area: tools; }
+          .pd-component-list-row > *:nth-child(4) { grid-area: props; }
+          .pd-component-list-row > *:nth-child(5) { grid-area: tools; }
           .pd-component-list-row-head { display: none !important; }
           /* Three icons crowd the card's top-right corner, so they collapse
              into a kebab menu here. Desktop keeps them inline in the column. */
