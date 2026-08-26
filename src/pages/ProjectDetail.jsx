@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
 import branchIcon from '../assets/branch-icon.svg';
 import { resolveMyRole, can, canViewTab, ROLES } from '../utils/permissions';
+import { getBrandCompleteness, emptyBrandContext } from '../utils/projectCompleteness';
+import BrandContextEngine from '../components/BrandContextEngine';
 import { extractColorsFromImage, extractFontSizesFromImage, detectComponentRegions, cropImageRegionToDataUrl, resizeImageToDataUrl, suggestUniqueName } from '../utils/colorExtract';
 
 /* ── Error Boundary: prevents blank screen on render crashes ── */
@@ -363,7 +365,7 @@ function ProjectDetailInner() {
   const project = projects.find(p => String(p.id) === String(id));
   const myRole = resolveMyRole(project, user);
 
-  const [activeTab, setActiveTab] = useState('tokens');
+  const [activeTab, setActiveTab] = useState('brand');
   const [activeCategory, setActiveCategory] = useState('Color');  // token type
   const [activeLayer, setActiveLayer] = useState('Brand');          // Brand | Semantic | Component
   const [tokenTableSearch, setTokenTableSearch] = useState('');
@@ -378,6 +380,9 @@ function ProjectDetailInner() {
   const [transferOwnershipOpen, setTransferOwnershipOpen] = useState(false);
   const [transferTargetId, setTransferTargetId] = useState('');
   const [projectNameDraft, setProjectNameDraft] = useState(project?.name || '');
+  const [projectDescDraft, setProjectDescDraft] = useState(project?.description || '');
+  // null when closed; otherwise { step, source } for the Brand Context Engine
+  const [engine, setEngine] = useState(null);
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'Designer' });
   // Session-only: dismissing just hides it for this visit — it comes back on
   // the next page refresh, so it keeps catching the user's eye rather than
@@ -1560,6 +1565,48 @@ This document serves as our living source of truth.`
     .filter(t => t.layer === activeLayer)
     .filter(t => !tokenTableSearchLower || [t.name, t.value, t.type].some(v => String(v).toLowerCase().includes(tokenTableSearchLower)));
 
+  // Brand Bible shows its onboarding card until at least one real brand source exists.
+  // Read from `project`, not `brandData` — that one fills in invented defaults (#FC0694,
+  // Outfit) the moment a project loads, so it is never empty and cannot be the test.
+  const completeness = getBrandCompleteness(project);
+
+  // The onboarding card is only for a project with nothing at all in it. Previously this read
+  // only the applied `brand` fields, so a project whose brand-context sources were filled in
+  // but not yet applied was still told to "Get Started" — hiding the work already done.
+  const hasBrandContext = completeness.done > 0 || Boolean(
+    project?.brand?.primaryColor || project?.brand?.logoPreview ||
+    project?.websiteUrl || project?.figmaUrl ||
+    (project?.brand?.toneKeywords || []).length > 0
+  );
+
+  // Opens the generator against this project. Same action from two entry points: the header's
+  // Refine Brand button and Get Started on the empty Brand Bible.
+  // Opens the Brand Context Engine. Same action from three entry points: Get Started on the
+  // empty Brand Bible card, Refine Brand in the header, and each checklist Add.
+  // Components are chosen on step 3, not step 1, so that checklist row jumps straight there.
+  const ENGINE_STEP_FOR_ITEM = { components: 3 };
+  const openBrandEngine = (source = null) => setEngine({
+    step: ENGINE_STEP_FOR_ITEM[source] || 1,
+    source: ENGINE_STEP_FOR_ITEM[source] ? null : source,
+  });
+
+  const saveBrandContext = (brandContext) => updateProject(id, { brandContext });
+
+  // Commits the engine's Step 5 preview. Uses the batch helpers on purpose — the singular
+  // handleAddToken/handleAddComponent read state from a closure and would drop all but the
+  // last when called in a loop.
+  const applyBrandContext = ({ brand, tokens, components: comps }) => {
+    const nextBrand = { ...(project.brand || {}) };
+    Object.entries(brand || {}).forEach(([k, v]) => {
+      if (Array.isArray(v) ? v.length : v) nextBrand[k] = v;
+    });
+    updateProject(id, { brand: nextBrand });
+    setBrandData(prev => ({ ...(prev || {}), ...nextBrand }));
+    if (tokens?.length) handleAddTokens(tokens);
+    if (comps?.length) handleAddComponents(comps);
+    setEngine(null);
+  };
+
   // Shared main-tab button list — rendered in the desktop sidebar, the mobile icon
   // rail (icon-only), and the mobile nav overlay (icon + label, like desktop).
   const renderMainTabButtons = () => MAIN_TABS.filter(tab => canViewTab(myRole, tab.id)).map(tab => (
@@ -1890,7 +1937,25 @@ This document serves as our living source of truth.`
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-          <span className="pd-btn-label">Publish changes</span>
+          <span className="pd-btn-label">Publish</span>
+        </button>
+
+        {/* Refine Brand — reopens the generator against this project (brand fields only) */}
+        <button
+          className="pd-export-btn"
+          onClick={() => openBrandEngine()}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '0.4rem 0.875rem',
+            color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 3a9 9 0 1 0 9 9"/><polyline points="21 3 21 9 15 9"/>
+          </svg>
+          <span className="pd-btn-label">Refine Brand</span>
         </button>
 
         {/* Export button */}
@@ -2244,7 +2309,55 @@ This document serves as our living source of truth.`
         {/* ── Main Content ── */}
         <main className="pd-main" style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}>
 
-          {activeTab === 'brand' && (
+          {/* Brand Bible onboarding — replaces the whole tab until a brand source exists */}
+          {activeTab === 'brand' && !hasBrandContext && (
+            <div style={{ maxWidth: '1200px' }}>
+              <div style={{
+                background: 'linear-gradient(135deg, var(--accent-glow) 0%, var(--bg-secondary) 55%)',
+                border: '1px solid var(--border)',
+                borderRadius: '16px',
+                padding: '2.5rem',
+              }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                  background: 'var(--accent-glow)', border: '1px solid var(--accent)',
+                  color: 'var(--accent)', borderRadius: '100px',
+                  padding: '0.3rem 0.85rem', fontSize: '0.7rem', fontWeight: 700,
+                  letterSpacing: '0.08em', textTransform: 'uppercase',
+                }}>✨ Brand Context Engine</span>
+
+                <h2 style={{ fontSize: '1.9rem', fontWeight: 700, margin: '1.25rem 0 0.85rem', color: 'var(--text-primary)' }}>
+                  Setup your Brand Context
+                </h2>
+
+                <p style={{ fontSize: '0.92rem', lineHeight: 1.7, color: 'var(--text-secondary)', maxWidth: '46rem', margin: 0 }}>
+                  Define your brand identity using descriptions, logo assets, website links, Figma
+                  variables, or JSON tokens. Strata's AI will parse these sources to extract colors,
+                  typography, and automatically bootstrap your design system tokens and component specs.
+                </p>
+
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: '0.9rem', marginBottom: 0 }}>
+                  {completeness.done} of {completeness.total} provided &middot; add any of it whenever you like.
+                </p>
+
+                <button
+                  onClick={() => openBrandEngine()}
+                  className="btn btn-primary"
+                  style={{
+                    marginTop: '1.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.7rem 1.5rem', borderRadius: '100px', fontSize: '0.9rem', fontWeight: 600,
+                  }}
+                >
+                  Get Started
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'brand' && hasBrandContext && (
             <div style={{ maxWidth: '1200px' }}>
               
               {/* Intelligent Suggestion Banner */}
@@ -2267,6 +2380,89 @@ This document serves as our living source of truth.`
                   </div>
                 </div>
               )}
+
+              {/* Setup progress — what is still outstanding, and where to go for it */}
+              <div style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '12px', padding: '1.25rem 1.5rem', marginBottom: '1.75rem',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Brand context</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                    {completeness.done} of {completeness.total} &middot; {completeness.percent}%
+                  </span>
+                </div>
+
+                <div style={{ height: '5px', borderRadius: '100px', background: 'var(--bg-tertiary)', overflow: 'hidden', margin: '0.7rem 0 0.35rem' }}>
+                  <div style={{ width: `${completeness.percent}%`, height: '100%', background: 'var(--accent)', borderRadius: '100px', transition: 'width 0.3s' }} />
+                </div>
+
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: '0 0 1rem' }}>
+                  {completeness.done === completeness.total
+                    ? 'Everything is filled in. You can change any of it at any time.'
+                    : 'Nothing here is required. Fill in whatever you have, whenever you have it.'}
+                </p>
+
+                <div className="pd-setup-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.5rem' }}>
+                  {completeness.items.map(item => (
+                    <div
+                      key={item.key}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.6rem',
+                        padding: '0.55rem 0.7rem', borderRadius: '8px',
+                        background: item.done ? 'transparent' : 'var(--bg-tertiary)',
+                        border: `1px solid ${item.done ? 'transparent' : 'var(--border)'}`,
+                      }}
+                    >
+                      <span style={{
+                        width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: item.done ? 'var(--accent)' : 'transparent',
+                        border: item.done ? 'none' : '1.5px solid var(--text-tertiary)',
+                        color: '#fff',
+                      }}>
+                        {item.done && (
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        )}
+                      </span>
+
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{
+                          display: 'block', fontSize: '0.8rem',
+                          color: item.done ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap',
+                        }}>
+                          {item.label}
+                        </span>
+                        {/* What was actually provided — read from stored data, never a placeholder */}
+                        {item.done && item.summary && (
+                          <span style={{
+                            display: 'block', fontSize: '0.72rem', color: 'var(--text-tertiary)',
+                            textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap',
+                          }}>
+                            {item.summary}
+                          </span>
+                        )}
+                      </span>
+
+                      <button
+                        onClick={() => openBrandEngine(item.key)}
+                        title={item.done ? 'Edit ' + item.label : item.hint}
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                          color: item.done ? 'var(--text-secondary)' : 'var(--accent)',
+                          fontSize: '0.75rem', fontWeight: 600,
+                          fontFamily: 'inherit', flexShrink: 0,
+                        }}
+                      >
+                        {item.done ? 'Edit' : 'Add'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               {/* Sub-tab Switcher */}
               <div className="pd-brand-subtabs" style={{
@@ -2306,6 +2502,25 @@ This document serves as our living source of truth.`
               </div>
 
               {/* Sub-tab 1: Visual Identity */}
+              {/* brandData fills in #FC0694/Outfit defaults on load, so a project whose brand
+                  context has not been applied yet would show those as if they were its own. */}
+              {activeBrandSubTab === 'identity' && !project?.brand?.primaryColor && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+                  background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.4)',
+                  borderRadius: '10px', padding: '0.8rem 1rem', marginBottom: '1.5rem',
+                }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    style={{ color: '#FACC15', flexShrink: 0, marginTop: '1px' }}>
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+                    These are placeholder values — no brand has been applied to this project yet.
+                    Run the Brand Context Engine and apply it to replace them with your own.
+                  </span>
+                </div>
+              )}
+
               {activeBrandSubTab === 'identity' && (
                 <div className="pd-brand-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '3rem' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -3186,6 +3401,35 @@ This document serves as our living source of truth.`
                   </div>
                 );
               })}
+
+              {/* Empty state — the table above renders nothing on its own, which reads as broken */}
+              {tokens.length === 0 && (() => {
+                const typeTotal = (activeTokens[activeCategory] || []).length;
+                const projectTotal = Object.values(activeTokens || {})
+                  .reduce((n, list) => n + (Array.isArray(list) ? list.length : 0), 0);
+                const layerLabel = (TOKEN_LAYER_LABELS[activeLayer] || activeLayer).toLowerCase();
+                const typeLabel = activeCategory.toLowerCase();
+                let headline, hint;
+                if (tokenTableSearchLower) {
+                  headline = `No tokens match "${tokenTableSearch.trim()}"`;
+                  hint = `Nothing in ${layerLabel} ${typeLabel} matches that search. Clear it to see the full list.`;
+                } else if (projectTotal === 0) {
+                  headline = `No ${layerLabel} ${typeLabel} tokens`;
+                  hint = 'Import tokens or add one manually to get started.';
+                } else if (typeTotal === 0) {
+                  headline = `No ${typeLabel} tokens`;
+                  hint = `This project has ${projectTotal} token${projectTotal === 1 ? '' : 's'}, but none of type ${activeCategory}.`;
+                } else {
+                  headline = `No ${layerLabel} ${typeLabel} tokens`;
+                  hint = `This project has ${typeTotal} ${typeLabel} token${typeTotal === 1 ? '' : 's'} in other layers.`;
+                }
+                return (
+                  <div style={{ padding: '2.75rem 1rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>{headline}</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{hint}</div>
+                  </div>
+                );
+              })()}
             </>
           )}
 
@@ -4143,6 +4387,21 @@ export default function RootLayout({ children }) {
                       onBlur={() => {
                         if (projectNameDraft.trim() && projectNameDraft !== project.name) {
                           updateProject(id, { name: projectNameDraft.trim() });
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Description</label>
+                    <textarea
+                      className="form-textarea"
+                      rows={2}
+                      placeholder="What are we building?"
+                      value={projectDescDraft}
+                      onChange={(e) => setProjectDescDraft(e.target.value)}
+                      onBlur={() => {
+                        if (projectDescDraft !== (project.description || '')) {
+                          updateProject(id, { description: projectDescDraft.trim() });
                         }
                       }}
                     />
@@ -5176,6 +5435,18 @@ export default function RootLayout({ children }) {
         }
       `}} />
 
+
+      {engine && (
+        <BrandContextEngine
+          project={project}
+          owner={user?.email || ''}
+          initialStep={engine.step}
+          initialSource={engine.source}
+          onClose={() => setEngine(null)}
+          onSave={saveBrandContext}
+          onApply={applyBrandContext}
+        />
+      )}
     </div>
   );
 }

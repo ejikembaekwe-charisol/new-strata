@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NewProjectModal from '../components/NewProjectModal';
 import { useProjects } from '../context/ProjectContext';
+import { getBrandCompleteness } from '../utils/projectCompleteness';
 
 const Projects = () => {
   const navigate = useNavigate();
@@ -132,9 +133,20 @@ const Projects = () => {
                             </button>
                           </div>
                         )}
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-                          {project.websiteUrl || project.figmaUrl ? '✓ Context provided' : 'No context provided'}
-                        </span>
+                        {(() => {
+                          // Reads persisted data, so it reflects what the user actually supplied
+                          const { done, total, percent } = getBrandCompleteness(project);
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.15rem' }}>
+                              <div style={{ width: '68px', height: '4px', borderRadius: '100px', background: 'var(--border)', overflow: 'hidden' }}>
+                                <div style={{ width: `${percent}%`, height: '100%', background: 'var(--accent)', borderRadius: '100px', transition: 'width 0.3s' }} />
+                              </div>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                                {done} of {total} &middot; {percent}%
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

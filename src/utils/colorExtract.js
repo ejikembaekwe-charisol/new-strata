@@ -450,7 +450,11 @@ export function resizeImageToDataUrl(file, maxDim = 480, quality = 0.82) {
 }
 
 function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  // Clamp: callers quantise with Math.round(v / 32) * 32, which yields 256 for any channel
+  // >= 240 and produced malformed 7-character hex (e.g. #100c020). That also broke colorDist,
+  // which parses colours by fixed slice positions.
+  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  return '#' + [r, g, b].map(v => clamp(v).toString(16).padStart(2, '0')).join('');
 }
 
 function colorDist(h1, h2) {

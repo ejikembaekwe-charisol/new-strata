@@ -12,7 +12,10 @@ const DEFAULT_NEUTRALS = {
 export default function Generator() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { addProject } = useProjects();
+  const { addProject, updateProject } = useProjects();
+  // Set when the project header's Refine Brand button sent us here. In that mode we
+  // update the project we came from instead of creating a second one.
+  const refineProjectId = location.state?.refineProjectId || null;
 
   // Inputs state
   const [title, setTitle] = useState('');
@@ -62,8 +65,10 @@ export default function Generator() {
       setLogoPreview(bd.brand?.logoPreview || null);
       setJsonFileName(bd.tokens?.jsonFileName || '');
       setJsonContent(bd.tokens?.jsonContent || '');
-      
-      startGeneration(bd);
+
+      // Creating a project auto-runs. Refining stops here so the user can change the
+      // logo or URLs before regenerating.
+      if (!location.state?.refineProjectId) startGeneration(bd);
     }
   }, [location.state]);
 
@@ -232,7 +237,25 @@ export default function Generator() {
 
   // Persists the generated project to localStorage and redirects
   const handleSaveToProjects = () => {
-    // Structure tokens list in the format DEFAULT_TOKENS requires
+    // Refining an existing project: write back the brand fields only. Tokens and
+    // components are left alone — the preset components built below would otherwise
+    // overwrite whatever the project already has.
+    if (refineProjectId) {
+      const refinedBrand = { ...(location.state?.brandData?.brand || {}) };
+      if (extractedBrand.primary) refinedBrand.primaryColor = extractedBrand.primary;
+      if (extractedBrand.secondary) refinedBrand.secondaryColor = extractedBrand.secondary;
+      if (extractedBrand.accent) refinedBrand.accentColor = extractedBrand.accent;
+      if (extractedBrand.fontHeading) refinedBrand.headingFont = extractedBrand.fontHeading;
+      if (extractedBrand.fontBody) refinedBrand.bodyFont = extractedBrand.fontBody;
+      if (logoPreview) { refinedBrand.logo = logoFile; refinedBrand.logoPreview = logoPreview; }
+      const updates = { brand: refinedBrand };
+      if (extractedBrand.primary) updates.color = extractedBrand.primary;
+      updateProject(refineProjectId, updates);
+      navigate(`/projects/${refineProjectId}`);
+      return;
+    }
+
+    // Structure the generated tokens into the project token map
     const projectTokens = {
       'Brand Tokens': [
         { name: 'brand.color.primary', value: extractedBrand.primary, type: 'color' },
@@ -444,7 +467,7 @@ POST /v1/files/${figmaUrl ? figmaUrl.split('/').pop() || 'file_key' : 'file_key'
             </div>
 
             {status === 'idle' ? (
-              <button onClick={startGeneration} className="btn btn-primary" style={{ width: '100%', padding: '0.8rem' }}>
+              <button onClick={() => startGeneration()} className="btn btn-primary" style={{ width: '100%', padding: '0.8rem' }}>
                 ✦ Generate Design System
               </button>
             ) : status === 'generating' ? (
@@ -454,7 +477,7 @@ POST /v1/files/${figmaUrl ? figmaUrl.split('/').pop() || 'file_key' : 'file_key'
               </div>
             ) : (
               <button onClick={handleSaveToProjects} className="btn btn-primary" style={{ width: '100%', padding: '0.8rem', background: '#22C55E', borderColor: '#22C55E' }}>
-                ✓ Save to Projects
+                {refineProjectId ? '✓ Save brand to project' : '✓ Save to Projects'}
               </button>
             )}
           </div>
