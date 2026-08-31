@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import NewProjectModal from '../components/NewProjectModal';
 import { useProjects } from '../context/ProjectContext';
 import { getBrandCompleteness } from '../utils/projectCompleteness';
 
 const Projects = () => {
   const navigate = useNavigate();
-  const { projects, isLoaded, addProject, updateProject, deleteProject } = useProjects();
-  const [showModal, setShowModal] = useState(false);
+  const { projects, isLoaded, updateProject, deleteProject } = useProjects();
   const [editingProject, setEditingProject] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -16,12 +14,6 @@ const Projects = () => {
   );
 
   if (!isLoaded) return <div className="loading-screen"><div className="loading-spinner"></div></div>;
-
-  const handleCreate = (data) => {
-    const newProject = addProject(data);
-    // Navigate to the newly created project
-    navigate(`/projects/${newProject.id}`);
-  };
 
   const handleUpdate = (id, newName) => {
     updateProject(id, { name: newName });
@@ -58,7 +50,7 @@ const Projects = () => {
               id="new-project-btn"
               className="btn btn-primary"
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}
-              onClick={() => setShowModal(true)}
+              onClick={() => navigate('/projects/new')}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               New project
@@ -88,7 +80,7 @@ const Projects = () => {
             <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', margin: '0 auto 2rem', fontSize: '1rem', lineHeight: '1.5' }}>
               Start by defining your brand identity or importing your existing tokens. Strata will handle the rest.
             </p>
-            <button className="btn btn-primary" onClick={() => setShowModal(true)} style={{ padding: '1rem 2rem', fontSize: '1rem' }}>
+            <button className="btn btn-primary" onClick={() => navigate('/projects/new')} style={{ padding: '1rem 2rem', fontSize: '1rem' }}>
               + New project
             </button>
           </div>
@@ -189,7 +181,7 @@ const Projects = () => {
               {/* Add new card placeholder */}
               <div
                 className="card"
-                onClick={() => setShowModal(true)}
+                onClick={() => navigate('/projects/new')}
                 style={{
                   padding: '1.5rem', display: 'flex', flexDirection: 'column',
                   justifyContent: 'center', alignItems: 'center',
@@ -214,13 +206,6 @@ const Projects = () => {
         )}
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <NewProjectModal
-          onClose={() => setShowModal(false)}
-          onCreate={handleCreate}
-        />
-      )}
     </div>
   );
 };

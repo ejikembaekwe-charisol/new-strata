@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
+import { useTabs } from '../context/TabsContext';
 import branchIcon from '../assets/branch-icon.svg';
 import { resolveMyRole, can, canViewTab, ROLES } from '../utils/permissions';
 import { getBrandCompleteness, emptyBrandContext } from '../utils/projectCompleteness';
@@ -120,6 +121,9 @@ const componentTreeGroup = (comp) => {
     default: return 'Other';
   }
 };
+
+// Font choices offered in the Brand Bible typography selects.
+const FONT_CHOICES = ['Outfit', 'Inter', 'Roboto', 'DM Sans', 'Poppins', 'Manrope', 'Figtree', 'Space Grotesk', 'Playfair Display', 'Georgia'];
 
 const COMPONENT_TREE_GROUPS = ['Button', 'Container / Layout', 'Fragment', 'Other', 'Text / Typography'];
 
@@ -360,12 +364,13 @@ function ProjectDetailInner() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { projects, isLoaded, updateProject, addProject, deleteProject } = useProjects();
+  const { openTab, markOpened, sectionFor, setSection, sidebarCollapsed, setSidebarCollapsed, hydrated } = useTabs();
 
   // Find project from list
   const project = projects.find(p => String(p.id) === String(id));
   const myRole = resolveMyRole(project, user);
 
-  const [activeTab, setActiveTab] = useState('brand');
+  const [activeTab, setActiveTab] = useState(() => sectionFor(id) || 'brand');
   const [activeCategory, setActiveCategory] = useState('Color');  // token type
   const [activeLayer, setActiveLayer] = useState('Brand');          // Brand | Semantic | Component
   const [tokenTableSearch, setTokenTableSearch] = useState('');
@@ -377,6 +382,8 @@ function ProjectDetailInner() {
   const [lastSavedAt, setLastSavedAt] = useState(() => new Date());
   const [brandData, setBrandData] = useState(null);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const [transferOwnershipOpen, setTransferOwnershipOpen] = useState(false);
   const [transferTargetId, setTransferTargetId] = useState('');
   const [projectNameDraft, setProjectNameDraft] = useState(project?.name || '');
@@ -581,6 +588,39 @@ export const ThemeProvider = ({ children }) => {
       document.removeEventListener('mousedown', onDown);
     };
   }, [previewComponentId]);
+
+  // Registering the tab on mount covers every way into a project — the list, a freshly created
+  // one, a pasted deep link, the branch switcher — rather than scattering openTab across callers.
+  React.useEffect(() => {
+    if (!project || !hydrated) return;
+    openTab(id);
+    markOpened(id);
+  }, [id, project, hydrated, openTab, markOpened]);
+
+  // Restore the remembered section. Two cases: a fresh page load, where the store only
+  // becomes readable once TabsProvider has hydrated (so the initial useState fell back to
+  // 'brand'), and an in-app switch to another project, where the id changes.
+  const restoredForRef = React.useRef(null);
+  // Set when a restore is queued. The write effect below runs in the same commit and would
+  // still see the pre-restore activeTab, persisting it over the value just read back.
+  const skipSectionWriteRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!hydrated || restoredForRef.current === id) return;
+    restoredForRef.current = id;
+    const remembered = sectionFor(id);
+    if (remembered && remembered !== activeTab) {
+      skipSectionWriteRef.current = true;
+      setActiveTab(remembered);
+    }
+  }, [id, hydrated, sectionFor, activeTab]);
+
+  // Remember where the user was, so returning to a tab is continuous. Gated on hydration,
+  // or the mount default would be written over the stored value before it is read back.
+  React.useEffect(() => {
+    if (!hydrated || !project || restoredForRef.current !== id) return;
+    if (skipSectionWriteRef.current) { skipSectionWriteRef.current = false; return; }
+    setSection(id, activeTab);
+  }, [id, hydrated, project, activeTab, setSection]);
 
   // Initialize brandData once project is found
   React.useEffect(() => {
@@ -1568,6 +1608,20 @@ This document serves as our living source of truth.`
   // Brand Bible shows its onboarding card until at least one real brand source exists.
   // Read from `project`, not `brandData` — that one fills in invented defaults (#FC0694,
   // Outfit) the moment a project loads, so it is never empty and cannot be the test.
+  // The read-only route resolves real projects (SharedProject looks them up in ProjectContext
+  // before falling back to mock data), so this is a working link rather than a placeholder.
+  const copyShareLink = async () => {
+    const url = window.location.origin + '/explore/' + id;
+    try {
+      await navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 1800);
+    } catch (e) {
+      // clipboard needs a secure context and permission; still let the user get the URL
+      window.prompt('Copy this link', url);
+    }
+  };
+
   const completeness = getBrandCompleteness(project);
 
   // The onboarding card is only for a project with nothing at all in it. Previously this read
@@ -1579,10 +1633,8 @@ This document serves as our living source of truth.`
     (project?.brand?.toneKeywords || []).length > 0
   );
 
-  // Opens the generator against this project. Same action from two entry points: the header's
-  // Refine Brand button and Get Started on the empty Brand Bible.
-  // Opens the Brand Context Engine. Same action from three entry points: Get Started on the
-  // empty Brand Bible card, Refine Brand in the header, and each checklist Add.
+  // Opens the Brand Context Engine. Two entry points remain: Get Started on the empty Brand
+  // Bible card, and the Add/Edit link on each brand-context checklist row.
   // Components are chosen on step 3, not step 1, so that checklist row jumps straight there.
   const ENGINE_STEP_FOR_ITEM = { components: 3 };
   const openBrandEngine = (source = null) => setEngine({
@@ -1609,9 +1661,16 @@ This document serves as our living source of truth.`
 
   // Shared main-tab button list — rendered in the desktop sidebar, the mobile icon
   // rail (icon-only), and the mobile nav overlay (icon + label, like desktop).
+  // Collaboration and Branch & Publish sit below a divider in the design, so the list is
+  // rendered with a rule inserted before the first of them.
+  const SIDEBAR_DIVIDER_BEFORE = 'collaboration';
+
   const renderMainTabButtons = () => MAIN_TABS.filter(tab => canViewTab(myRole, tab.id)).map(tab => (
+    <React.Fragment key={tab.id}>
+    {tab.id === SIDEBAR_DIVIDER_BEFORE && (
+      <div className="pd-sidebar-divider" style={{ height: '1px', background: 'var(--border)', margin: '0.6rem 0.3rem' }} />
+    )}
     <button
-      key={tab.id}
       className={`pd-sidebar-tab-btn${activeTab === tab.id ? ' pd-sidebar-tab-btn-active' : ''}`}
       title={tab.label}
       onClick={() => {
@@ -1626,17 +1685,18 @@ This document serves as our living source of truth.`
       }}
       style={{
         display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-        background: activeTab === tab.id ? 'var(--bg-tertiary)' : 'none',
-        border: 'none', borderRadius: '6px',
-        padding: '0.5rem 0.625rem', marginBottom: '0.1rem',
-        color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-        fontSize: '0.82rem', fontWeight: activeTab === tab.id ? 500 : 400,
+        background: activeTab === tab.id ? 'var(--accent-glow)' : 'none',
+        border: 'none', borderRadius: '8px',
+        padding: '0.55rem 0.7rem', marginBottom: '0.15rem',
+        color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-secondary)',
+        fontSize: '0.82rem', fontWeight: activeTab === tab.id ? 600 : 400,
         cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
       }}
     >
       {tab.icon}
       <span className="pd-sidebar-tab-label">{tab.label}</span>
     </button>
+    </React.Fragment>
   ));
 
   // Shared button list for the Token Type categories — rendered both in the desktop
@@ -1805,7 +1865,7 @@ This document serves as our living source of truth.`
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--tabstrip-h, 0px))', marginTop: 'var(--tabstrip-h, 0px)', background: 'var(--bg)' }}>
 
       {/* ── App Top Bar ── */}
       <header className="pd-header" style={{
@@ -1814,28 +1874,30 @@ This document serves as our living source of truth.`
         background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)',
         position: 'sticky', top: 0, zIndex: 100,
       }}>
-        <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-primary)' }}>
-            Strata<span style={{ color: 'var(--accent)' }}>.</span>
-          </span>
-        </Link>
+        {/* Last saved timestamp */}
+        <span className="pd-header-saved" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+          Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+        </span>
 
-        <span className="pd-breadcrumb-sep" style={{ color: 'var(--border)', fontSize: '1.2rem', marginLeft: '0.25rem' }}>/</span>
-
-        <Link to="/projects" className="pd-breadcrumb-projects" style={{ textDecoration: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          Projects
-        </Link>
-
-        <span className="pd-breadcrumb-sep" style={{ color: 'var(--border)', fontSize: '1.2rem' }}>/</span>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-          <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.name}</span>
-          <span className="pd-status-pill" style={
-            project.status === 'Active'
-              ? { fontSize: '0.625rem', padding: '0.125rem 0.5rem', borderRadius: '100px', background: 'var(--accent-glow)', color: 'var(--accent)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }
-              : { fontSize: '0.6rem', padding: '0.15rem 0.45rem', borderRadius: '100px', border: '1px solid var(--border)', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }
-          }>{project.status}</span>
-        </div>
+        {/* Branch selector */}
+        {/* Sync button */}
+        <button
+          className="pd-header-sync"
+          onClick={() => setBrandBibleDirty(false)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'var(--accent-glow)', border: '1px solid rgba(252,6,148,0.25)',
+            borderRadius: '6px', padding: '0.4rem 0.875rem',
+            color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          </svg>
+          <span className="pd-btn-label">{brandBibleDirty ? 'Sync' : 'Synced'}</span>
+        </button>
 
         <div style={{ flex: 1 }} />
 
@@ -1844,12 +1906,6 @@ This document serves as our living source of truth.`
           background: 'var(--accent)', flexShrink: 0,
         }} />
 
-        {/* Last saved timestamp */}
-        <span className="pd-header-saved" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-          Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-        </span>
-
-        {/* Branch selector */}
         <div className="pd-header-branch" style={{ position: 'relative' }}>
           <button
             onClick={() => setShowBranchMenu(p => !p)}
@@ -1903,78 +1959,65 @@ This document serves as our living source of truth.`
           )}
         </div>
 
-        {/* Sync button */}
-        <button
-          className="pd-header-sync"
-          onClick={() => setBrandBibleDirty(false)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            background: 'var(--accent-glow)', border: '1px solid rgba(252,6,148,0.25)',
-            borderRadius: '6px', padding: '0.4rem 0.875rem',
-            color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-          </svg>
-          <span className="pd-btn-label">{brandBibleDirty ? 'Sync' : 'Synced'}</span>
-        </button>
+        {/* Share — export, invite teammates, or copy a link. .pd-export-btn on the wrapper
+            keeps the existing mobile hide behaviour. */}
+        <div className="pd-export-btn" style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowShareMenu(p => !p)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+              borderRadius: '6px', padding: '0.4rem 0.875rem',
+              color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            <span className="pd-btn-label">Share</span>
+          </button>
 
-        {/* Publish changes button */}
-        <button
-          className="pd-header-publish"
-          onClick={() => setActiveTab('branch')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            background: 'var(--accent)', border: '1px solid var(--accent)',
-            borderRadius: '6px', padding: '0.4rem 0.875rem',
-            color: '#fff', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <span className="pd-btn-label">Publish</span>
-        </button>
+          {showShareMenu && (
+            <>
+              {/* transparent backdrop closes the menu, same as the branch selector */}
+              <div onClick={() => setShowShareMenu(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'transparent' }} />
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 8px)', right: 0, minWidth: '260px',
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '10px', padding: '0.375rem', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 201,
+              }}>
+                <button
+                  style={menuItemStyle}
+                  onClick={() => { setActiveTab('handoff'); setShowShareMenu(false); }}
+                >
+                  Export design system
+                </button>
 
-        {/* Refine Brand — reopens the generator against this project (brand fields only) */}
-        <button
-          className="pd-export-btn"
-          onClick={() => openBrandEngine()}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-            borderRadius: '6px', padding: '0.4rem 0.875rem',
-            color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 3a9 9 0 1 0 9 9"/><polyline points="21 3 21 9 15 9"/>
-          </svg>
-          <span className="pd-btn-label">Refine Brand</span>
-        </button>
+                <button
+                  style={menuItemStyle}
+                  onClick={() => { setActiveTab('collaboration'); setInviteModalOpen(true); setShowShareMenu(false); }}
+                >
+                  Invite users
+                </button>
 
-        {/* Export button */}
-        <button
-          className="pd-export-btn"
-          onClick={() => setActiveTab('handoff')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-            borderRadius: '6px', padding: '0.4rem 0.875rem',
-            color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500, cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          <span className="pd-btn-label">Export</span>
-        </button>
+                <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
+
+                <button style={menuItemStyle} onClick={copyShareLink}>
+                  {shareCopied ? 'Link copied' : 'Copy view-only link'}
+                </button>
+
+                {/* There is no backend, so say what the link can and cannot do */}
+                <p style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', lineHeight: 1.5, margin: '0.25rem 0.75rem 0.5rem' }}>
+                  Opens the read-only view of this project. It resolves for people whose browser
+                  already has it — there is no server behind the link yet.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
 
         {/* Theme toggle */}
         <button
@@ -2034,8 +2077,8 @@ This document serves as our living source of truth.`
       <div className="pd-shell" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
         {/* ── Left Sidebar ── */}
-        <aside className="pd-sidebar" style={{
-          width: '200px', flexShrink: 0,
+        <aside className={'pd-sidebar' + (sidebarCollapsed ? ' is-collapsed' : '')} style={{
+          flexShrink: 0,
           background: 'var(--bg-secondary)', borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column', padding: '1rem 0',
           overflowY: 'auto',
@@ -2047,6 +2090,23 @@ This document serves as our living source of truth.`
             onClick={() => setMobileNavExpanded(true)}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+
+          {/* Desktop-only collapse toggle. Mobile has a permanent rail and its own
+              .pd-mobile-nav-toggle, so this is hidden there. */}
+          <button
+            className="pd-sidebar-collapse-toggle"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+              {sidebarCollapsed
+                ? <polyline points="13 9 16 12 13 15" />
+                : <polyline points="16 9 13 12 16 15" />}
+            </svg>
           </button>
 
           {/* Tabs */}
@@ -2307,7 +2367,19 @@ This document serves as our living source of truth.`
         )}
 
         {/* ── Main Content ── */}
-        <main className="pd-main" style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}>
+        <main
+          className={'pd-main' + (sidebarCollapsed && (activeTab === 'tokens' || activeTab === 'components') ? ' has-floating-chips' : '')}
+          style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}
+        >
+
+          {/* Collapsing the sidebar moves its browse list up here, above the content. Token
+              types have icons but the component groups are plain labels, so both render as
+              chips. Hidden under 768px, where the fixed bottom bar already does this job. */}
+          {sidebarCollapsed && (activeTab === 'tokens' || activeTab === 'components') && (
+            <div className="pd-collapsed-category-row">
+              {activeTab === 'tokens' ? renderTokenTypeCategoryButtons() : renderComponentGroupChips()}
+            </div>
+          )}
 
           {/* Brand Bible onboarding — replaces the whole tab until a brand source exists */}
           {activeTab === 'brand' && !hasBrandContext && (
@@ -2393,25 +2465,21 @@ This document serves as our living source of truth.`
                   </span>
                 </div>
 
-                <div style={{ height: '5px', borderRadius: '100px', background: 'var(--bg-tertiary)', overflow: 'hidden', margin: '0.7rem 0 0.35rem' }}>
-                  <div style={{ width: `${completeness.percent}%`, height: '100%', background: 'var(--accent)', borderRadius: '100px', transition: 'width 0.3s' }} />
-                </div>
-
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: '0 0 1rem' }}>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 1.1rem' }}>
                   {completeness.done === completeness.total
                     ? 'Everything is filled in. You can change any of it at any time.'
                     : 'Nothing here is required. Fill in whatever you have, whenever you have it.'}
                 </p>
 
-                <div className="pd-setup-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '0.5rem' }}>
+                <div className="pd-setup-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.6rem' }}>
                   {completeness.items.map(item => (
                     <div
                       key={item.key}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.6rem',
-                        padding: '0.55rem 0.7rem', borderRadius: '8px',
-                        background: item.done ? 'transparent' : 'var(--bg-tertiary)',
-                        border: `1px solid ${item.done ? 'transparent' : 'var(--border)'}`,
+                        padding: '0.6rem 0.75rem', borderRadius: '8px',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border)',
                       }}
                     >
                       <span style={{
@@ -2564,27 +2632,27 @@ This document serves as our living source of truth.`
                         <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem 1.25rem', borderRadius: '8px' }}>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Headings</span>
                           <select
-                            value={brandData.headingFont}
+                            value={project?.brand?.headingFont || ''}
                             onChange={(e) => handleBrandUpdate('headingFont', e.target.value)}
                             disabled={!can(myRole, 'brandBible', 'edit')}
-                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
+                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: project?.brand?.headingFont ? 'var(--text-primary)' : 'var(--text-tertiary)', fontSize: '0.9rem', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
                           >
-                            <option>Outfit</option>
-                            <option>Inter</option>
-                            <option>Roboto</option>
+                            {/* Empty until a font is actually set — the old default reported
+                                Outfit for projects that had never chosen one. */}
+                            <option value="">Select a font</option>
+                            {FONT_CHOICES.map(f => <option key={f} value={f}>{f}</option>)}
                           </select>
                         </div>
                         <div style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '1rem 1.25rem', borderRadius: '8px' }}>
                           <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Body Font</span>
                           <select
-                            value={brandData.bodyFont}
+                            value={project?.brand?.bodyFont || ''}
                             onChange={(e) => handleBrandUpdate('bodyFont', e.target.value)}
                             disabled={!can(myRole, 'brandBible', 'edit')}
-                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '0.9rem', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
+                            style={{ width: '100%', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '0.5rem', borderRadius: '6px', color: project?.brand?.bodyFont ? 'var(--text-primary)' : 'var(--text-tertiary)', fontSize: '0.9rem', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
                           >
-                            <option>Inter</option>
-                            <option>Roboto</option>
-                            <option>Outfit</option>
+                            <option value="">Select a font</option>
+                            {FONT_CHOICES.map(f => <option key={f} value={f}>{f}</option>)}
                           </select>
                         </div>
                       </div>
@@ -5200,7 +5268,87 @@ export default function RootLayout({ children }) {
         /* Mobile-only surfaces, collapsed on desktop by default */
         .pd-mobile-category-row, .pd-sidebar-rail-bottom, .pd-mobile-nav-toggle { display: none; }
 
+        /* ── Collapsible sidebar (desktop) ──────────────────────────────────────
+           NOTE: .pd-sidebar.is-collapsed below duplicates the rail declarations in
+           the max-width:768px block further down. They are the same 52px rail, but
+           one is class-driven and the other media-driven, so they cannot be merged
+           into a single rule — change them together. */
+        .pd-sidebar { width: 200px; transition: width 0.18s ease; }
+
+        .pd-sidebar.is-collapsed { width: 52px; align-items: center; }
+        .pd-sidebar.is-collapsed .pd-sidebar-tabs {
+          width: 100%;
+          align-items: center;
+          padding: 0 0.6rem !important;
+        }
+        .pd-sidebar.is-collapsed .pd-sidebar-tab-btn {
+          width: 32px;
+          height: 32px;
+          justify-content: center;
+          padding: 0;
+        }
+        .pd-sidebar.is-collapsed .pd-sidebar-tab-label { display: none; }
+        /* with the labels gone the glyph is the only cue, so give it a little more size */
+        .pd-sidebar.is-collapsed .pd-sidebar-tab-btn svg { width: 15px !important; height: 15px !important; flex: none; }
+        .pd-sidebar.is-collapsed .pd-sidebar-categories { display: none; }
+        .pd-sidebar.is-collapsed .pd-sidebar-divider { width: 32px; }
+
+        .pd-sidebar-collapse-toggle {
+          display: flex; align-items: center; justify-content: center;
+          width: 32px; height: 32px;
+          margin: 0 0.75rem 0.5rem auto;
+          background: none; border: none; border-radius: 6px;
+          color: var(--text-tertiary); cursor: pointer; flex-shrink: 0;
+        }
+        .pd-sidebar-collapse-toggle:hover { color: var(--accent); background: var(--accent-glow); }
+        .pd-sidebar.is-collapsed .pd-sidebar-collapse-toggle { margin: 0 auto 0.5rem; }
+
+        .pd-collapsed-category-row {
+          position: fixed;
+          bottom: 1.25rem;
+          /* centred on the content area, which begins after the 52px collapsed rail */
+          left: calc(50vw + 26px);
+          transform: translateX(-50%);
+          width: max-content;
+          max-width: calc(100vw - 52px - 3rem);
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          overflow-x: auto;
+          padding: 0.45rem 0.55rem;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 100px;
+          box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+          /* under the token row menu (160/161) so that still opens over it */
+          z-index: 150;
+          scrollbar-width: none;
+        }
+        .pd-collapsed-category-row::-webkit-scrollbar { display: none; }
+
+        /* the floating bar hovers over the content, so keep the last row clear of it */
+        .pd-main.has-floating-chips { padding-bottom: 5.5rem !important; }
+        /* Compact enough that all ten token types fit the viewport without scrolling:
+           the count is dropped (the sidebar still shows it) and padding tightened. */
+        .pd-collapsed-category-row .pd-sidebar-category-btn {
+          width: auto !important;   /* the button carries an inline width: 100% */
+          flex: 0 0 auto;
+          margin-bottom: 0 !important;
+          gap: 0.3rem;
+          padding: 0.32rem 0.6rem !important;
+          font-size: 0.73rem !important;
+        }
+        .pd-collapsed-category-row .pd-sidebar-category-count { display: none !important; }
+        /* let the label size to its text instead of inheriting the sidebar ellipsis */
+        .pd-collapsed-category-row .pd-sidebar-category-label {
+          flex: none;
+          width: auto;
+          max-width: none;
+        }
+
         @media (max-width: 768px) {
+          /* Three columns is a desktop layout; on a phone the rows need the full width. */
+          .pd-setup-grid { grid-template-columns: 1fr !important; }
           .pd-header { padding: 0 0.875rem !important; gap: 0.625rem !important; }
           .pd-status-pill { display: none !important; }
           .pd-btn-label { display: none; }
@@ -5239,13 +5387,16 @@ export default function RootLayout({ children }) {
             color: var(--text-secondary); cursor: pointer;
           }
 
-          /* Category lists move out of the rail on mobile. Token types are a
-             flat chip list, so they go in a fixed bottom navbar. The component
-             list is a search box + tree, which a horizontal flex strip can't
-             hold (the input claims the full width and pushes the groups
-             off-screen), so it gets an inline collapsible card instead.
-             Padding-bottom clears the bottom bars. */
+          /* Category lists move out of the rail on mobile: both token types and
+             component groups render as flat chip lists in a fixed bottom navbar
+             (renderTokenTypeCategoryButtons / renderComponentGroupChips).
+             Padding-bottom clears that bar. */
           .pd-sidebar-categories { display: none !important; }
+          /* Mobile owns the rail outright: no collapse toggle, and the fixed bottom bar
+             below replaces the in-page row so the two can never both appear. */
+          .pd-sidebar-collapse-toggle { display: none !important; }
+          .pd-collapsed-category-row { display: none !important; }
+          .pd-sidebar, .pd-sidebar.is-collapsed { width: 52px !important; }
           .pd-main { padding-bottom: 4.5rem !important; }
           .pd-mobile-category-row {
             display: flex !important;

@@ -1447,3 +1447,164 @@
     margin-bottom: 0.5rem;
 }
 
+
+/* ── Workspace tab strip (desktop only) ───────────────────────────────────
+   --tabstrip-h is what ProjectDetail subtracts from its 100vh root, so the
+   media query below both hides the strip and restores the original maths. */
+:root { --tabstrip-h: 40px; }
+
+.workspace-tabs {
+    position: fixed;
+    top: var(--nav-h, 0px);   /* 0 on project routes, nav height on the list */
+    left: 0;
+    right: 0;
+    height: var(--tabstrip-h);
+    z-index: 999;             /* just under .nav (1000) */
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    padding: 0 0.5rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+
+.workspace-tabs::-webkit-scrollbar { height: 3px; }
+.workspace-tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.workspace-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+    max-width: 200px;
+    padding: 0 0.7rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
+}
+
+.workspace-tab:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+.workspace-tab.is-active {
+    color: var(--text-primary);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+    background: var(--bg-tertiary);
+}
+
+.workspace-tab-home { gap: 0.4rem; }
+
+.workspace-tab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.workspace-tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 0;
+    opacity: 0.6;
+}
+
+.workspace-tab-close:hover { opacity: 1; background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+@media (max-width: 768px) {
+    :root { --tabstrip-h: 0px; }
+    .workspace-tabs { display: none; }
+}
+
+.workspace-tab-new {
+    justify-content: center;
+    width: 28px;
+    max-width: 28px;
+    padding: 0;
+    color: var(--text-tertiary);
+}
+
+.workspace-tab-new:hover { color: var(--accent); background: var(--accent-glow); }
+
+/* + menu in the tab strip. Fixed rather than absolute: the strip scrolls horizontally,
+   so an absolute menu inside it would be clipped. */
+.workspace-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: transparent;
+}
+
+.workspace-menu {
+    position: fixed;
+    z-index: 1001;
+    min-width: 220px;
+    max-width: 300px;
+    padding: 0.375rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.workspace-menu-label {
+    font-size: 0.62rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0.35rem 0.6rem 0.2rem;
+}
+
+.workspace-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.8rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.workspace-menu-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+.workspace-menu-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-menu-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0.25rem 0;
+}

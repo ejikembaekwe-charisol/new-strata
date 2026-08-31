@@ -3,8 +3,10 @@ import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import './App.css';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ProjectProvider } from './context/ProjectContext';
+import { TabsProvider } from './context/TabsContext';
 
 import Navigation from './components/Navigation';
+import ProjectTabs from './components/ProjectTabs';
 import Footer from './components/Footer';
 import Home from './pages/Home';
 import Developers from './pages/Developers';
@@ -18,6 +20,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
+import NewProjectPage from './pages/NewProjectPage';
 import Generator from './pages/Generator';
 import SharedProject from './pages/SharedProject';
 import ForgotPassword from './pages/ForgotPassword';
@@ -36,10 +39,14 @@ function AppInner() {
   const location = useLocation();
   const isAuthPage = location.pathname === '/login' || location.pathname === '/signup' || location.pathname === '/forgot-password';
   const isAppPage = location.pathname.startsWith('/projects/');
+  // The workspace is the list plus everything under it, so the strip stays put while moving
+  // between projects and the list — note '/projects' alone does not match isAppPage.
+  const isWorkspace = location.pathname === '/projects' || isAppPage;
 
   return (
     <div className="app">
       {!isAuthPage && !isAppPage && <Navigation />}
+      {isWorkspace && <ProjectTabs />}
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/developers" element={<Developers />} />
@@ -58,6 +65,11 @@ function AppInner() {
         <Route path="/projects" element={
           <ProtectedRoute>
             <Projects />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/new" element={
+          <ProtectedRoute>
+            <NewProjectPage />
           </ProtectedRoute>
         } />
         <Route path="/projects/generate" element={
@@ -80,7 +92,9 @@ function App() {
   return (
     <AuthProvider>
       <ProjectProvider>
-        <AppInner />
+        <TabsProvider>
+          <AppInner />
+        </TabsProvider>
       </ProjectProvider>
     </AuthProvider>
   );

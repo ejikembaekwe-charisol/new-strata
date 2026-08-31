@@ -13,8 +13,9 @@ export default function Generator() {
   const navigate = useNavigate();
   const location = useLocation();
   const { addProject, updateProject } = useProjects();
-  // Set when the project header's Refine Brand button sent us here. In that mode we
-  // update the project we came from instead of creating a second one.
+  // Refine mode: update the project we came from instead of creating a second one. NOTE the
+  // header button that used to set this is gone, so nothing reaches the generator this way
+  // today — the Brand Context Engine replaced it.
   const refineProjectId = location.state?.refineProjectId || null;
 
   // Inputs state
