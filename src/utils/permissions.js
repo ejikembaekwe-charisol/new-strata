@@ -100,3 +100,68 @@ export function resolveMyRole(project, user) {
   if (members.length === 0) return 'Owner';
   return 'Viewer';
 }
+
+// ── Describing a role in the UI ──────────────────────────────────────────────
+//
+// Derived from PERMISSIONS above rather than written out separately, so what the
+// invite dialog promises cannot drift from what `can()` actually enforces.
+
+export const PERMISSION_AREAS = [
+  { key: 'brandBible', label: 'Brand Bible' },
+  { key: 'assets', label: 'Brand assets' },
+  { key: 'tokens', label: 'Tokens' },
+  { key: 'components', label: 'Components' },
+  { key: 'collaboration', label: 'Team' },
+  { key: 'projectManagement', label: 'Project settings' },
+];
+
+/** Collapses one area's action list into a single word for display. */
+export function accessLevel(role, area) {
+  const perms = PERMISSIONS[role]?.[area] || [];
+  if (perms.length === 0) return 'No access';
+
+  if (area === 'collaboration') {
+    if (perms.includes('assignOwner')) return 'Full control';
+    if (perms.includes('assignRoles')) return 'Manage members';
+    return 'Invite only';
+  }
+  if (area === 'projectManagement') {
+    if (perms.includes('deleteProject')) return 'Full control';
+    if (perms.includes('updateSettings')) return 'Edit settings';
+    return 'No access';
+  }
+  if (perms.includes('delete')) return 'Full edit';
+  if (perms.includes('edit')) return 'Edit';
+  if (perms.includes('upload')) return 'Upload';
+  // Developer differs from Viewer only by export/inspect, so name those rather than
+  // collapsing both to "View only" and implying the two roles are equivalent.
+  if (perms.includes('export')) return 'View & export';
+  if (perms.includes('inspect')) return 'View & inspect';
+  if (perms.includes('download')) return 'View & download';
+  return 'View only';
+}
+
+/** @returns {Array<{ key: string, label: string, level: string }>} */
+export function describeRole(role) {
+  return PERMISSION_AREAS.map(a => ({ ...a, level: accessLevel(role, a.key) }));
+}
+
+/** A one-line gist, also derived: the widest thing the role can actually do. */
+export function roleSummary(role) {
+  if (!PERMISSIONS[role]) return '';
+  const canManageTeam = (PERMISSIONS[role].collaboration || []).length > 0;
+  const editAreas = ['brandBible', 'tokens', 'components', 'assets']
+    .filter(a => can(role, a, 'edit'));
+  if (editAreas.length === 0) {
+    const extras = [];
+    if (can(role, 'tokens', 'export')) extras.push('export tokens');
+    if (can(role, 'components', 'inspect')) extras.push('inspect components');
+    const tail = extras.length ? ' Can also ' + extras.join(' and ') + '.' : '';
+    if (canManageTeam) return 'Read-only on the system, can manage the team.' + tail;
+    return 'Can view everything but change nothing.' + tail;
+  }
+  const names = { brandBible: 'the Brand Bible', tokens: 'tokens', components: 'components', assets: 'assets' };
+  const list = editAreas.map(a => names[a]);
+  const joined = list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list[0];
+  return 'Can edit ' + joined + (canManageTeam ? ', and manage the team.' : '.');
+}

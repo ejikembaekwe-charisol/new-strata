@@ -4,9 +4,22 @@ import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
 import { useTabs } from '../context/TabsContext';
 import branchIcon from '../assets/branch-icon.svg';
-import { resolveMyRole, can, canViewTab, ROLES } from '../utils/permissions';
+import { resolveMyRole, can, canViewTab, ROLES, describeRole, roleSummary } from '../utils/permissions';
 import { getBrandCompleteness, emptyBrandContext } from '../utils/projectCompleteness';
 import BrandContextEngine from '../components/BrandContextEngine';
+import ScratchWizard from '../components/newProject/ScratchWizard';
+import ComponentInspector from '../components/inspector/ComponentInspector';
+
+import {
+  COMPONENT_TAXONOMY, CATEGORY_LIST, TYPES_FOR_CATEGORY, TYPE_TO_TEMPLATE,
+  TYPE_DESCRIPTIONS, TYPE_TO_CATEGORY as COMPONENT_TYPE_CATEGORY,
+  TEMPLATE_TO_TYPE,
+  categoryForComponent, typeForComponent, componentFoldersFor,
+} from '../components/componentTaxonomy';
+import { renderComponentPreview } from '../components/componentPreviews';
+import { ColorSwatchButton } from '../components/ColorPicker';
+import { MOCK_TOKENS } from '../data/designSystemSeed';
+import { entranceKeyframesCss, ENTRANCE_KEYFRAMES, entranceByAnimation } from '../data/motionKeyframes';
 import { extractColorsFromImage, extractFontSizesFromImage, detectComponentRegions, cropImageRegionToDataUrl, resizeImageToDataUrl, suggestUniqueName } from '../utils/colorExtract';
 
 /* ── Error Boundary: prevents blank screen on render crashes ── */
@@ -93,6 +106,10 @@ const TOKEN_TYPES = [
 
 // Token LAYERS (for the pill switcher)
 const TOKEN_LAYERS = ['Brand', 'Semantic', 'Component'];
+
+// Token table: name, value, preview. The type column went away — the folder says it.
+const TOKEN_TABLE_COLS = 'minmax(0, 1.5fr) minmax(0, 1fr) 150px';
+const nlnl = String.fromCharCode(10, 10);
 const TOKEN_LAYER_LABELS = { Brand: 'Brand', Semantic: 'Semantic', Component: 'Scoped' };
 
 // Types whose "Visual Preview" cell already renders a swatch + the raw value
@@ -111,105 +128,16 @@ const MAIN_TABS = [
   { id: 'branch', label: 'Branch & Publish', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> },
 ];
 
-// Which sidebar group a component falls under in the Components tree.
-const componentTreeGroup = (comp) => {
-  switch (comp.template) {
-    case 'button': return 'Button';
-    case 'card': return 'Container / Layout';
-    case 'badge': return 'Text / Typography';
-    case 'image': return 'Fragment';
-    default: return 'Other';
-  }
-};
+// Where a component sits in the Components tree. Both derive from the component's
+// `template` via the taxonomy, falling back to its stored category only when the
+// template is one this build does not know — see componentTaxonomy.js.
+const componentTreeCategory = (comp) => categoryForComponent(comp);
+const componentTreeType = (comp) => typeForComponent(comp);
 
 // Font choices offered in the Brand Bible typography selects.
 const FONT_CHOICES = ['Outfit', 'Inter', 'Roboto', 'DM Sans', 'Poppins', 'Manrope', 'Figtree', 'Space Grotesk', 'Playfair Display', 'Georgia'];
 
-const COMPONENT_TREE_GROUPS = ['Button', 'Container / Layout', 'Fragment', 'Other', 'Text / Typography'];
-
 // Flat token store: { Color: [{name, value, type, layer}, ...], Typography: [...], ... }
-const MOCK_TOKENS = {
-  Color: [
-    { name: 'brand.color.primary',    value: '#FC0694', type: 'color', layer: 'Brand', description: 'Primary brand identity color' },
-    { name: 'brand.color.secondary',  value: '#1A1A24', type: 'color', layer: 'Brand', description: 'Secondary brand slate color' },
-    { name: 'brand.color.accent',     value: '#3B82F6', type: 'color', layer: 'Brand', description: 'Vibrant high-contrast accent' },
-    { name: 'brand.color.background', value: '#0D0D12', type: 'color', layer: 'Brand', description: 'Deep dark application canvas' },
-    { name: 'brand.color.surface',    value: '#13131A', type: 'color', layer: 'Brand', description: 'Elevated panel and card background' },
-    { name: 'brand.color.text',       value: '#FFFFFF', type: 'color', layer: 'Brand', description: 'High-contrast reading text' },
-    { name: 'color.action',           value: '{brand.color.primary}',    type: 'color', layer: 'Semantic' },
-    { name: 'color.bg.primary',       value: '{brand.color.background}', type: 'color', layer: 'Semantic' },
-    { name: 'color.bg.surface',       value: '{brand.color.surface}',    type: 'color', layer: 'Semantic' },
-    { name: 'color.text.primary',     value: '{brand.color.text}',       type: 'color', layer: 'Semantic' },
-    { name: 'color.text.secondary',   value: '#8C8CA1',                  type: 'color', layer: 'Semantic' },
-    { name: 'button.bg',   value: '{color.action}',        type: 'color', layer: 'Component' },
-    { name: 'button.text', value: '{color.text.primary}',  type: 'color', layer: 'Component' },
-    { name: 'input.bg',    value: '{color.bg.surface}',    type: 'color', layer: 'Component' },
-    { name: 'input.text',  value: '{color.text.primary}',  type: 'color', layer: 'Component' },
-  ],
-  Typography: [
-    { name: 'brand.font.heading', value: 'Outfit', type: 'fontFamily', layer: 'Brand' },
-    { name: 'brand.font.body',    value: 'Inter',  type: 'fontFamily', layer: 'Brand' },
-    { name: 'brand.font.size.xs',   value: '0.75rem',  type: 'fontSize', layer: 'Brand' },
-    { name: 'brand.font.size.sm',   value: '0.875rem', type: 'fontSize', layer: 'Brand' },
-    { name: 'brand.font.size.base', value: '1rem',     type: 'fontSize', layer: 'Brand' },
-    { name: 'brand.font.size.lg',   value: '1.25rem',  type: 'fontSize', layer: 'Brand' },
-    { name: 'brand.font.size.xl',   value: '1.5rem',   type: 'fontSize', layer: 'Brand' },
-    { name: 'text.heading',  value: '{brand.font.heading}',    type: 'fontFamily', layer: 'Semantic' },
-    { name: 'text.body',     value: '{brand.font.body}',       type: 'fontFamily', layer: 'Semantic' },
-    { name: 'text.size.ui',  value: '{brand.font.size.sm}',    type: 'fontSize',   layer: 'Semantic' },
-    { name: 'button.font-family', value: '{text.heading}', type: 'fontFamily', layer: 'Component' },
-    { name: 'button.font-size',   value: '{text.size.ui}', type: 'fontSize',   layer: 'Component' },
-  ],
-  Spacing: [
-    { name: 'brand.space.1', value: '4px',  type: 'spacing', layer: 'Brand' },
-    { name: 'brand.space.2', value: '8px',  type: 'spacing', layer: 'Brand' },
-    { name: 'brand.space.3', value: '12px', type: 'spacing', layer: 'Brand' },
-    { name: 'brand.space.4', value: '16px', type: 'spacing', layer: 'Brand' },
-    { name: 'brand.space.6', value: '24px', type: 'spacing', layer: 'Brand' },
-    { name: 'brand.space.8', value: '32px', type: 'spacing', layer: 'Brand' },
-    { name: 'space.tight',       value: '{brand.space.2}', type: 'spacing', layer: 'Semantic' },
-    { name: 'space.comfortable', value: '{brand.space.4}', type: 'spacing', layer: 'Semantic' },
-    { name: 'space.loose',       value: '{brand.space.8}', type: 'spacing', layer: 'Semantic' },
-    { name: 'button.padding-x', value: '{space.comfortable}', type: 'spacing', layer: 'Component' },
-    { name: 'button.padding-y', value: '{space.tight}',       type: 'spacing', layer: 'Component' },
-    { name: 'input.padding',    value: '{space.comfortable}', type: 'spacing', layer: 'Component' },
-  ],
-  Sizing: [],
-  Layout: [],
-  Flexbox: [],
-  Lists: [],
-  Border: [
-    { name: 'brand.radius.none', value: '0px',    type: 'borderRadius', layer: 'Brand' },
-    { name: 'brand.radius.sm',   value: '4px',    type: 'borderRadius', layer: 'Brand' },
-    { name: 'brand.radius.md',   value: '8px',    type: 'borderRadius', layer: 'Brand' },
-    { name: 'brand.radius.lg',   value: '16px',   type: 'borderRadius', layer: 'Brand' },
-    { name: 'brand.radius.full', value: '9999px', type: 'borderRadius', layer: 'Brand' },
-    { name: 'radius.interactive', value: '{brand.radius.md}',   type: 'borderRadius', layer: 'Semantic' },
-    { name: 'radius.container',   value: '{brand.radius.lg}',   type: 'borderRadius', layer: 'Semantic' },
-    { name: 'button.radius', value: '{radius.interactive}', type: 'borderRadius', layer: 'Component' },
-    { name: 'input.radius',  value: '{radius.interactive}', type: 'borderRadius', layer: 'Component' },
-    { name: 'card.radius',   value: '{radius.container}',   type: 'borderRadius', layer: 'Component' },
-  ],
-  Shadow: [
-    { name: 'brand.shadow.sm', value: '0 1px 2px rgba(0,0,0,0.3)',   type: 'shadow', layer: 'Brand' },
-    { name: 'brand.shadow.md', value: '0 4px 16px rgba(0,0,0,0.4)',  type: 'shadow', layer: 'Brand' },
-    { name: 'brand.shadow.lg', value: '0 16px 48px rgba(0,0,0,0.5)', type: 'shadow', layer: 'Brand' },
-    { name: 'shadow.subtle',  value: '{brand.shadow.sm}', type: 'shadow', layer: 'Semantic' },
-    { name: 'shadow.overlay', value: '{brand.shadow.lg}', type: 'shadow', layer: 'Semantic' },
-    { name: 'card.shadow',   value: '{shadow.subtle}',  type: 'shadow', layer: 'Component' },
-    { name: 'modal.shadow',  value: '{shadow.overlay}', type: 'shadow', layer: 'Component' },
-  ],
-  Motion: [
-    { name: 'brand.duration.fast',   value: '150ms', type: 'duration', layer: 'Brand' },
-    { name: 'brand.duration.base',   value: '250ms', type: 'duration', layer: 'Brand' },
-    { name: 'brand.duration.slow',   value: '500ms', type: 'duration', layer: 'Brand' },
-    { name: 'brand.easing.default',  value: 'cubic-bezier(0.4,0,0.2,1)', type: 'easing', layer: 'Brand' },
-    { name: 'duration.transition', value: '{brand.duration.base}',   type: 'duration', layer: 'Semantic' },
-    { name: 'easing.standard',     value: '{brand.easing.default}',  type: 'easing',   layer: 'Semantic' },
-    { name: 'button.transition-duration', value: '{duration.transition}', type: 'duration', layer: 'Component' },
-    { name: 'button.easing',             value: '{easing.standard}',      type: 'easing',   layer: 'Component' },
-  ],
-};
 
 // Migrate old formats to the new flat-by-type structure
 const migrateTokensToLayers = (saved) => {
@@ -371,8 +299,6 @@ function ProjectDetailInner() {
   const myRole = resolveMyRole(project, user);
 
   const [activeTab, setActiveTab] = useState(() => sectionFor(id) || 'brand');
-  const [activeCategory, setActiveCategory] = useState('Color');  // token type
-  const [activeLayer, setActiveLayer] = useState('Brand');          // Brand | Semantic | Component
   const [tokenTableSearch, setTokenTableSearch] = useState('');
   const [copiedToken, setCopiedToken] = useState(null);
   const [mobileNavExpanded, setMobileNavExpanded] = useState(false);
@@ -400,11 +326,17 @@ function ProjectDetailInner() {
   // Components tree in the sidebar. Opening a component shows the preview
   // drawer (previewComponentId) — there is no separate in-page detail view.
   const [componentSearch, setComponentSearch] = useState('');
-  const [expandedComponentGroups, setExpandedComponentGroups] = useState(() => new Set(['Button']));
+  // Folders the user has toggled *away from their default* — not simply the closed
+  // ones. A category defaults to open only when it holds components, so a fresh
+  // project shows the taxonomy without 17 empty rows, and clicking one still works
+  // in both directions without a second piece of state.
+  const [toggledComponentFolders, setToggledComponentFolders] = useState(() => new Set());
 
   // Component group filter, driven by the mobile bottom navbar. Defaults to
   // 'All' so the desktop view — which has no group-filter control — is unchanged.
-  const [activeComponentGroup, setActiveComponentGroup] = useState('All');
+
+  // The tree's root folder. Expanded by default; collapsing it hides every group.
+  const [componentRootOpen, setComponentRootOpen] = useState(true);
 
   // Kebab menu on a component card (mobile). Holds the trigger's measured
   // screen position because the rows live in an `overflow: hidden` container,
@@ -413,6 +345,12 @@ function ProjectDetailInner() {
 
   // Component Preview drawer. `previewOnLight` is deliberately local to the
   // drawer — it swaps only the preview surface, unlike the app-wide isLightTheme.
+  // Get Started now asks how to begin before opening anything: build from scratch, or
+  // import what you already have. The per-source checklist links still go straight to
+  // the engine — those name one specific source, so a choice would be wrong there.
+  const [startChoice, setStartChoice] = useState(false);
+  const [scratchWizard, setScratchWizard] = useState(false);
+  const [toggledTokenFolders, setToggledTokenFolders] = useState(() => new Set());
   const [previewComponentId, setPreviewComponentId] = useState(null);
   const [previewOnLight, setPreviewOnLight] = useState(false);
   const previewDrawerRef = useRef(null);
@@ -865,102 +803,13 @@ This document serves as our living source of truth.`
     return out;
   };
 
-  // Live Component Preview Renderer
-  const renderLivePreview = (comp) => {
-    const mapped = resolveMappedStyle(comp);
-    const style = {
-      border: 'none',
-      cursor: 'pointer',
-      display: 'inline-block',
-      textAlign: 'center',
-      fontWeight: 500,
-      transition: 'opacity 0.2s',
-      ...mapped,
-    };
-
-    if (comp.template === 'button') {
-      return (
-        <button style={style} onClick={() => alert(`${comp.name} clicked!`)}>
-          Click Me
-        </button>
-      );
-    }
-    if (comp.template === 'badge') {
-      return (
-        <span style={{ ...style, display: 'inline-block', textTransform: 'uppercase', fontSize: '0.7rem', padding: '0.2rem 0.6rem', fontWeight: 700, letterSpacing: '0.05em', ...mapped }}>
-          New
-        </span>
-      );
-    }
-    if (comp.template === 'card') {
-      return (
-        <div style={{
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow-md)',
-          textAlign: 'left',
-          width: '100%',
-          maxWidth: '240px',
-          ...mapped,
-        }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Card Title</div>
-          <div style={{ opacity: 0.7, fontSize: '0.85em' }}>This is a token-mapped card component.</div>
-        </div>
-      );
-    }
-    if (comp.template === 'input') {
-      return (
-        <input
-          type="text"
-          placeholder="Placeholder..."
-          style={(() => {
-            // The input template renders its mapped background-color as the
-            // field's border instead, so the field itself stays legible.
-            const { background, backgroundColor, ...rest } = mapped;
-            return {
-              color: 'var(--text-primary)',
-              outline: 'none',
-              width: '100%',
-              maxWidth: '200px',
-              ...rest,
-              background: 'var(--bg-tertiary)',
-              border: `1px solid ${background || backgroundColor || 'var(--border)'}`,
-            };
-          })()}
-          disabled
-        />
-      );
-    }
-    if (comp.template === 'image') {
-      return (
-        <div style={{
-          position: 'relative', display: 'flex', alignItems: 'center', maxWidth: '100%', maxHeight: '100%',
-          borderLeft: comp.accentColor ? `4px solid ${comp.accentColor}` : 'none',
-          paddingLeft: comp.accentColor ? '0.5rem' : 0,
-        }}>
-          <img
-            src={comp.imageUrl}
-            alt={comp.name}
-            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '4px' }}
-          />
-          {comp.accentFontSize && (
-            <span
-              title={`Detected text size: ~${comp.accentFontSize}px`}
-              style={{
-                position: 'absolute', top: '2px', right: '2px',
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '4px', padding: '0.1rem 0.35rem',
-                fontSize: '0.65rem', color: 'var(--text-secondary)', lineHeight: 1.4,
-              }}
-            >
-              Aa {comp.accentFontSize}px
-            </span>
-          )}
-        </div>
-      );
-    }
-    return null;
-  };
+  // Live Component Preview Renderer. Every template lives in componentPreviews.jsx,
+  // shared with the public shared-project view so both draw the same set. The mapped
+  // style is resolved here, generically, from whatever CSS properties the user mapped.
+  const renderLivePreview = (comp) =>
+    renderComponentPreview(comp, resolveMappedStyle(comp), {
+      onButtonClick: () => alert(`${comp.name} clicked!`),
+    });
 
   const handlePrintBrandBible = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=1000');
@@ -1511,6 +1360,9 @@ This document serves as our living source of truth.`
       });
     }
     cssText += `}`;
+    // A motion.enter.* token's value is a keyframes name, so the keyframes have to ship
+    // with it — otherwise the exported variable resolves to a name that does nothing.
+    cssText += nlnl + entranceKeyframesCss();
     return cssText;
   };
 
@@ -1599,11 +1451,38 @@ This document serves as our living source of truth.`
     navigate(`/projects/${branched.id}`);
   };
 
-  // Filter tokens by both type (sidebar) and layer (pill), then by the table search box
+  // The tree shows every type and layer at once, so search is the only filter left.
   const tokenTableSearchLower = tokenTableSearch.trim().toLowerCase();
-  const tokens = (activeTokens[activeCategory] || [])
-    .filter(t => t.layer === activeLayer)
-    .filter(t => !tokenTableSearchLower || [t.name, t.value, t.type].some(v => String(v).toLowerCase().includes(tokenTableSearchLower)));
+  const matchesTokenSearch = (t) => !tokenTableSearchLower
+    || [t.name, t.value, t.type].some(v => String(v).toLowerCase().includes(tokenTableSearchLower));
+  const visibleTokens = Object.fromEntries(
+    TOKEN_TYPES.map(({ id }) => [id, (activeTokens[id] || []).filter(matchesTokenSearch)])
+  );
+  const visibleTokenCount = Object.values(visibleTokens).reduce((n, list) => n + list.length, 0);
+  const tokenTotal = Object.values(activeTokens || {})
+    .reduce((n, list) => n + (Array.isArray(list) ? list.length : 0), 0);
+
+  // Folders toggled away from their default: a type opens when it holds tokens, so the
+  // four empty ones do not pad the page; a layer inside an open type defaults to open.
+  // Folders are stored as "toggled away from their default", so collapsing or
+  // expanding everything means naming exactly the folders whose default is the
+  // opposite of what is wanted — not just emptying the set.
+  const tokenFolderKeys = TOKEN_TYPES.flatMap(({ id }) => [
+    { key: id, defaultOpen: (activeTokens[id] || []).length > 0 },
+    ...TOKEN_LAYERS.map(layer => ({ key: id + '/' + layer, defaultOpen: true })),
+  ]);
+  const anyTokenFolderOpen = tokenFolderKeys.some(
+    ({ key, defaultOpen }) => (toggledTokenFolders.has(key) ? !defaultOpen : defaultOpen)
+  );
+  const setAllTokenFolders = (open) => setToggledTokenFolders(
+    new Set(tokenFolderKeys.filter(k => k.defaultOpen !== open).map(k => k.key))
+  );
+
+  const toggleTokenFolder = (key) => setToggledTokenFolders(prev => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   // Brand Bible shows its onboarding card until at least one real brand source exists.
   // Read from `project`, not `brandData` — that one fills in invented defaults (#FC0694,
@@ -1642,6 +1521,68 @@ This document serves as our living source of truth.`
     source: ENGINE_STEP_FOR_ITEM[source] ? null : source,
   });
 
+  // Which tokens the inspector offers for a property. Same rule the component editor
+  // uses: the property's token bucket via getCategoryForType, so `gap` offers Spacing
+  // tokens and `background-color` offers Color ones.
+  const getTokenNamesForProperty = (cssProp) => {
+    const list = activeTokens?.[getCategoryForType(cssProp)];
+    return Array.isArray(list) ? list.map(t => t.name).filter(Boolean) : [];
+  };
+
+  // Starter-set tokens for a property that this project does not have yet. Offered in
+  // the inspector so a fresh project is not a wall of "No tokens yet" with the only way
+  // forward being to leave for the Tokens page.
+  // Which token types suit a property when nothing matches it exactly. A bucket is too
+  // coarse on its own — Motion holds durations, easings and animation names, so offering
+  // the whole bucket for `animation-name` suggested `brand.duration.fast`, which cannot
+  // be an animation name.
+  const COMPATIBLE_TOKEN_TYPES = (cssProp) => {
+    if (/-duration$/.test(cssProp)) return ['duration'];
+    if (/^(padding|margin|gap|row-gap|column-gap)/.test(cssProp)) return ['spacing'];
+    if (/^(min-|max-)?(width|height)$/.test(cssProp)) return ['width', 'height'];
+    if (/^(border|outline)-radius$|^border-radius$/.test(cssProp)) return ['borderRadius'];
+    if (/color$|^fill$|^stroke$/.test(cssProp)) return ['color'];
+    if (/^font-family$/.test(cssProp)) return ['fontFamily'];
+    if (/^font-size$/.test(cssProp)) return ['fontSize'];
+    if (/shadow$/.test(cssProp)) return ['shadow'];
+    return [];
+  };
+
+  const getPresetTokensForProperty = (cssProp) => {
+    const category = getCategoryForType(cssProp);
+    const have = new Set((activeTokens?.[category] || []).map(t => t.name));
+    const pool = (MOCK_TOKENS[category] || []).filter(t => t.name && !have.has(t.name));
+    const want = normalizeTypeKey(cssProp);
+    // an exact type match is always the right answer
+    const exact = pool.filter(t => normalizeTypeKey(t.type) === want);
+    if (exact.length) return exact;
+    const compat = COMPATIBLE_TOKEN_TYPES(cssProp).map(normalizeTypeKey);
+    const near = compat.length ? pool.filter(t => compat.includes(normalizeTypeKey(t.type))) : [];
+    return near.length ? near : pool;
+  };
+
+  // Creates a token and hands back its name so the caller can map it in the same action.
+  // A name that already exists is mapped rather than duplicated.
+  const createTokenForProperty = (cssProp, token) => {
+    const category = getCategoryForType(cssProp);
+    const existing = (activeTokens?.[category] || []).some(t => t.name === token.name);
+    if (!existing) {
+      handleAddToken(category, {
+        // The property itself is a valid token type and round-trips through
+        // getCategoryForType, so it beats the bucket's default — which typed a `gap`
+        // token as `flex-direction`.
+        type: cssProp,
+        layer: 'Component',
+        ...token,
+      });
+    }
+    return token.name;
+  };
+
+  // Every token name in the project, so the inline form can refuse a duplicate.
+  const allTokenNames = () => Object.values(activeTokens || {})
+    .flatMap(list => (Array.isArray(list) ? list.map(t => t.name) : []));
+
   const saveBrandContext = (brandContext) => updateProject(id, { brandContext });
 
   // Commits the engine's Step 5 preview. Uses the batch helpers on purpose — the singular
@@ -1658,6 +1599,33 @@ This document serves as our living source of truth.`
     if (comps?.length) handleAddComponents(comps);
     setEngine(null);
   };
+
+  // Appearance row for the profile menu. There are three renderings of that panel, so this
+  // keeps them from drifting — and mobile keeps a way to switch themes now that the header
+  // icon is gone (that icon was hidden under 768px anyway).
+  const renderThemeMenuItem = () => (
+    <button
+      className="pd-theme-menu-item"
+      onClick={() => { setIsLightTheme(p => !p); document.body.classList.toggle('light-theme'); }}
+      style={{ ...menuItemStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span style={{ fontSize: '0.8rem' }}>{isLightTheme ? '🌙' : '☀️'}</span>
+        {isLightTheme ? 'Dark mode' : 'Light mode'}
+      </span>
+      <span style={{
+        width: '30px', height: '16px', borderRadius: '999px', flexShrink: 0,
+        background: isLightTheme ? 'var(--bg-tertiary)' : 'var(--accent)',
+        border: '1px solid var(--border)', position: 'relative', transition: 'background 0.15s',
+      }}>
+        <span style={{
+          position: 'absolute', top: '1px', left: isLightTheme ? '2px' : '15px',
+          width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
+          transition: 'left 0.15s',
+        }} />
+      </span>
+    </button>
+  );
 
   // Shared main-tab button list — rendered in the desktop sidebar, the mobile icon
   // rail (icon-only), and the mobile nav overlay (icon + label, like desktop).
@@ -1676,12 +1644,9 @@ This document serves as our living source of truth.`
       onClick={() => {
         setActiveTab(tab.id);
         setMobileNavExpanded(false);
-        // Entering Components always lands on the full list, so the tab isn't
-        // a no-op when a group filter or a preview is already active.
-        if (tab.id === 'components') {
-          setActiveComponentGroup('All');
-          setPreviewComponentId(null);
-        }
+        // Entering Components closes any open preview, so the tab is not a no-op when
+        // a drawer is already showing. Folders keep their own collapsed state.
+        if (tab.id === 'components') setPreviewComponentId(null);
       }}
       style={{
         display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
@@ -1699,170 +1664,271 @@ This document serves as our living source of truth.`
     </React.Fragment>
   ));
 
-  // Shared button list for the Token Type categories — rendered both in the desktop
-  // sidebar and as a mobile chip row (the mobile icon rail has no room for labels).
-  const renderTokenTypeCategoryButtons = () => TOKEN_TYPES.map(({ id, icon }) => {
-    const total = (activeTokens[id] || []).length;
-    const layerCount = (activeTokens[id] || []).filter(t => t.layer === activeLayer).length;
-    return (
-      <button
-        key={id}
-        className="pd-sidebar-category-btn"
-        onClick={() => { setActiveCategory(id); setMobileNavExpanded(false); }}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          width: '100%', background: activeCategory === id ? 'var(--accent-glow)' : 'none',
-          border: activeCategory === id ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
-          borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-          color: activeCategory === id ? 'var(--accent)' : 'var(--text-secondary)',
-          fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-          gap: '0.5rem',
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
-          <span style={{ opacity: 0.7 }}>{icon}</span>
-          <span className="pd-sidebar-category-label">{id}</span>
-        </span>
-        <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-          {layerCount}/{total}
-        </span>
-      </button>
-    );
-  });
+  // One token row. Rendered inside its type → layer folder, so `rowType` is the folder's
+  // type rather than a single global "active" category — which also means Edit, Duplicate
+  // and Delete always act on the right bucket.
+  const renderTokenRow = (token, rowType, typeIcon, isLast) => {
+                const displayValue = editingTokenName === token.name ? editingTokenValue : token.value;
+                const resolvedPreviewValue = resolveTokenValue(displayValue);
+                const previewToken = { ...token, value: resolvedPreviewValue };
+                const isAlias = String(displayValue).trim().startsWith('{');
+                const chain = getTokenInheritanceChain(displayValue);
+
+                return (
+                  <div
+                    key={token.name}
+                    className="pd-token-row"
+                    style={{
+                      display: 'grid', gridTemplateColumns: TOKEN_TABLE_COLS,
+                      gap: '0.75rem', alignItems: 'center',
+                      padding: '0.55rem 1rem',
+                      borderBottom: isLast ? 'none' : '1px solid var(--border)',
+                      transition: 'background 0.15s', cursor: 'default',
+                    }}
+                  >
+                    <span className="pd-tree-name-cell" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                      <span style={{ display: 'flex', color: 'var(--accent)', flexShrink: 0 }}>{typeIcon}</span>
+                      <span style={{
+                        fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{token.name}</span>
+                    </span>
+                    <div
+                      className={!isAlias && COLOR_VALUE_TYPES.has(token.type) ? 'pd-token-row-value-duplicate' : undefined}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      {editingTokenName === token.name ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={editingTokenValue}
+                          onChange={(e) => setEditingTokenValue(e.target.value)}
+                          onBlur={() => {
+                            handleEditToken(rowType, token.name, { ...token, value: editingTokenValue });
+                            setEditingTokenName(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleEditToken(rowType, token.name, { ...token, value: editingTokenValue });
+                              setEditingTokenName(null);
+                            } else if (e.key === 'Escape') {
+                              setEditingTokenName(null);
+                            }
+                          }}
+                          style={{
+                            background: 'var(--bg-tertiary)',
+                            border: '1px solid var(--accent)',
+                            borderRadius: '4px',
+                            color: 'var(--text-primary)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.8rem',
+                            padding: '0.1rem 0.3rem',
+                            width: '100%',
+                            outline: 'none',
+                          }}
+                        />
+                      ) : isAlias ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                          <span
+                            onDoubleClick={() => {
+                              setEditingTokenName(token.name);
+                              setEditingTokenValue(token.value);
+                            }}
+                            title={`Inheritance Path: ${chain.join(' ➔ ')}\nDouble click to edit alias`}
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '0.8rem',
+                              color: 'var(--accent)',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                            }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.8 }}><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                            {token.value}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
+                            Resolves to: <strong style={{ color: 'var(--text-secondary)' }}>{resolvedPreviewValue}</strong>
+                          </span>
+                        </div>
+                      ) : (
+                        <span
+                          onDoubleClick={() => {
+                            setEditingTokenName(token.name);
+                            setEditingTokenValue(token.value);
+                          }}
+                          title="Double click to edit value"
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.8rem',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            borderBottom: '1px dashed transparent',
+                            transition: 'border-color 0.15s'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.borderBottom = '1px dashed var(--text-tertiary)'}
+                          onMouseLeave={e => e.currentTarget.style.borderBottom = '1px dashed transparent'}
+                        >
+                          {token.value}
+                        </span>
+                      )}
+                    </div>
+                    {/* Live Visual Preview column */}
+                    <div className="pd-token-preview-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                      {renderTokenPreview(previewToken)}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          className="pd-token-copy-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(String(resolvedPreviewValue));
+                            setCopiedToken(token.name);
+                            setTimeout(() => setCopiedToken(prev => prev === token.name ? null : prev), 1200);
+                          }}
+                          style={{
+                            display: 'none', alignItems: 'center', gap: '0.35rem',
+                            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                            borderRadius: '8px', padding: '0.4rem 0.6rem', color: 'var(--text-tertiary)',
+                            fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
+                          }}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                          {copiedToken === token.name ? 'Copied!' : 'Copy'}
+                        </button>
+
+                        {/* 3-Dot Action Dropdown */}
+                        {can(myRole, 'tokens', 'edit') && (
+                        <div className="pd-token-row-actions" style={{ position: 'relative' }}>
+                          <button
+                            className={'pd-tree-row-kebab' + (activeDropdown === token.name ? ' is-open' : '')}
+                            title={'Actions for ' + token.name}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveDropdown(activeDropdown === token.name ? null : token.name);
+                            }}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: 'var(--text-tertiary)', padding: '0.2rem', borderRadius: '4px',
+                              display: 'flex', alignItems: 'center',
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+                              <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+                            </svg>
+                          </button>
+                          {activeDropdown === token.name && (
+                            <>
+                              <div
+                                onClick={() => setActiveDropdown(null)}
+                                style={{
+                                  // Above the mobile token-type bar (z-index 150),
+                                  // which this menu would otherwise open behind.
+                                  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                                  zIndex: 160, background: 'transparent',
+                                }}
+                              />
+                              <div style={{
+                                position: 'absolute', top: '100%', right: 0,
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                                borderRadius: '8px', padding: '0.25rem', minWidth: '120px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 161,
+                                display: 'flex', flexDirection: 'column', gap: '0.1rem',
+                              }}>
+                                <button
+                                  onClick={() => {
+                                    setTokenModal({ mode: 'edit', token, category: rowType });
+                                    setActiveDropdown(null);
+                                  }}
+                                  style={menuItemStyle}
+                                >
+                                  Edit Token
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleDuplicateToken(rowType, token);
+                                    setActiveDropdown(null);
+                                  }}
+                                  style={menuItemStyle}
+                                >
+                                  Duplicate
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`Are you sure you want to delete "${token.name}"?`)) {
+                                      handleDeleteToken(rowType, token.name);
+                                    }
+                                    setActiveDropdown(null);
+                                  }}
+                                  style={{ ...menuItemStyle, color: '#EF4444' }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Description (mobile card only) */}
+                    {token.description && (
+                      <span className="pd-token-row-desc" style={{ display: 'none', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                        {token.description}
+                      </span>
+                    )}
+                  </div>
+                );
+  };
+
+  // Collapse/expand every folder in a tree. Shared by Tokens and Components so the
+  // two pages offer the same control in the same place.
+  const collapseAllBtn = (anyOpen, onToggle, what) => (
+    <button
+      type="button"
+      onClick={onToggle}
+      title={anyOpen ? 'Collapse all ' + what : 'Expand all ' + what}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0,
+        marginLeft: 'auto',
+        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+        borderRadius: '8px', padding: '0.45rem 0.7rem', cursor: 'pointer',
+        color: 'var(--text-secondary)', fontSize: '0.78rem', fontFamily: 'inherit',
+      }}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        {anyOpen
+          ? <><polyline points="4 9 12 3 20 9" /><polyline points="4 21 12 15 20 21" /></>
+          : <><polyline points="4 3 12 9 20 3" /><polyline points="4 15 12 21 20 15" /></>}
+      </svg>
+      {anyOpen ? 'Collapse all' : 'Expand all'}
+    </button>
+  );
 
   // Components sidebar: a search box over a collapsible tree of components
   // grouped by kind, with the open component highlighted.
-  const renderComponentCategoryButtons = () => {
-    const query = componentSearch.trim().toLowerCase();
-    const matching = query
-      ? components.filter(c => (c.name || '').toLowerCase().includes(query))
-      : components;
+  // Folder glyph for the tree. Open and closed states so a row reads at a glance.
+  // The chevron beside it already shows open or closed, so the folder glyph
+  // itself stays the same in both states.
+  const folderIcon = (size = 13) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M3 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.4.6L11.4 7H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  );
 
-    const toggleGroup = (group) => setExpandedComponentGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(group)) next.delete(group); else next.add(group);
-      return next;
-    });
+  // Components carry their own glyph so a leaf never reads as another folder.
+  const componentIcon = (size = 12) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
 
-    return (
-      <>
-        <input
-          value={componentSearch}
-          onChange={(e) => setComponentSearch(e.target.value)}
-          placeholder="Search components..."
-          style={{
-            width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-            borderRadius: '6px', padding: '0.5rem 0.625rem', marginBottom: '0.75rem',
-            color: 'var(--text-primary)', fontSize: '0.8rem', fontFamily: 'inherit', outline: 'none',
-          }}
-        />
-        {COMPONENT_TREE_GROUPS.map(group => {
-          const groupComps = matching.filter(c => componentTreeGroup(c) === group);
-          if (query && groupComps.length === 0) return null;
-          const isOpen = query ? true : expandedComponentGroups.has(group);
-          const hasSelected = groupComps.some(c => c.id === previewComponentId);
-          const isFiltered = activeComponentGroup === group;
-          const highlight = isFiltered || hasSelected;
-          return (
-            <div key={group}>
-              <button
-                className="pd-sidebar-category-btn"
-                onClick={() => {
-                  // Picking a group filters the list to it, and closes any open
-                  // preview so that filtered list is actually visible.
-                  setActiveComponentGroup(group);
-                  setPreviewComponentId(null);
-                  toggleGroup(group);
-                }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  width: '100%',
-                  background: isFiltered ? 'var(--accent-glow)' : 'none',
-                  border: isFiltered ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
-                  borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-                  color: highlight ? 'var(--accent)' : 'var(--text-secondary)',
-                  fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                  fontWeight: highlight ? 600 : 400,
-                }}
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                  style={{ flexShrink: 0, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-                <span className="pd-sidebar-category-label" style={{ flex: 1 }}>{group}</span>
-                {groupComps.length > 0 && (
-                  <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-                    {groupComps.length}
-                  </span>
-                )}
-              </button>
-              {isOpen && groupComps.map(comp => {
-                const isActive = comp.id === previewComponentId;
-                return (
-                  <button
-                    key={comp.id}
-                    onClick={() => {
-                      setPreviewComponentId(comp.id);
-                      setMobileNavExpanded(false);
-                    }}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left',
-                      background: isActive ? 'rgba(252,6,148,0.08)' : 'none',
-                      border: 'none', borderRadius: '6px',
-                      padding: '0.4rem 0.625rem 0.4rem 1.6rem', marginBottom: '0.1rem',
-                      color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-                      fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit',
-                      fontWeight: isActive ? 600 : 400,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {comp.name}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
-      </>
-    );
-  };
 
-  // Flat component-group chips for the mobile bottom navbar. The desktop
-  // sidebar keeps its tree (renderComponentCategoryButtons) — this is the
-  // bar-only equivalent, matching how the token types render there.
-  const renderComponentGroupChips = () => ['All', ...COMPONENT_TREE_GROUPS].map(group => {
-    const count = group === 'All'
-      ? components.length
-      : components.filter(c => componentTreeGroup(c) === group).length;
-    const isActive = activeComponentGroup === group;
-    return (
-      <button
-        key={group}
-        className="pd-sidebar-category-btn"
-        onClick={() => {
-          setActiveComponentGroup(group);
-          // Close any open preview so the newly filtered list is visible —
-          // on mobile the drawer covers the whole screen.
-          setPreviewComponentId(null);
-          setMobileNavExpanded(false);
-        }}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          width: '100%', background: isActive ? 'var(--accent-glow)' : 'none',
-          border: isActive ? '1px solid rgba(252,6,148,0.2)' : '1px solid transparent',
-          borderRadius: '6px', padding: '0.45rem 0.625rem', marginBottom: '0.1rem',
-          color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
-          fontSize: '0.8rem', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-          gap: '0.5rem',
-        }}
-      >
-        <span className="pd-sidebar-category-label">{group}</span>
-        <span className="pd-sidebar-category-count" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-          {count}
-        </span>
-      </button>
-    );
-  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--tabstrip-h, 0px))', marginTop: 'var(--tabstrip-h, 0px)', background: 'var(--bg)' }}>
@@ -2019,19 +2085,26 @@ This document serves as our living source of truth.`
         </div>
 
 
-        {/* Theme toggle */}
+        {/* Publish — the primary action, so it closes the row */}
         <button
-          className="pd-header-theme-toggle"
-          title={isLightTheme ? 'Switch to dark theme' : 'Switch to light theme'}
-          onClick={() => { setIsLightTheme(p => !p); document.body.classList.toggle('light-theme'); }}
+          className="pd-header-publish"
+          onClick={() => setActiveTab('branch')}
+          title={brandBibleDirty ? 'You have unpublished changes' : 'Publish this design system'}
           style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '34px', height: '34px', borderRadius: '100px',
-            background: 'transparent', border: '1px solid var(--border)',
-            fontSize: '0.75rem', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'var(--accent)', border: '1px solid var(--accent)',
+            borderRadius: '6px', padding: '0.4rem 0.875rem',
+            color: '#fff', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'inherit',
           }}
         >
-          {isLightTheme ? '🌙' : '☀️'}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <span className="pd-btn-label">Publish</span>
+          {brandBibleDirty && (
+            <span title="Unpublished changes" style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff', opacity: 0.9 }} />
+          )}
         </button>
 
         {/* Avatar */}
@@ -2058,6 +2131,9 @@ This document serves as our living source of truth.`
                 <div style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{user?.name}</div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>{user?.email}</div>
               </div>
+
+              {renderThemeMenuItem()}
+              <div style={{ borderTop: '1px solid var(--border)', margin: '0.375rem 0' }} />
               <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
                 My projects
               </button>
@@ -2164,6 +2240,7 @@ This document serves as our living source of truth.`
                       <div style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{user?.name}</div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>{user?.email}</div>
                     </div>
+                    {renderThemeMenuItem()}
                     <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
                       My projects
                     </button>
@@ -2182,21 +2259,7 @@ This document serves as our living source of truth.`
           </div>
 
           {/* Token TYPE categories in sidebar */}
-          {activeTab === 'tokens' && (
-            <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
-              <div className="pd-sidebar-categories-label" style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem', padding: '0 0.625rem' }}>
-                Token Type
-              </div>
-              {renderTokenTypeCategoryButtons()}
-            </div>
-          )}
 
-          {/* Component tree */}
-          {activeTab === 'components' && (
-            <div className="pd-sidebar-categories" style={{ padding: '0 0.75rem' }}>
-              {renderComponentCategoryButtons()}
-            </div>
-          )}
         </aside>
 
         {/* Mobile-only: expanded nav overlay (icon rail → full labeled menu) */}
@@ -2346,6 +2409,7 @@ This document serves as our living source of truth.`
                           <div style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-primary)' }}>{user?.name}</div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' }}>{user?.email}</div>
                         </div>
+                        {renderThemeMenuItem()}
                         <button onClick={() => { navigate('/projects'); setShowUserMenu(false); }} style={menuItemStyle}>
                           My projects
                         </button>
@@ -2368,18 +2432,10 @@ This document serves as our living source of truth.`
 
         {/* ── Main Content ── */}
         <main
-          className={'pd-main' + (sidebarCollapsed && (activeTab === 'tokens' || activeTab === 'components') ? ' has-floating-chips' : '')}
+          className={'pd-main' + (previewComponentId ? ' has-inspector' : '')}
           style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}
         >
 
-          {/* Collapsing the sidebar moves its browse list up here, above the content. Token
-              types have icons but the component groups are plain labels, so both render as
-              chips. Hidden under 768px, where the fixed bottom bar already does this job. */}
-          {sidebarCollapsed && (activeTab === 'tokens' || activeTab === 'components') && (
-            <div className="pd-collapsed-category-row">
-              {activeTab === 'tokens' ? renderTokenTypeCategoryButtons() : renderComponentGroupChips()}
-            </div>
-          )}
 
           {/* Brand Bible onboarding — replaces the whole tab until a brand source exists */}
           {activeTab === 'brand' && !hasBrandContext && (
@@ -2413,7 +2469,7 @@ This document serves as our living source of truth.`
                 </p>
 
                 <button
-                  onClick={() => openBrandEngine()}
+                  onClick={() => setStartChoice(true)}
                   className="btn btn-primary"
                   style={{
                     marginTop: '1.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
@@ -2608,12 +2664,12 @@ This document serves as our living source of truth.`
                           <div key={c.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', padding: '0.75rem 1.25rem', borderRadius: '8px' }}>
                             <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>{c.label}</span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <input
-                                type="color"
+                              <ColorSwatchButton
                                 value={brandData[c.field]}
-                                onChange={(e) => handleBrandUpdate(c.field, e.target.value)}
+                                onChange={(v) => handleBrandUpdate(c.field, v)}
                                 disabled={!can(myRole, 'brandBible', 'edit')}
-                                style={{ width: '32px', height: '32px', border: 'none', borderRadius: '6px', background: 'none', cursor: can(myRole, 'brandBible', 'edit') ? 'pointer' : 'not-allowed' }}
+                                title={c.label}
+                                against={brandData.backgroundColor || '#0D0D12'}
                               />
                               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600 }}>{brandData[c.field].toUpperCase()}</span>
                             </div>
@@ -3131,404 +3187,240 @@ This document serves as our living source of truth.`
                   onDismiss={dismissUploadBanner}
                 />
               )}
-              {/* Token table header */}
+              {/* Token table header. Mirrors the Components header: the tree below carries
+                  the grouping, so there is no single "active" type left to name here. */}
               <div className="pd-tokens-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                     <h2 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                      {activeCategory} Tokens
+                      All tokens
                     </h2>
                     <span style={{
                       fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--text-tertiary)',
                       background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
                       borderRadius: '6px', padding: '0.15rem 0.5rem',
                     }}>
-                      {(activeTokens[activeCategory] || []).length} defined
+                      {tokenTotal} defined
                     </span>
                   </div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                    {tokens.length} {TOKEN_LAYER_LABELS[activeLayer].toLowerCase()} token{tokens.length !== 1 ? 's' : ''}
+                    Grouped by type, then by layer.
                   </span>
                 </div>
                 {can(myRole, 'tokens', 'create') && (
                   <div className="pd-tokens-header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={() => setTokenModal({ mode: 'add', category: activeCategory, defaultLayer: activeLayer })} style={actionBtnStyle}>+ Add token</button>
                     <button style={actionBtnStyle} onClick={() => alert('Importing tokens... (mock)')}>Import</button>
                   </div>
                 )}
               </div>
 
-              {/* Token search */}
-              <div style={{ position: 'relative', marginBottom: '1.25rem' }}>
+              {/* Search sits directly above the table it filters, as on Components. */}
+              <div className="pd-table-controls" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+              <div className="pd-token-search-wrap" style={{ position: 'relative', width: '300px', maxWidth: '100%' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                  style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }}>
+                  style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }}>
                   <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
                 <input
                   type="text"
                   value={tokenTableSearch}
                   onChange={(e) => setTokenTableSearch(e.target.value)}
-                  placeholder={`Search ${activeCategory.toLowerCase()}, spacing, typography...`}
+                  placeholder="Search tokens..."
                   style={{
                     width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                    borderRadius: '10px', padding: '0.65rem 1rem 0.65rem 2.25rem', color: 'var(--text-primary)',
-                    fontSize: '0.85rem', outline: 'none', fontFamily: 'inherit',
+                    borderRadius: '8px', padding: '0.45rem 0.75rem 0.45rem 2rem', color: 'var(--text-primary)',
+                    fontSize: '0.8rem', outline: 'none', fontFamily: 'inherit',
                   }}
                 />
               </div>
+              {collapseAllBtn(anyTokenFolderOpen, () => setAllTokenFolders(!anyTokenFolderOpen), 'folders')}
+              </div>
 
-              {/* ── Layer pill switcher ── */}
-              <div style={{
-                display: 'inline-flex',
-                background: 'var(--bg-tertiary)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                padding: '3px',
-                marginBottom: '1.25rem',
-                gap: '2px',
-                position: 'relative',
-                maxWidth: '100%',
-                overflowX: 'auto',
-              }}>
-                {TOKEN_LAYERS.map(layer => {
-                  const count = (activeTokens[activeCategory] || []).filter(t => t.layer === layer).length;
-                  const isActive = activeLayer === layer;
-                  const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
+              <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
+                {/* Column headers */}
+                <div className="pd-token-table-header" style={{
+                  display: 'grid', gridTemplateColumns: TOKEN_TABLE_COLS, gap: '0.75rem',
+                  alignItems: 'center', padding: '0.9rem 1rem',
+                  background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)',
+                }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Token</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Value</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Preview</span>
+                </div>
+
+                {TOKEN_TYPES.map(({ id: typeId, icon: typeIcon }) => {
+                  const typeTokens = visibleTokens[typeId] || [];
+                  // With a search active a type with no match drops out entirely; without one
+                  // an empty type still shows its row, which is how a folder list reads.
+                  if (tokenTableSearchLower && typeTokens.length === 0) return null;
+                  const typeDefaultOpen = typeTokens.length > 0;
+                  const typeOpen = tokenTableSearchLower ? true
+                    : (toggledTokenFolders.has(typeId) ? !typeDefaultOpen : typeDefaultOpen);
                   return (
-                    <button
-                      key={layer}
-                      onClick={() => setActiveLayer(layer)}
-                      style={{
-                        position: 'relative',
-                        padding: '0.35rem 0.875rem',
-                        borderRadius: '5px',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        fontWeight: isActive ? 600 : 400,
-                        fontFamily: 'inherit',
-                        transition: 'all 0.18s ease',
-                        background: isActive ? 'var(--bg-secondary)' : 'transparent',
-                        color: isActive ? layerColor : 'var(--text-tertiary)',
-                        boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.25)' : 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                      }}
-                    >
-                      {/* Layer colour dot */}
-                      <span style={{
-                        width: '6px', height: '6px', borderRadius: '50%',
-                        background: isActive ? layerColor : 'var(--text-tertiary)',
-                        opacity: isActive ? 1 : 0.4,
-                        transition: 'all 0.18s',
-                        flexShrink: 0,
-                      }} />
-                      {TOKEN_LAYER_LABELS[layer]}
-                      <span style={{
-                        fontSize: '0.65rem',
-                        background: isActive ? `${layerColor}20` : 'transparent',
-                        color: isActive ? layerColor : 'var(--text-tertiary)',
-                        padding: '0.05rem 0.35rem',
-                        borderRadius: '100px',
-                        transition: 'all 0.18s',
-                        minWidth: '18px',
-                        textAlign: 'center',
-                      }}>{count}</span>
-                    </button>
+                    <div key={typeId}>
+                      <div
+                        className="pd-tree-folder-row"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleTokenFolder(typeId)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTokenFolder(typeId); } }}
+                        title={typeOpen ? 'Collapse ' + typeId : 'Expand ' + typeId}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '0.5rem',
+                          padding: '0.6rem 1rem', cursor: 'pointer',
+                          background: 'var(--bg-tertiary)',
+                          borderBottom: '1px solid var(--border)',
+                          userSelect: 'none',
+                        }}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                          style={{ flexShrink: 0, color: 'var(--text-secondary)', transform: typeOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                          <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                        <span style={{ display: 'flex', color: 'var(--accent)' }}>{folderIcon(13)}</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{typeId}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{typeTokens.length}</span>
+                      </div>
+
+                      {typeOpen && TOKEN_LAYERS.map(layer => {
+                        const layerTokens = typeTokens.filter(t => t.layer === layer);
+                        if (tokenTableSearchLower && layerTokens.length === 0) return null;
+                        const layerKey = typeId + '/' + layer;
+                        const layerOpen = tokenTableSearchLower ? true : !toggledTokenFolders.has(layerKey);
+                        const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
+                        return (
+                          <div key={layerKey}>
+                            {/* Second tier: the layer. Its colour dot is the one part of the
+                                old pill switcher worth keeping — it reads at a glance. */}
+                            <div
+                              className="pd-tree-folder-row pd-tree-type-row"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => toggleTokenFolder(layerKey)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTokenFolder(layerKey); } }}
+                              title={layerOpen ? 'Collapse ' + layer : 'Expand ' + layer}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.5rem 1rem 0.5rem 2.2rem', cursor: 'pointer',
+                                background: 'var(--bg-secondary)',
+                                borderBottom: '1px solid var(--border)',
+                                userSelect: 'none',
+                              }}
+                            >
+                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                style={{ flexShrink: 0, color: 'var(--text-tertiary)', transform: layerOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              <span style={{ display: 'flex', color: 'var(--accent)' }}>{folderIcon(11)}</span>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: layerColor, flexShrink: 0 }} />
+                              <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
+                                {TOKEN_LAYER_LABELS[layer] || layer}
+                              </span>
+                              <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>{layerTokens.length}</span>
+
+                              {can(myRole, 'tokens', 'create') && (
+                                <button
+                                  className="pd-tree-folder-add"
+                                  onClick={(e) => { e.stopPropagation(); setTokenModal({ mode: 'add', category: typeId, defaultLayer: layer }); }}
+                                  title={'Add a ' + (TOKEN_LAYER_LABELS[layer] || layer).toLowerCase() + ' ' + typeId.toLowerCase() + ' token'}
+                                  aria-label={'Add a token to ' + typeId + ' ' + layer}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    width: '20px', height: '20px', marginLeft: 'auto', flexShrink: 0,
+                                    background: 'none', border: 'none', borderRadius: '5px',
+                                    color: 'var(--text-secondary)', cursor: 'pointer', padding: 0,
+                                  }}
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+
+                            {layerOpen && layerTokens.length === 0 && (
+                              <div style={{
+                                padding: '0.5rem 1rem 0.5rem 5.6rem', fontSize: '0.72rem',
+                                color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)',
+                              }}>
+                                None yet
+                              </div>
+                            )}
+
+                            {layerOpen && layerTokens.map((token, i) =>
+                              renderTokenRow(token, typeId, typeIcon, i === layerTokens.length - 1))}
+                          </div>
+                        );
+                      })}
+                    </div>
                   );
                 })}
               </div>
 
-              {/* Column headers */}
-              <div className="pd-token-table-header" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
-                {['Name', 'Value', 'Type', 'Visual Preview'].map(h => (
-                  <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
-                ))}
-              </div>
-
-              {/* Token rows */}
-              {tokens.map((token, i) => {
-                const displayValue = editingTokenName === token.name ? editingTokenValue : token.value;
-                const resolvedPreviewValue = resolveTokenValue(displayValue);
-                const previewToken = { ...token, value: resolvedPreviewValue };
-                const isAlias = String(displayValue).trim().startsWith('{');
-                const chain = getTokenInheritanceChain(displayValue);
-
-                return (
-                  <div
-                    key={i}
-                    className="pd-token-row"
-                    style={{
-                      display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr',
-                      gap: '1rem', alignItems: 'center',
-                      padding: '0.625rem 0.875rem', borderRadius: '8px',
-                      transition: 'background 0.15s', cursor: 'default',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-tertiary)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                      {token.name}
-                    </span>
-                    <div
-                      className={!isAlias && COLOR_VALUE_TYPES.has(token.type) ? 'pd-token-row-value-duplicate' : undefined}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                    >
-                      {editingTokenName === token.name ? (
-                        <input
-                          autoFocus
-                          type="text"
-                          value={editingTokenValue}
-                          onChange={(e) => setEditingTokenValue(e.target.value)}
-                          onBlur={() => {
-                            handleEditToken(activeCategory, token.name, { ...token, value: editingTokenValue });
-                            setEditingTokenName(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleEditToken(activeCategory, token.name, { ...token, value: editingTokenValue });
-                              setEditingTokenName(null);
-                            } else if (e.key === 'Escape') {
-                              setEditingTokenName(null);
-                            }
-                          }}
-                          style={{
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid var(--accent)',
-                            borderRadius: '4px',
-                            color: 'var(--text-primary)',
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: '0.8rem',
-                            padding: '0.1rem 0.3rem',
-                            width: '100%',
-                            outline: 'none',
-                          }}
-                        />
-                      ) : isAlias ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                          <span
-                            onDoubleClick={() => {
-                              setEditingTokenName(token.name);
-                              setEditingTokenValue(token.value);
-                            }}
-                            title={`Inheritance Path: ${chain.join(' ➔ ')}\nDouble click to edit alias`}
-                            style={{
-                              fontFamily: 'var(--font-mono)',
-                              fontSize: '0.8rem',
-                              color: 'var(--accent)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                            }}
-                          >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.8 }}><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-                            {token.value}
-                          </span>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-                            Resolves to: <strong style={{ color: 'var(--text-secondary)' }}>{resolvedPreviewValue}</strong>
-                          </span>
-                        </div>
-                      ) : (
-                        <span
-                          onDoubleClick={() => {
-                            setEditingTokenName(token.name);
-                            setEditingTokenValue(token.value);
-                          }}
-                          title="Double click to edit value"
-                          style={{
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: '0.8rem',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer',
-                            borderBottom: '1px dashed transparent',
-                            transition: 'border-color 0.15s'
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.borderBottom = '1px dashed var(--text-tertiary)'}
-                          onMouseLeave={e => e.currentTarget.style.borderBottom = '1px dashed transparent'}
-                        >
-                          {token.value}
-                        </span>
-                      )}
-                    </div>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
-                      background: `${TYPE_COLORS[token.type]}15`,
-                      color: TYPE_COLORS[token.type],
-                      border: `1px solid ${TYPE_COLORS[token.type]}30`,
-                      fontWeight: 500, letterSpacing: '0.03em',
-                    }}>
-                      {token.type}
-                    </span>
-                    
-                    {/* Live Visual Preview column */}
-                    <div className="pd-token-preview-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                      {renderTokenPreview(previewToken)}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
-                        <button
-                          type="button"
-                          className="pd-token-copy-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(String(resolvedPreviewValue));
-                            setCopiedToken(token.name);
-                            setTimeout(() => setCopiedToken(prev => prev === token.name ? null : prev), 1200);
-                          }}
-                          style={{
-                            display: 'none', alignItems: 'center', gap: '0.35rem',
-                            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                            borderRadius: '8px', padding: '0.4rem 0.6rem', color: 'var(--text-tertiary)',
-                            fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
-                          }}
-                        >
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                          {copiedToken === token.name ? 'Copied!' : 'Copy'}
-                        </button>
-
-                        {/* 3-Dot Action Dropdown */}
-                        {can(myRole, 'tokens', 'edit') && (
-                        <div className="pd-token-row-actions" style={{ position: 'relative' }}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDropdown(activeDropdown === token.name ? null : token.name);
-                            }}
-                            style={{
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: 'var(--text-tertiary)', padding: '0.2rem', borderRadius: '4px',
-                              display: 'flex', alignItems: 'center',
-                            }}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-                              <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
-                            </svg>
-                          </button>
-                          {activeDropdown === token.name && (
-                            <>
-                              <div
-                                onClick={() => setActiveDropdown(null)}
-                                style={{
-                                  // Above the mobile token-type bar (z-index 150),
-                                  // which this menu would otherwise open behind.
-                                  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                                  zIndex: 160, background: 'transparent',
-                                }}
-                              />
-                              <div style={{
-                                position: 'absolute', top: '100%', right: 0,
-                                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                borderRadius: '8px', padding: '0.25rem', minWidth: '120px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 161,
-                                display: 'flex', flexDirection: 'column', gap: '0.1rem',
-                              }}>
-                                <button
-                                  onClick={() => {
-                                    setTokenModal({ mode: 'edit', token, category: activeCategory });
-                                    setActiveDropdown(null);
-                                  }}
-                                  style={menuItemStyle}
-                                >
-                                  Edit Token
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    handleDuplicateToken(activeCategory, token);
-                                    setActiveDropdown(null);
-                                  }}
-                                  style={menuItemStyle}
-                                >
-                                  Duplicate
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (window.confirm(`Are you sure you want to delete "${token.name}"?`)) {
-                                      handleDeleteToken(activeCategory, token.name);
-                                    }
-                                    setActiveDropdown(null);
-                                  }}
-                                  style={{ ...menuItemStyle, color: '#EF4444' }}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Description (mobile card only) */}
-                    {token.description && (
-                      <span className="pd-token-row-desc" style={{ display: 'none', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                        {token.description}
-                      </span>
-                    )}
+              {/* Empty states. The tree renders its own folders, so these only cover the
+                  cases where the whole table would be meaningless. */}
+              {tokenTotal === 0 && (
+                <div style={{ padding: '2.75rem 1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                    No tokens yet
                   </div>
-                );
-              })}
-
-              {/* Empty state — the table above renders nothing on its own, which reads as broken */}
-              {tokens.length === 0 && (() => {
-                const typeTotal = (activeTokens[activeCategory] || []).length;
-                const projectTotal = Object.values(activeTokens || {})
-                  .reduce((n, list) => n + (Array.isArray(list) ? list.length : 0), 0);
-                const layerLabel = (TOKEN_LAYER_LABELS[activeLayer] || activeLayer).toLowerCase();
-                const typeLabel = activeCategory.toLowerCase();
-                let headline, hint;
-                if (tokenTableSearchLower) {
-                  headline = `No tokens match "${tokenTableSearch.trim()}"`;
-                  hint = `Nothing in ${layerLabel} ${typeLabel} matches that search. Clear it to see the full list.`;
-                } else if (projectTotal === 0) {
-                  headline = `No ${layerLabel} ${typeLabel} tokens`;
-                  hint = 'Import tokens or add one manually to get started.';
-                } else if (typeTotal === 0) {
-                  headline = `No ${typeLabel} tokens`;
-                  hint = `This project has ${projectTotal} token${projectTotal === 1 ? '' : 's'}, but none of type ${activeCategory}.`;
-                } else {
-                  headline = `No ${layerLabel} ${typeLabel} tokens`;
-                  hint = `This project has ${typeTotal} ${typeLabel} token${typeTotal === 1 ? '' : 's'} in other layers.`;
-                }
-                return (
-                  <div style={{ padding: '2.75rem 1rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>{headline}</div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{hint}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                    Import tokens or add one from any folder above to get started.
                   </div>
-                );
-              })()}
+                </div>
+              )}
+              {tokenTotal > 0 && tokenTableSearchLower && visibleTokenCount === 0 && (
+                <div style={{ padding: '2.75rem 1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                    No tokens match "{tokenTableSearch.trim()}"
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                    Clear the search to see all {tokenTotal} tokens.
+                  </div>
+                </div>
+              )}
             </>
           )}
 
-          {/* Token types live in a fixed bottom navbar on mobile */}
-          {activeTab === 'tokens' && (
-            <div className="pd-mobile-category-row">{renderTokenTypeCategoryButtons()}</div>
-          )}
 
           {activeTab === 'components' && (() => {
-            // Rows on screen, narrowed by the group chosen in the mobile bar.
-            const visibleComponents = activeComponentGroup === 'All'
-              ? components
-              : components.filter(c => componentTreeGroup(c) === activeComponentGroup);
+            // Rows on screen. Folders no longer filter — they collapse — so search is the
+            // only thing that narrows this, and every selection helper below follows it.
+            const componentQuery = componentSearch.trim().toLowerCase();
+            const visibleComponents = componentQuery
+              ? components.filter(c => (c.name || '').toLowerCase().includes(componentQuery))
+              : components;
+            const componentFolders = componentFoldersFor(components);
+            // Same "toggled away from default" model as the token tree, so collapse and
+            // expand name the folders whose default is the opposite of what is wanted.
+            const componentFolderKeys = componentFoldersFor(components).flatMap(({ category, types }) => [
+              { key: category, defaultOpen: components.some(c => componentTreeCategory(c) === category) },
+              ...types.map(type => ({ key: category + '/' + type, defaultOpen: true })),
+            ]);
+            const anyComponentFolderOpen = componentFolderKeys.some(
+              ({ key, defaultOpen }) => (toggledComponentFolders.has(key) ? !defaultOpen : defaultOpen)
+            );
+            const setAllComponentFolders = (open) => setToggledComponentFolders(
+              new Set(componentFolderKeys.filter(k => k.defaultOpen !== open).map(k => k.key))
+            );
+
+            const toggleComponentFolder = (group) => setToggledComponentFolders(prev => {
+              const next = new Set(prev);
+              if (next.has(group)) next.delete(group); else next.add(group);
+              return next;
+            });
 
             const isPresetComp = (comp) => comp.isPreset || String(comp.id).startsWith('preset-') || comp.id === '1' || comp.id === '2' || comp.id === '3' || comp.id === '4';
             // Selection helpers work on what's visible, so "select all" can't
-            // silently tick rows hidden by the group filter.
+            // silently tick rows hidden by the search.
             const deletableSelected = visibleComponents.filter(c => selectedComponentIds.has(c.id) && !isPresetComp(c));
-            const allComponentsSelected = visibleComponents.length > 0 && visibleComponents.every(c => selectedComponentIds.has(c.id));
             const toggleComponentSelected = (compId) => setSelectedComponentIds(prev => {
               const next = new Set(prev);
               if (next.has(compId)) next.delete(compId); else next.add(compId);
               return next;
             });
-            const toggleAllComponents = () => setSelectedComponentIds(prev => {
-              const next = new Set(prev);
-              if (allComponentsSelected) visibleComponents.forEach(c => next.delete(c.id));
-              else visibleComponents.forEach(c => next.add(c.id));
-              return next;
-            });
-            const LIST_TABLE_COLS = '40px minmax(0, 1.4fr) minmax(0, 0.8fr) 90px 104px';
+            // No checkbox column any more — selecting is an action in the row menu.
+            const LIST_TABLE_COLS = 'minmax(0, 1fr) 104px';
 
             // Same treatment as the header's Export button, so the panel's
             // controls sit in the app's dark palette.
@@ -3542,14 +3434,6 @@ This document serves as our living source of truth.`
             // ── Shared panel chrome ──────────────────────────────────────────
             // The all-components list and the single-component editor both use
             // this, so the page header can't drift apart between the two views.
-            const savedIndicator = (
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-tertiary)', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-                Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-              </span>
-            );
             const undoRedoBtns = (
               <>
                 <button
@@ -3568,24 +3452,6 @@ This document serves as our living source of truth.`
                 </button>
               </>
             );
-            const unpublishedBtn = (
-              <button style={toolbarBtn} onClick={() => setActiveTab('branch')}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ color: 'var(--accent)' }}>
-                  <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                </svg>
-                Unpublished changes
-              </button>
-            );
-            const addComponentBtn = can(myRole, 'components', 'create') ? (
-              <button
-                onClick={() => setComponentModal({ mode: 'add' })}
-                className="btn btn-primary"
-                style={{ fontSize: '0.82rem', padding: '0.5rem 0.95rem', whiteSpace: 'nowrap' }}
-              >
-                + Add component
-              </button>
-            ) : null;
 
             const renderComponentPanel = (breadcrumbTail, info, actions) => (
               <div className="pd-component-toolbar" style={{
@@ -3638,7 +3504,7 @@ This document serves as our living source of truth.`
                       <>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                           <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
-                            {activeComponentGroup === 'All' ? 'All components' : activeComponentGroup}
+                            All components
                           </h2>
                           <span style={{
                             background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
@@ -3647,16 +3513,6 @@ This document serves as our living source of truth.`
                           }}>
                             {visibleComponents.length} total
                           </span>
-                          {activeComponentGroup !== 'All' && (
-                            // The group chips are mobile-only, so without this a
-                            // filter set on a phone would be stuck on desktop.
-                            <button
-                              onClick={() => setActiveComponentGroup('All')}
-                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '0.75rem', fontFamily: 'inherit' }}
-                            >
-                              Show all
-                            </button>
-                          )}
                         </div>
                         <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', margin: '0.35rem 0 0' }}>
                           Pick a component to map tokens to its style properties.
@@ -3676,12 +3532,26 @@ This document serves as our living source of truth.`
                             Delete {deletableSelected.length} selected
                           </button>
                         )}
-                        {savedIndicator}
                         {undoRedoBtns}
-                        {unpublishedBtn}
-                        {addComponentBtn}
                       </>
                     )}
+
+                    {/* Search sits directly above the table it filters. */}
+                    <div className="pd-table-controls" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                      <input
+                        className="pd-component-search"
+                        value={componentSearch}
+                        onChange={(e) => setComponentSearch(e.target.value)}
+                        placeholder="Search components..."
+                        style={{
+                          display: 'block', width: '260px', maxWidth: '100%',
+                          background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                          borderRadius: '8px', padding: '0.45rem 0.75rem',
+                          color: 'var(--text-primary)', fontSize: '0.8rem', fontFamily: 'inherit', outline: 'none',
+                        }}
+                      />
+                      {collapseAllBtn(anyComponentFolderOpen, () => setAllComponentFolders(!anyComponentFolderOpen), 'folders')}
+                    </div>
 
                     <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', overflow: 'hidden' }}>
                       <div className="pd-component-list-row pd-component-list-row-head" style={{
@@ -3689,21 +3559,104 @@ This document serves as our living source of truth.`
                         alignItems: 'center', padding: '0.9rem 1rem',
                         background: 'var(--bg-tertiary)', borderBottom: '1px solid var(--border)',
                       }}>
-                        <input
-                          type="checkbox"
-                          checked={allComponentsSelected}
-                          onChange={toggleAllComponents}
-                          title="Select all components"
-                          style={{ accentColor: 'var(--accent)', width: '15px', height: '15px', cursor: 'pointer' }}
-                        />
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Component</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Type</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>Properties</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', textAlign: 'right' }}>Tools</span>
                       </div>
 
-                      {visibleComponents.map((comp, i) => {
-                        const mapped = Object.values(comp.tokens || {}).filter(Boolean).length;
+                      {componentFolders.map(({ category, types }) => {
+                        const catComps = visibleComponents.filter(c => componentTreeCategory(c) === category);
+                        // With a search active, folders with no match drop out entirely; without
+                        // one an empty folder still shows its row, which is how a folder list reads.
+                        if (componentQuery && catComps.length === 0) return null;
+                        // Open by default once it has content; a type folder inside an open
+                        // category defaults to open so every type stays visible.
+                        const catDefaultOpen = catComps.length > 0;
+                        const catOpen = componentQuery ? true
+                          : (toggledComponentFolders.has(category) ? !catDefaultOpen : catDefaultOpen);
+                        return (
+                          <div key={category}>
+                            {/* Folder row spans the table rather than sitting in the 4-column
+                                grid, so the columns stay aligned for the component rows. */}
+                            <div
+                              className="pd-tree-folder-row"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => toggleComponentFolder(category)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleComponentFolder(category); } }}
+                              title={catOpen ? 'Collapse ' + category : 'Expand ' + category}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                padding: '0.6rem 1rem', cursor: 'pointer',
+                                background: 'var(--bg-tertiary)',
+                                borderBottom: '1px solid var(--border)',
+                                userSelect: 'none',
+                              }}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                style={{ flexShrink: 0, color: 'var(--text-secondary)', transform: catOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              <span style={{ display: 'flex', color: 'var(--accent)' }}>{folderIcon(13)}</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{category}</span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                                {catComps.length}
+                              </span>
+                            </div>
+
+                            {catOpen && types.map(type => {
+                              const typeComps = catComps.filter(c => componentTreeType(c) === type);
+                              if (componentQuery && typeComps.length === 0) return null;
+                              const typeKey = category + '/' + type;
+                              const typeOpen = componentQuery ? true : !toggledComponentFolders.has(typeKey);
+                              return (
+                                <div key={typeKey}>
+                                  {/* Second tier: the component type. Indented past its category
+                                      so the three levels read as a tree. */}
+                                  <div
+                                    className="pd-tree-folder-row pd-tree-type-row"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => toggleComponentFolder(typeKey)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleComponentFolder(typeKey); } }}
+                                    title={TYPE_DESCRIPTIONS[type] || (typeOpen ? 'Collapse ' + type : 'Expand ' + type)}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                      padding: '0.5rem 1rem 0.5rem 2.2rem', cursor: 'pointer',
+                                      background: 'var(--bg-secondary)',
+                                      borderBottom: '1px solid var(--border)',
+                                      userSelect: 'none',
+                                    }}
+                                  >
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                      style={{ flexShrink: 0, color: 'var(--text-tertiary)', transform: typeOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                                      <polyline points="9 18 15 12 9 6" />
+                                    </svg>
+                                    <span style={{ display: 'flex', color: 'var(--accent)' }}>{folderIcon(11)}</span>
+                                    <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}>{type}</span>
+                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>
+                                      {typeComps.length}
+                                    </span>
+
+                                    {can(myRole, 'components', 'create') && (
+                                      <button
+                                        className="pd-tree-folder-add"
+                                        onClick={(e) => { e.stopPropagation(); setComponentModal({ mode: 'add', category, type }); }}
+                                        title={'Add to ' + type}
+                                        aria-label={'Add a component to ' + type}
+                                        style={{
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                          width: '20px', height: '20px', marginLeft: 'auto', flexShrink: 0,
+                                          background: 'none', border: 'none', borderRadius: '5px',
+                                          color: 'var(--text-secondary)', cursor: 'pointer', padding: 0,
+                                        }}
+                                      >
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                                          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+
+                            {typeOpen && typeComps.map((comp, i) => {
                         const preset = isPresetComp(comp);
                         const isChecked = selectedComponentIds.has(comp.id);
                         return (
@@ -3713,30 +3666,27 @@ This document serves as our living source of truth.`
                             style={{
                               display: 'grid', gridTemplateColumns: LIST_TABLE_COLS, gap: '0.75rem',
                               alignItems: 'center', padding: '0.8rem 1rem',
-                              borderBottom: i < visibleComponents.length - 1 ? '1px solid var(--border)' : 'none',
+                              borderBottom: i < typeComps.length - 1 ? '1px solid var(--border)' : 'none',
                               cursor: 'pointer',
                             }}
                             onClick={() => setPreviewComponentId(comp.id)}
                             title={'View ' + comp.name}
                           >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => toggleComponentSelected(comp.id)}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{ accentColor: 'var(--accent)', width: '15px', height: '15px', cursor: 'pointer' }}
-                            />
-
                             <button
+                              className="pd-tree-name-cell"
                               onClick={() => setPreviewComponentId(comp.id)}
                               title={'View ' + comp.name}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0,
-                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                // Indented past where its type folder's label starts, so a name
+                                // reads as sitting under its folder. Only this cell moves, so the
+                                // Action column stays aligned with the header row.
+                                background: 'none', border: 'none', cursor: 'pointer',
                                 color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500,
                                 fontFamily: 'inherit', textAlign: 'left',
                               }}
                             >
+                              <span style={{ display: 'flex', color: 'var(--accent)' }}>{componentIcon(12)}</span>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.name}</span>
                               {preset && (
                                 <span style={{
@@ -3750,21 +3700,15 @@ This document serves as our living source of truth.`
                               </svg>
                             </button>
 
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {comp.template === 'image' ? 'Uploaded image' : comp.template}
-                            </span>
-
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-                              {mapped} mapped
-                            </span>
 
                             <div
                               style={{ display: 'flex', gap: '0.2rem', justifyContent: 'flex-end', alignItems: 'center' }}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {/* Mobile: the three actions collapse into a kebab */}
+                              {/* The row's only actions live here: revealed on hover, always
+                                  present for keyboard and touch (see the CSS). */}
                               <button
-                                className="pd-component-row-kebab"
+                                className={'pd-tree-row-kebab' + (componentMenu && componentMenu.id === comp.id ? ' is-open' : '')}
                                 title={'Actions for ' + comp.name}
                                 onClick={(e) => {
                                   const r = e.currentTarget.getBoundingClientRect();
@@ -3772,7 +3716,7 @@ This document serves as our living source of truth.`
                                     ? null
                                     : { id: comp.id, top: r.bottom + 6, right: window.innerWidth - r.right });
                                 }}
-                                style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.25rem', alignItems: 'center' }}
+                                style={{ display: 'flex', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.25rem', alignItems: 'center' }}
                               >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                                   <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
@@ -3796,7 +3740,13 @@ This document serves as our living source of truth.`
                                       style={menuItemStyle}
                                       onClick={() => { setPreviewComponentId(comp.id); setComponentMenu(null); }}
                                     >
-                                      Preview
+                                      View
+                                    </button>
+                                    <button
+                                      style={menuItemStyle}
+                                      onClick={() => { toggleComponentSelected(comp.id); setComponentMenu(null); }}
+                                    >
+                                      {isChecked ? 'Deselect' : 'Select'}
                                     </button>
                                     {can(myRole, 'components', 'edit') && (
                                       <button
@@ -3821,59 +3771,20 @@ This document serves as our living source of truth.`
                                 </>
                               )}
 
-                              <button
-                                className="pd-component-row-actions"
-                                onClick={() => setPreviewComponentId(comp.id)}
-                                title={'Preview ' + comp.name}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                                </svg>
-                              </button>
-                              {can(myRole, 'components', 'edit') && (
-                                <button
-                                  className="pd-component-row-actions"
-                                  onClick={() => setComponentModal({ mode: 'edit', component: comp })}
-                                  title="Edit component"
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                  </svg>
-                                </button>
-                              )}
-                              {can(myRole, 'components', 'edit') && (preset ? (
-                                <button
-                                  className="pd-component-row-actions"
-                                  disabled
-                                  title="Preset components cannot be deleted"
-                                  style={{ background: 'none', border: 'none', cursor: 'not-allowed', color: 'var(--text-tertiary)', padding: '0.25rem', display: 'flex', alignItems: 'center', opacity: 0.3 }}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                                  </svg>
-                                </button>
-                              ) : (
-                                <button
-                                  className="pd-component-row-actions"
-                                  onClick={() => { if (window.confirm('Delete component "' + comp.name + '"?')) handleDeleteComponent(comp.id); }}
-                                  title="Delete component"
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444', padding: '0.25rem', display: 'flex', alignItems: 'center' }}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                                  </svg>
-                                </button>
-                              ))}
                             </div>
+                          </div>
+                        );
+                            })}
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       })}
                     </div>
-                    {visibleComponents.length === 0 && (
+                    {componentQuery && visibleComponents.length === 0 && (
                       <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: '1rem 0 0' }}>
-                        No components in this group.
+                        No components match "{componentSearch.trim()}".
                       </p>
                     )}
                   </>
@@ -3882,10 +3793,6 @@ This document serves as our living source of truth.`
             );
           })()}
 
-          {/* Component groups live in a fixed bottom navbar on mobile */}
-          {activeTab === 'components' && (
-            <div className="pd-mobile-category-row">{renderComponentGroupChips()}</div>
-          )}
 
           {activeTab === 'handoff' && (() => {
             const formats = [
@@ -4684,6 +4591,7 @@ export default function RootLayout({ children }) {
                       borderRadius: '16px', padding: '2rem', width: '460px',
                       boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
                       display: 'flex', flexDirection: 'column', gap: '1.25rem',
+                      maxHeight: '90vh', overflowY: 'auto',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Invite teammate</h3>
@@ -4699,15 +4607,61 @@ export default function RootLayout({ children }) {
                       </div>
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Role</label>
-                        <select
-                          className="form-input" style={{ cursor: 'pointer' }}
-                          value={inviteForm.role}
-                          onChange={(e) => setInviteForm(f => ({ ...f, role: e.target.value }))}
-                        >
-                          {ROLES.filter(r => r !== 'Owner').map(r => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
-                        </select>
+
+                        {/* Each option carries its own summary, so the choice is informed
+                            without leaving the dialog. Text is derived from the permission
+                            matrix, never written twice. */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.35rem' }}>
+                          {ROLES.filter(r => r !== 'Owner').map(r => {
+                            const selected = inviteForm.role === r;
+                            return (
+                              <button
+                                key={r}
+                                onClick={() => setInviteForm(f => ({ ...f, role: r }))}
+                                style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+                                  textAlign: 'left', padding: '0.6rem 0.75rem', borderRadius: '10px',
+                                  background: selected ? 'var(--accent-glow)' : 'var(--bg-tertiary)',
+                                  border: '1px solid ' + (selected ? 'var(--accent)' : 'var(--border)'),
+                                  cursor: 'pointer', fontFamily: 'inherit', width: '100%',
+                                }}
+                              >
+                                <span style={{
+                                  width: '14px', height: '14px', borderRadius: '50%', flexShrink: 0, marginTop: '2px',
+                                  border: '1.5px solid ' + (selected ? 'var(--accent)' : 'var(--text-tertiary)'),
+                                  background: selected ? 'var(--accent)' : 'transparent',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                  {selected && <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#fff' }} />}
+                                </span>
+                                <span style={{ minWidth: 0 }}>
+                                  <span style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, color: selected ? 'var(--accent)' : 'var(--text-primary)' }}>{r}</span>
+                                  <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: '0.1rem' }}>
+                                    {roleSummary(r)}
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Per-area breakdown for whatever is selected */}
+                        <div style={{ marginTop: '0.8rem', padding: '0.7rem 0.8rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '10px' }}>
+                          <div style={{ fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.5rem' }}>
+                            What {/[AEIOU]/.test(inviteForm.role[0]) ? 'an' : 'a'} {inviteForm.role} can do
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 0.9rem' }}>
+                            {describeRole(inviteForm.role).map(area => (
+                              <div key={area.key} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                <span style={{ fontSize: '0.73rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{area.label}</span>
+                                <span style={{
+                                  fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                  color: area.level === 'No access' ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                                }}>{area.level}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                       <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', margin: 0 }}>
                         No email is sent — this adds a teammate directly (local simulation, like your sync token).
@@ -4735,6 +4689,9 @@ export default function RootLayout({ children }) {
       {/* ── Modals ── */}
       {tokenModal && (
         <TokenModal
+          // Every field is seeded from props on mount, so reusing one instance for a
+          // different token would leave the previous token's values in the form.
+          key={tokenModal.mode + ':' + (tokenModal.token?.name || tokenModal.category + '/' + tokenModal.defaultLayer)}
           modal={tokenModal}
           activeTokens={activeTokens}
           onClose={() => setTokenModal(null)}
@@ -4756,6 +4713,8 @@ export default function RootLayout({ children }) {
           activeTokens={activeTokens}
           existingNames={components.map(c => c.name)}
           componentToEdit={componentModal.component}
+          initialCategory={componentModal.category}
+          initialType={componentModal.type}
           onClose={() => setComponentModal(null)}
           onSave={(compData) => {
             if (Array.isArray(compData)) {
@@ -4770,135 +4729,44 @@ export default function RootLayout({ children }) {
         />
       )}
 
-      {/* ── Component Preview drawer ── */}
+      {/* ── Properties inspector ── */}
+      {/* Selecting a component fills this rail. It used to be a read-only preview
+          drawer; it is now where properties are edited, so every change commits
+          straight through handleEditComponent with no Save step. The Details button
+          still opens the dialog for name/type/description and the code view. */}
       {(() => {
         const comp = components.find(c => c.id === previewComponentId);
         if (!comp) return null;
-
-        const rows = Object.entries(comp.tokens || {})
-          .filter(([, tokenName]) => tokenName)
-          .map(([key, tokenName]) => {
-            const cssName = cssPropForTokenKey(key);
-            return {
-              key,
-              cssName,
-              tokenName,
-              resolved: resolveTokenValue(tokenName),
-              category: getGroupDisplayForType(cssName),
-            };
-          });
-
+        // Components created from presets store the legacy short keys (bg, textColor,
+        // borderRadius…). The inspector is keyed on real CSS properties, so normalise on
+        // the way in — otherwise those mappings are invisible here and editing would add a
+        // second mapping for the same property while the old key still applied.
+        // cssPropForTokenKey passes anything already-a-CSS-property straight through, so
+        // this is lossless, and saving the normalised map migrates the component.
+        const normalizedTokens = {};
+        for (const [k, v] of Object.entries(comp.tokens || {})) {
+          if (v) normalizedTokens[cssPropForTokenKey(k)] = v;
+        }
         return (
           <div ref={previewDrawerRef} className="pd-preview-drawer" style={{
-            position: 'fixed', top: '52px', right: 0, bottom: 0, width: '380px',
+            position: 'fixed', right: 0, bottom: 0, width: '380px',
             background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)',
             boxShadow: '-12px 0 32px rgba(0,0,0,0.4)', zIndex: 400,
             display: 'flex', flexDirection: 'column',
           }}>
-            {/* Header */}
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.6rem', flexShrink: 0,
-              padding: '0.9rem 1rem', borderBottom: '1px solid var(--border)',
-            }}>
-              <span style={{ fontSize: '0.92rem', fontWeight: 600, color: 'var(--text-primary)' }}>Component Preview</span>
-              <span style={{
-                background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '9999px',
-                padding: '0.15rem 0.5rem', color: 'var(--text-secondary)', fontSize: '0.68rem', fontWeight: 500,
-                whiteSpace: 'nowrap',
-              }}>
-                {rows.length} {rows.length === 1 ? 'property' : 'properties'}
-              </span>
-              <div style={{ flex: 1 }} />
-              <button
-                onClick={() => setPreviewOnLight(v => !v)}
-                title={previewOnLight ? 'Preview on a dark background' : 'Preview on a light background'}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '0.2rem', display: 'flex', fontSize: '0.95rem' }}
-              >
-                {previewOnLight ? '🌙' : '☀️'}
-              </button>
-              {can(myRole, 'components', 'edit') && (
-                // Full-screen on mobile hides the row this was opened from, so
-                // without this the drawer would be a dead end for editing.
-                <button
-                  onClick={() => { setComponentModal({ mode: 'edit', component: comp }); setPreviewComponentId(null); }}
-                  title={'Edit ' + comp.name}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0.2rem', display: 'flex', alignItems: 'center' }}
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-              )}
-              <button
-                onClick={() => setPreviewComponentId(null)}
-                title="Close preview"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: '1.25rem', lineHeight: 1, padding: '0 0.2rem' }}
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Body */}
-            <div style={{ overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
-                  {comp.name}
-                </div>
-                <div style={{
-                  background: previewOnLight ? '#F4F4F6' : 'var(--bg)',
-                  border: '1px solid var(--border)', borderRadius: '10px',
-                  minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '1.25rem', overflow: 'hidden',
-                }}>
-                  {renderLivePreview(comp)}
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: '0.5rem' }}>
-                  Properties ({rows.length})
-                </div>
-                {rows.length === 0 ? (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: 0 }}>
-                    No properties mapped on this component yet.
-                  </p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {rows.map(r => (
-                      <div key={r.key} style={{
-                        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                        borderRadius: '10px', padding: '0.65rem 0.75rem',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {r.cssName}
-                          </span>
-                          <div style={{ flex: 1 }} />
-                          <span style={{
-                            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '5px',
-                            padding: '0.1rem 0.4rem', color: 'var(--text-secondary)', fontSize: '0.63rem',
-                            fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0,
-                          }}>
-                            {r.category}
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem' }}>
-                          {/^#[0-9A-Fa-f]{3,8}$/.test(r.resolved) && (
-                            <span style={{ width: '14px', height: '14px', borderRadius: '4px', background: r.resolved, border: '1px solid rgba(255,255,255,0.15)', flexShrink: 0 }} />
-                          )}
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.74rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {r.resolved || '—'}
-                          </span>
-                        </div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--accent)', marginTop: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          → {r.tokenName}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+            <ComponentInspector
+              component={{ ...comp, tokens: normalizedTokens }}
+              tokensForProperty={getTokenNamesForProperty}
+              presetsForProperty={getPresetTokensForProperty}
+              onCreateToken={createTokenForProperty}
+              existingTokenNames={allTokenNames}
+              resolve={resolveTokenValue}
+              onChange={handleEditComponent}
+              onOpenEditor={(c) => setComponentModal({ mode: 'edit', component: c })}
+              onClose={() => setPreviewComponentId(null)}
+              renderPreview={renderLivePreview}
+              canEdit={can(myRole, 'components', 'edit')}
+            />
           </div>
         );
       })()}
@@ -5255,6 +5123,66 @@ export default function RootLayout({ children }) {
         /* All-components list: the whole row opens the component, so it needs a
            hover affordance. Selection lives in a class rather than an inline
            style so hover can layer over it without needing !important. */
+        /* The kebab is the only row action, so it must stay reachable without a pointer:
+           :focus-within covers keyboard, and the mobile rule below pins it visible. */
+        /* Three tiers, so the tree reads top to bottom: the category row is 1rem in,
+           the type row 2.2rem, and a component name deeper still than its type label.
+           Only the name cell is indented — the Type/Properties/Action columns stay
+           aligned with the header row. */
+        .pd-tree-name-cell { padding: 0 0 0 5.6rem; }
+        .pd-tree-type-row:hover { background: var(--bg-tertiary) !important; }
+
+        .pd-tree-row-kebab,
+        .pd-tree-folder-add {
+          opacity: 0;
+          transition: opacity 0.12s ease;
+        }
+        /* The inspector is fixed to the right, so the page reserves its width rather
+           than letting it sit on top of the component tree. */
+        /* Starts below the project toolbar, which ends at 92px — the old 52px was set
+           when this was a transient preview and covered Share and Publish. The top
+           offset lives here rather than inline so the mobile override can win. */
+        .pd-preview-drawer { top: 92px; }
+
+        ${entranceKeyframesCss()}
+
+        /* Respect a reduced-motion preference: the button still works, it just does not
+           fling the component around. */
+        @media (prefers-reduced-motion: reduce) {
+          .pd-preview-stage { animation-duration: 1ms !important; }
+        }
+
+        /* Eight of the property names are wider than the label column (Grid Template
+           Columns, Text Decoration Color and friends). Hovering lifts the label out of
+           its cell to show the whole name, using a ring of the panel colour so it reads
+           over whatever sits beside it — no reflow, unlike widening the column. */
+        .pd-inspector-label:hover {
+          overflow: visible !important;
+          position: relative;
+          z-index: 3;
+          background: var(--bg-secondary);
+          box-shadow: 0 0 0 4px var(--bg-secondary);
+          border-radius: 3px;
+        }
+        .pd-main.has-inspector { padding-right: calc(380px + 2rem) !important; }
+
+        .pd-tree-folder-row:hover .pd-tree-folder-add,
+        .pd-tree-folder-row:focus-within .pd-tree-folder-add {
+          opacity: 1;
+        }
+        .pd-tree-folder-add:hover { background: var(--bg-secondary) !important; color: var(--accent) !important; }
+        /* Both trees: the kebab appears on hover, but must stay reachable without a
+           pointer and must not vanish out from under one while its menu is open. */
+        .pd-component-list-row:hover .pd-tree-row-kebab,
+        .pd-component-list-row:focus-within .pd-tree-row-kebab,
+        .pd-token-row:hover .pd-tree-row-kebab,
+        .pd-token-row:focus-within .pd-tree-row-kebab,
+        .pd-tree-row-kebab:focus-visible,
+        .pd-tree-row-kebab.is-open {
+          opacity: 1;
+        }
+        .pd-token-row:hover { background: rgba(255,255,255,0.045); }
+
         .pd-component-list-row:not(.pd-component-list-row-head):hover {
           background: rgba(255,255,255,0.045);
         }
@@ -5266,7 +5194,7 @@ export default function RootLayout({ children }) {
         }
 
         /* Mobile-only surfaces, collapsed on desktop by default */
-        .pd-mobile-category-row, .pd-sidebar-rail-bottom, .pd-mobile-nav-toggle { display: none; }
+        .pd-sidebar-rail-bottom, .pd-mobile-nav-toggle { display: none; }
 
         /* ── Collapsible sidebar (desktop) ──────────────────────────────────────
            NOTE: .pd-sidebar.is-collapsed below duplicates the rail declarations in
@@ -5303,48 +5231,6 @@ export default function RootLayout({ children }) {
         .pd-sidebar-collapse-toggle:hover { color: var(--accent); background: var(--accent-glow); }
         .pd-sidebar.is-collapsed .pd-sidebar-collapse-toggle { margin: 0 auto 0.5rem; }
 
-        .pd-collapsed-category-row {
-          position: fixed;
-          bottom: 1.25rem;
-          /* centred on the content area, which begins after the 52px collapsed rail */
-          left: calc(50vw + 26px);
-          transform: translateX(-50%);
-          width: max-content;
-          max-width: calc(100vw - 52px - 3rem);
-          display: flex;
-          align-items: center;
-          gap: 0.35rem;
-          overflow-x: auto;
-          padding: 0.45rem 0.55rem;
-          background: var(--bg-secondary);
-          border: 1px solid var(--border);
-          border-radius: 100px;
-          box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
-          /* under the token row menu (160/161) so that still opens over it */
-          z-index: 150;
-          scrollbar-width: none;
-        }
-        .pd-collapsed-category-row::-webkit-scrollbar { display: none; }
-
-        /* the floating bar hovers over the content, so keep the last row clear of it */
-        .pd-main.has-floating-chips { padding-bottom: 5.5rem !important; }
-        /* Compact enough that all ten token types fit the viewport without scrolling:
-           the count is dropped (the sidebar still shows it) and padding tightened. */
-        .pd-collapsed-category-row .pd-sidebar-category-btn {
-          width: auto !important;   /* the button carries an inline width: 100% */
-          flex: 0 0 auto;
-          margin-bottom: 0 !important;
-          gap: 0.3rem;
-          padding: 0.32rem 0.6rem !important;
-          font-size: 0.73rem !important;
-        }
-        .pd-collapsed-category-row .pd-sidebar-category-count { display: none !important; }
-        /* let the label size to its text instead of inheriting the sidebar ellipsis */
-        .pd-collapsed-category-row .pd-sidebar-category-label {
-          flex: none;
-          width: auto;
-          max-width: none;
-        }
 
         @media (max-width: 768px) {
           /* Three columns is a desktop layout; on a phone the rows need the full width. */
@@ -5353,7 +5239,7 @@ export default function RootLayout({ children }) {
           .pd-status-pill { display: none !important; }
           .pd-btn-label { display: none; }
           .pd-export-btn, .pd-header-sync, .pd-header-avatar { display: none !important; }
-          .pd-header-saved, .pd-header-branch, .pd-header-theme-toggle { display: none !important; }
+          .pd-header-saved, .pd-header-branch { display: none !important; }
           .pd-header-live-dot { display: inline-block !important; }
 
           /* Sidebar collapses to a 52px icon-only rail, same row layout as desktop */
@@ -5387,39 +5273,19 @@ export default function RootLayout({ children }) {
             color: var(--text-secondary); cursor: pointer;
           }
 
-          /* Category lists move out of the rail on mobile: both token types and
-             component groups render as flat chip lists in a fixed bottom navbar
-             (renderTokenTypeCategoryButtons / renderComponentGroupChips).
-             Padding-bottom clears that bar. */
+          /* Both tabs now group inside their own table, so nothing needs to move out
+             of the rail here — the fixed bottom chip bar is gone with it. */
           .pd-sidebar-categories { display: none !important; }
-          /* Mobile owns the rail outright: no collapse toggle, and the fixed bottom bar
-             below replaces the in-page row so the two can never both appear. */
           .pd-sidebar-collapse-toggle { display: none !important; }
-          .pd-collapsed-category-row { display: none !important; }
           .pd-sidebar, .pd-sidebar.is-collapsed { width: 52px !important; }
-          .pd-main { padding-bottom: 4.5rem !important; }
-          .pd-mobile-category-row {
-            display: flex !important;
-            position: fixed;
-            left: 52px; right: 0; bottom: 0;
-            background: var(--bg-secondary);
-            border-top: 1px solid var(--border);
-            overflow-x: auto;
-            gap: 0.4rem;
-            padding: 0.625rem 0.75rem;
-            z-index: 150;
-          }
-          .pd-mobile-category-row .pd-sidebar-category-btn {
-            width: auto !important;
-            flex-shrink: 0;
-            white-space: nowrap;
-            border-radius: 100px !important;
-          }
-          .pd-mobile-category-row .pd-sidebar-category-count { display: none; }
+          .pd-token-search-wrap { width: 100% !important; }
+          .pd-table-controls { width: 100%; }
+          .pd-table-controls > * { flex: 1 1 auto; }
           /* A 380px drawer would be a squeezed sliver on a phone */
           /* Full-screen on a phone — a 380px side panel is a sliver there,
              and top:0 covers the app header so it truly fills the screen. */
           .pd-preview-drawer { width: 100% !important; top: 0 !important; }
+          .pd-main.has-inspector { padding-right: 1rem !important; }
 
           /* Expanded nav overlay — the rail's hamburger toggle opens this */
           .pd-mobile-nav-backdrop {
@@ -5473,36 +5339,27 @@ export default function RootLayout({ children }) {
           .pd-tokens-header-actions button { flex: 1; }
 
           .pd-token-table-header { display: none !important; }
-          /* Grid instead of flex-column so the name and badge can share row 1 as two real
-             columns (badge auto-sized + flush to the card's edge) — matches Figma exactly
-             and, unlike fixed pixel offsets, never overlaps for long type names. */
+          /* Three cells now the type badge is gone — the folder above states the type.
+             Rows sit inside the tree's own bordered container, so they keep the tree's
+             padding rather than becoming free-floating cards. */
           .pd-token-row {
             display: grid !important;
             grid-template-columns: 1fr auto !important;
-            gap: 0.5rem 0.75rem !important;
-            position: relative;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1rem !important;
-            margin-bottom: 0.75rem;
+            gap: 0.35rem 0.5rem !important;
+            padding: 0.6rem 1rem !important;
           }
-          /* Row 1: name (col 1, truncates) ── type badge (col 2, flush right — extreme end) */
+          /* The name takes row 1 outright. Sharing it with the preview left the
+             indented name column with no width at all on a 390px screen. */
           .pd-token-row > *:nth-child(1) {
-            grid-column: 1; grid-row: 1;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-            align-self: center;
+            grid-column: 1 / -1; grid-row: 1; min-width: 0; align-self: center;
           }
-          .pd-token-row > *:nth-child(3) { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; }
-
-          /* Row 2: description, spans the full card width */
-          .pd-token-row-desc { display: block !important; grid-column: 1 / -1; grid-row: 2; }
-
-          /* Row 3: swatch + value (extreme left) ── Copy + ⋮ menu (extreme right) */
-          .pd-token-row > *:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
-
-          /* Row 4: the raw editable value — redundant for simple color tokens (already shown in row 3), kept for aliases/other types */
-          .pd-token-row > *:nth-child(2) { grid-column: 1 / -1; grid-row: 4; }
+          /* Row 2: value on the left, preview flush right */
+          .pd-token-row > *:nth-child(2) { grid-column: 1; grid-row: 2; min-width: 0; }
+          .pd-token-row > *:nth-child(3) {
+            grid-column: 2; grid-row: 2; justify-self: end; align-self: center;
+          }
+          /* Row 3: description */
+          .pd-token-row-desc { display: block !important; grid-column: 1 / -1; grid-row: 3; }
           .pd-token-row-value-duplicate { display: none !important; }
 
           .pd-token-copy-btn { display: inline-flex !important; }
@@ -5539,21 +5396,30 @@ export default function RootLayout({ children }) {
           /* All-components list: the columns can't stay legible on a phone, so
              each row becomes a stacked card. Its header row is dropped — the
              labels mean nothing once the columns are stacked. */
+          /* No room for a side-by-side preview on a phone, so the editor stacks
+             and the preview leads — seeing the component matters more than
+             seeing the fields first. */
+          .pd-editor-split { grid-template-columns: 1fr !important; }
+          .pd-component-code { height: 200px !important; }
+          .pd-editor-preview { position: static !important; order: -1; }
+
+          /* A fixed-width search box wastes a phone's width. */
+          .pd-component-search { width: 100% !important; }
+
+          /* Just the name and its kebab now, so the row stays a single line even
+             on a phone — no stacked card needed. */
           .pd-component-list-row {
-            grid-template-columns: 20px 1fr auto !important;
-            grid-template-areas: "check name tools" ". type props" !important;
-            row-gap: 0.5rem !important;
+            grid-template-columns: 1fr auto !important;
           }
-          .pd-component-list-row > *:nth-child(1) { grid-area: check; }
-          .pd-component-list-row > *:nth-child(2) { grid-area: name; }
-          .pd-component-list-row > *:nth-child(3) { grid-area: type; }
-          .pd-component-list-row > *:nth-child(4) { grid-area: props; }
-          .pd-component-list-row > *:nth-child(5) { grid-area: tools; }
           .pd-component-list-row-head { display: none !important; }
           /* Three icons crowd the card's top-right corner, so they collapse
              into a kebab menu here. Desktop keeps them inline in the column. */
-          .pd-component-row-actions { display: none !important; }
-          .pd-component-row-kebab { display: flex !important; }
+          /* The desktop indent costs a phone too much of the name column, so the tiers
+             tighten here — still stepped, just less far. */
+          .pd-tree-name-cell { padding-left: 4rem !important; }
+          .pd-tree-type-row { padding-left: 1.8rem !important; }
+          /* touch has no hover, so the row and folder actions are always shown */
+          .pd-tree-row-kebab, .pd-tree-folder-add { opacity: 1 !important; }
 
           .pd-handoff-card { padding: 1.25rem !important; }
           .pd-codeassets-card { padding: 1.25rem !important; }
@@ -5587,6 +5453,103 @@ export default function RootLayout({ children }) {
       `}} />
 
 
+      {/* How do you want to start? — the step between Get Started and either path. */}
+      {startChoice && (
+        <div
+          onClick={() => setStartChoice(false)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2000,
+            background: 'rgba(9, 9, 12, 0.85)', backdropFilter: 'blur(10px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              borderRadius: '16px', padding: '2rem', width: 'min(680px, 100%)',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  How do you want to start?
+                </h3>
+                <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  Either way you can change everything afterwards.
+                </p>
+              </div>
+              <button
+                onClick={() => setStartChoice(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '1rem', marginTop: '1.5rem',
+            }}>
+              {[
+                {
+                  key: 'scratch',
+                  title: 'Start from scratch',
+                  desc: 'Answer two questions and we will suggest a palette and type pairing to build on.',
+                  accent: true,
+                  icon: (
+                    <><path d="M12 2v20M2 12h20" /></>
+                  ),
+                  go: () => { setStartChoice(false); setScratchWizard(true); },
+                },
+                {
+                  key: 'import',
+                  title: 'Import what you have',
+                  desc: 'Point us at a Figma file, a live site, or a tokens.json and refine it from there.',
+                  accent: false,
+                  icon: (
+                    <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>
+                  ),
+                  go: () => { setStartChoice(false); openBrandEngine(); },
+                },
+              ].map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={opt.go}
+                  style={{
+                    textAlign: 'left', padding: '1.4rem', cursor: 'pointer', fontFamily: 'inherit',
+                    background: opt.accent ? 'var(--accent-glow)' : 'var(--bg-tertiary)',
+                    border: '1px solid ' + (opt.accent ? 'var(--accent)' : 'var(--border)'),
+                    borderRadius: '12px',
+                  }}
+                >
+                  <span style={{ display: 'flex', color: opt.accent ? 'var(--accent)' : 'var(--text-secondary)', marginBottom: '0.85rem' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      {opt.icon}
+                    </svg>
+                  </span>
+                  <span style={{ display: 'block', fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+                    {opt.title}
+                  </span>
+                  <span style={{ display: 'block', fontSize: '0.82rem', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+                    {opt.desc}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scratchWizard && (
+        <ScratchWizard
+          projectName={project?.name}
+          onClose={() => setScratchWizard(false)}
+          onSaveContext={saveBrandContext}
+          onApply={(payload) => { applyBrandContext(payload); setScratchWizard(false); }}
+        />
+      )}
       {engine && (
         <BrandContextEngine
           project={project}
@@ -5629,7 +5592,7 @@ const TYPE_TO_CATEGORY = {
   transform: 'Shadow', cursor: 'Shadow', filter: 'Shadow', 'backdrop-filter': 'Shadow',
 
   duration: 'Motion', easing: 'Motion', transition: 'Motion', 'transition-duration': 'Motion',
-  'animation-duration': 'Motion',
+  'animation-duration': 'Motion', 'animation-name': 'Motion', animationName: 'Motion',
 
   display: 'Layout', position: 'Layout', top: 'Layout', right: 'Layout', bottom: 'Layout',
   left: 'Layout', 'z-index': 'Layout', overflow: 'Layout',
@@ -5730,6 +5693,7 @@ const CATEGORY_GROUPS = [
     { type: 'transition', label: 'transition' },
     { type: 'transition-duration', label: 'transition-duration' },
     { type: 'animation-duration', label: 'animation-duration' },
+    { type: 'animation-name', label: 'animation-name' },
   ] },
   { display: 'Layout', items: [
     { type: 'display', label: 'display' },
@@ -6087,6 +6051,63 @@ const renderTokenPreview = (token) => {
 };
 
 /* ── Token Add/Edit Dialog Component ── */
+/* ── Single-token code view ── */
+// Same DTCG shape the whole-project export emits (getDTCGJsonText), narrowed to one
+// token, so what you copy out of here pastes back into an exported file and vice versa.
+// The layer has no DTCG equivalent, so it rides in $extensions rather than being lost.
+const tokenToDtcgText = ({ name, value, type, layer }) => {
+  const leaf = { '$value': value || '', '$type': type || '' };
+  if (layer) leaf['$extensions'] = { strata: { layer } };
+  const parts = String(name || '').split('.').filter(Boolean);
+  if (!parts.length) return JSON.stringify(leaf, null, 2);
+  const root = {};
+  let cur = root;
+  parts.forEach((part, i) => {
+    if (i === parts.length - 1) cur[part] = leaf;
+    else { cur[part] = {}; cur = cur[part]; }
+  });
+  return JSON.stringify(root, null, 2);
+};
+
+const tokenToCssText = ({ name, value }) =>
+  `--${String(name || '').replace(/\./g, '-')}: ${value || ''};`;
+
+/**
+ * Reads one token back out of DTCG JSON. Accepts the nested form this view emits and
+ * the flat form ({ "$value": ... }), walking to the first leaf that carries a $value.
+ * Returns { error } instead of throwing, so a half-typed paste never wipes the fields.
+ */
+const parseTokenJson = (text) => {
+  if (!String(text).trim()) return { error: 'Empty — paste a token, or switch back to the fields above.' };
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) { return { error: 'Not valid JSON: ' + e.message }; }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { error: 'Expected a JSON object describing one token.' };
+
+  const path = [];
+  let node = data;
+  for (let depth = 0; depth < 12; depth++) {
+    if (node && typeof node === 'object' && '$value' in node) {
+      const layer = node.$extensions?.strata?.layer;
+      return {
+        name: path.join('.') || undefined,
+        value: node.$value == null ? '' : String(node.$value),
+        type: node.$type ? String(node.$type) : undefined,
+        layer: TOKEN_LAYERS.includes(layer) ? layer : undefined,
+      };
+    }
+    const keys = Object.keys(node || {}).filter(k => !k.startsWith('$'));
+    if (keys.length !== 1) {
+      return { error: keys.length === 0
+        ? 'No $value found — a token needs a "$value".'
+        : 'Expected one token, found ' + keys.length + ' at this level.' };
+    }
+    path.push(keys[0]);
+    node = node[keys[0]];
+  }
+  return { error: 'Nested too deeply to read as a single token.' };
+};
+
 function TokenModal({ modal, onClose, onSave, activeTokens }) {
   const isEdit = modal.mode === 'edit';
   const [name, setName] = useState(isEdit ? modal.token.name : '');
@@ -6095,6 +6116,16 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
   const [layer, setLayer] = useState(isEdit ? (modal.token.layer || 'Brand') : (modal.defaultLayer || 'Brand'));
 
   const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
+
+  // Code view: `codeDraft` holds what the user is typing; null means "show the fields".
+  const [codeFormat, setCodeFormat] = useState('json');
+  const [codeDraft, setCodeDraft] = useState(null);
+  const [codeError, setCodeError] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
+  const generatedCode = codeFormat === 'json'
+    ? tokenToDtcgText({ name, value, type, layer })
+    : tokenToCssText({ name, value });
+  const codeText = codeDraft === null ? generatedCode : codeDraft;
 
   const existingNamesForType = (t) => (activeTokens?.[getCategoryForType(t)] || []).map(tok => tok.name);
 
@@ -6263,7 +6294,7 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
     }}>
       <div style={{
         background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '16px', padding: '2rem', width: entryTab === 'upload' ? '640px' : '480px',
+        borderRadius: '16px', padding: '2rem', width: entryTab === 'upload' ? '640px' : 'min(860px, 94vw)',
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
         display: 'flex', flexDirection: 'column', gap: '1.5rem',
@@ -6302,6 +6333,13 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
 
         {entryTab === 'manual' && (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Fields left, preview and code right. Stacked, this modal ran past the
+              bottom of a laptop screen and the code panel sat below the fold. */}
+          <div className="pd-editor-split" style={{
+            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px',
+            gap: '1.5rem', alignItems: 'start',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Token Name</label>
             <input
@@ -6361,23 +6399,19 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
                 style={{ flex: 1 }}
               />
               {type === 'color' && (
-                <input
-                  type="color"
-                  value={value.startsWith('#') && value.length === 7 ? value : '#ffffff'}
-                  onChange={(e) => setValue(e.target.value)}
-                  style={{ width: '36px', height: '36px', border: 'none', borderRadius: '6px', background: 'none', cursor: 'pointer' }}
+                <ColorSwatchButton
+                  value={value.startsWith('#') ? value : '#FFFFFF'}
+                  onChange={setValue}
+                  title="Edit colour"
+                  size={36}
                 />
               )}
             </div>
           </div>
-          <div style={{
-            borderTop: '1px solid var(--border)',
-            paddingTop: '1rem',
-            marginTop: '0.25rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.5rem'
-          }}>
+            </div>
+
+            <aside className="pd-editor-preview" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>Visual Preview</span>
             <div style={{
               background: 'var(--bg-tertiary)',
@@ -6391,6 +6425,99 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
             }}>
               {renderTokenPreview({ type, value })}
             </div>
+          </div>
+          {/* ── Code view ──
+              The same DTCG shape the project exports, for one token. Editing or pasting
+              JSON here drives the fields above; the fields drive it back. CSS is offered
+              for copying only — turning `--button-padding-x` back into a dotted name is
+              guesswork, so it is not a safe thing to parse. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>
+                Code
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <div style={{ display: 'flex', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px' }}>
+                  {[['json', 'JSON'], ['css', 'CSS']].map(([fmt, label]) => (
+                    <button
+                      key={fmt}
+                      type="button"
+                      onClick={() => { setCodeFormat(fmt); setCodeDraft(null); setCodeError(''); }}
+                      style={{
+                        border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit',
+                        padding: '0.2rem 0.5rem', fontSize: '0.68rem',
+                        background: codeFormat === fmt ? 'var(--bg-secondary)' : 'none',
+                        color: codeFormat === fmt ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                        fontWeight: codeFormat === fmt ? 600 : 400,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(codeText);
+                    setCodeCopied(true);
+                    setTimeout(() => setCodeCopied(false), 1400);
+                  }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                    background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                    borderRadius: '6px', padding: '0.25rem 0.55rem',
+                    color: codeCopied ? 'var(--accent)' : 'var(--text-secondary)',
+                    fontSize: '0.68rem', cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                  </svg>
+                  {codeCopied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              value={codeText}
+              readOnly={codeFormat !== 'json'}
+              spellCheck={false}
+              onChange={(e) => {
+                const text = e.target.value;
+                setCodeDraft(text);
+                const parsed = parseTokenJson(text);
+                if (parsed.error) { setCodeError(parsed.error); return; }
+                setCodeError('');
+                if (parsed.name !== undefined) setName(parsed.name);
+                if (parsed.value !== undefined) setValue(parsed.value);
+                if (parsed.type !== undefined) setType(parsed.type);
+                if (parsed.layer !== undefined) setLayer(parsed.layer);
+              }}
+              // Snapping back to generated text on blur keeps formatting canonical without
+              // reformatting under the cursor mid-edit.
+              onBlur={() => { if (!codeError) setCodeDraft(null); }}
+              rows={codeFormat === 'json' ? 9 : 3}
+              style={{
+                width: '100%', resize: 'vertical',
+                background: 'var(--bg)', color: 'var(--text-primary)',
+                border: `1px solid ${codeError ? '#EF4444' : 'var(--border)'}`,
+                borderRadius: '8px', padding: '0.65rem 0.75rem',
+                fontFamily: 'var(--font-mono)', fontSize: '0.72rem', lineHeight: 1.55,
+                outline: 'none', tabSize: 2,
+              }}
+            />
+
+            {codeError ? (
+              <span style={{ fontSize: '0.68rem', color: '#EF4444' }}>{codeError}</span>
+            ) : (
+              <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
+                {codeFormat === 'json'
+                  ? 'Edit or paste DTCG JSON — the fields above follow along.'
+                  : 'CSS is copy-only: a custom property name cannot be turned back into a token name reliably.'}
+              </span>
+            )}
+          </div>
+            </aside>
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
             <button type="button" onClick={onClose} style={{ ...actionBtnStyle, borderRadius: '9999px', background: 'none', padding: '0.65rem 1.3rem' }}>Cancel</button>
@@ -6510,107 +6637,517 @@ function TokenModal({ modal, onClose, onSave, activeTokens }) {
 const DEFAULT_COMPONENT_PROPERTY_KEYS = ['bg', 'textColor', 'padding', 'borderRadius', 'fontFamily', 'fontSize'];
 
 // "background-color" → "Background Color"
+/* ── Designer-facing helpers for the component editor ── */
+
+// Resolves a token name to the value it ends up as, following {alias} chains the
+// same way the live preview does. Returns '' when the name resolves to nothing,
+// so the editor never shows a value the project does not actually define.
+const resolveTokenName = (activeTokens, name) => {
+  if (!name) return '';
+  const findByName = (n) => {
+    for (const cat in activeTokens || {}) {
+      const hit = Array.isArray(activeTokens[cat]) && activeTokens[cat].find(t => t?.name === n);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  let token = findByName(name);
+  let value = token ? token.value : '';
+  for (let i = 0; i < 10; i++) {
+    const ref = typeof value === 'string' && value.match(/^\{(.+)\}$/);
+    if (!ref) break;
+    const next = findByName(ref[1]);
+    if (!next) return '';
+    value = next.value;
+  }
+  return value || '';
+};
+
+// Whether a CSS property takes a colour — those get a swatch and the picker,
+// everything else keeps a plain list of names and values.
+const isColorProp = (cssProp) => getCategoryForType(cssProp) === 'Color';
+
+// A value is only drawable as a swatch if it actually looks like a colour.
+const asSwatch = (value) =>
+  /^(#|rgb|hsl|oklch|color\()/i.test(String(value || '').trim()) ? value : null;
+
 const humanizeCssProp = (prop) => prop
   .split('-')
   .map(w => w.charAt(0).toUpperCase() + w.slice(1))
   .join(' ');
 
+// Detected regions from an uploaded screenshot are saved as image components.
+const UPLOAD_TYPE = TEMPLATE_TO_TYPE.image;
+
+/* ── Colour token picker ── */
+// Designers pick a colour by eye rather than by reading names, so a colour
+// property shows its swatch and opens a grid of every colour token in the
+// project. Non-colour properties keep a plain select (see the editor rows).
+function TokenSwatchPicker({ value, options, activeTokens, onChange, emptyLabel }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+
+  // Rendered in a portal-ish fixed layer because the modal body scrolls, which
+  // would otherwise clip the popover.
+  const openAt = () => {
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: r.left });
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!btnRef.current?.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc, true);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc, true); };
+  }, [open]);
+
+  const resolved = resolveTokenName(activeTokens, value);
+  const swatch = asSwatch(resolved);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => (open ? setOpen(false) : openAt())}
+        title={value ? `${value} — ${resolved || 'unresolved'}` : 'Pick a colour token'}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', minWidth: 0,
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '7px',
+          padding: '0.3rem 0.45rem', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+        }}
+      >
+        <span style={{
+          width: '18px', height: '18px', borderRadius: '5px', flexShrink: 0,
+          backgroundColor: swatch || 'transparent',
+          border: swatch ? '1px solid rgba(255,255,255,0.18)' : '1px dashed var(--border)',
+          // A checker hint reads as "nothing set" rather than as a black swatch.
+          backgroundImage: swatch ? undefined
+            : 'linear-gradient(45deg, var(--border) 25%, transparent 25%, transparent 75%, var(--border) 75%)',
+          backgroundSize: swatch ? undefined : '6px 6px',
+        }} />
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{
+            display: 'block', fontSize: '0.74rem', color: value ? 'var(--text-primary)' : 'var(--text-tertiary)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {value || (options.length ? 'Not mapped' : emptyLabel)}
+          </span>
+          {value && (
+            <span style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+              {resolved || 'unresolved'}
+            </span>
+          )}
+        </span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+          style={{ flexShrink: 0, color: 'var(--text-tertiary)' }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && pos && (
+        <div style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 2200,
+          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+          borderRadius: '10px', boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
+          padding: '0.6rem', width: '250px', maxHeight: '260px', overflowY: 'auto',
+        }}>
+          {options.length === 0 ? (
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', padding: '0.3rem' }}>{emptyLabel}</div>
+          ) : (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.35rem' }}>
+                {options.map(name => {
+                  const v = resolveTokenName(activeTokens, name);
+                  const sw = asSwatch(v);
+                  const active = name === value;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => { onChange(name); setOpen(false); }}
+                      title={`${name} — ${v || 'unresolved'}`}
+                      style={{
+                        width: '100%', aspectRatio: '1', borderRadius: '6px', cursor: 'pointer', padding: 0,
+                        background: sw || 'var(--bg-tertiary)',
+                        border: active ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.15)',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ borderTop: '1px solid var(--border)', margin: '0.55rem 0 0.4rem' }} />
+              {/* The grid is for picking by eye; this list is for picking by name. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                <button
+                  type="button"
+                  onClick={() => { onChange(''); setOpen(false); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.45rem', width: '100%', textAlign: 'left',
+                    background: 'none', border: 'none', borderRadius: '5px', cursor: 'pointer',
+                    padding: '0.25rem 0.3rem', fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'inherit',
+                  }}
+                >
+                  Clear mapping
+                </button>
+                {options.map(name => {
+                  const v = resolveTokenName(activeTokens, name);
+                  const sw = asSwatch(v);
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => { onChange(name); setOpen(false); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.45rem', width: '100%', textAlign: 'left',
+                        background: name === value ? 'var(--bg-tertiary)' : 'none',
+                        border: 'none', borderRadius: '5px', cursor: 'pointer',
+                        padding: '0.25rem 0.3rem', fontFamily: 'inherit',
+                      }}
+                    >
+                      <span style={{
+                        width: '12px', height: '12px', borderRadius: '3px', flexShrink: 0,
+                        background: sw || 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.15)',
+                      }} />
+                      <span style={{
+                        flex: 1, minWidth: 0, fontSize: '0.72rem', color: 'var(--text-primary)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{name}</span>
+                      <span style={{ fontSize: '0.63rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+                        {v}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ── Component code view ── */
+// Custom-property names must match what the project exports (getCSSVariablesText),
+// otherwise CSS copied out of Handoff would not paste back in here.
+const tokenToCssVar = (tokenName) => `--${String(tokenName).replace(/\./g, '-')}`;
+
+// PrimaryButton → primary-button
+const componentClassName = (name) =>
+  String(name || 'component')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'component';
+
+// The element each template renders, so the JSX names something real.
+const TEMPLATE_ELEMENT = {
+  button: 'button', input: 'input', card: 'div', badge: 'span', image: 'img',
+  dropdown: 'div', tooltip: 'div', selection: 'label', selector: 'div',
+  accordion: 'div', tabs: 'div', modal: 'div', table: 'table',
+  chart: 'figure', breadcrumb: 'nav', pagination: 'nav', navbar: 'nav',
+};
+
+const componentToCssText = (name, rows) => {
+  const decls = (rows || [])
+    .filter(r => r.value)
+    .map(r => `  ${cssPropForTokenKey(r.key)}: var(${tokenToCssVar(r.value)});`);
+  const body = decls.length ? decls.join('\n') : '  /* no tokens mapped yet */';
+  return `.${componentClassName(name)} {\n${body}\n}`;
+};
+
+const componentToJsxText = (name, template) => {
+  const el = TEMPLATE_ELEMENT[template] || 'div';
+  const cls = componentClassName(name);
+  const comp = String(name || 'Component').replace(/[^a-zA-Z0-9]/g, '') || 'Component';
+  const selfClosing = el === 'input' || el === 'img';
+  return selfClosing
+    ? `export function ${comp}(props) {\n  return <${el} className="${cls}" {...props} />;\n}`
+    : `export function ${comp}({ children, ...props }) {\n  return (\n    <${el} className="${cls}" {...props}>\n      {children}\n    </${el}>\n  );\n}`;
+};
+
+const componentToJsonText = (name, type, template, description, rows) => {
+  const tokens = {};
+  for (const r of rows || []) {
+    if (r.value) tokens[cssPropForTokenKey(r.key)] = r.value;
+  }
+  return JSON.stringify({ name: name || '', type: type || '', template: template || '', description: description || '', tokens }, null, 2);
+};
+
+/** Every token name defined in the project, for matching a var() back to a real token. */
+const tokenNameIndex = (activeTokens) => {
+  const byVar = new Map();
+  for (const cat in activeTokens || {}) {
+    if (!Array.isArray(activeTokens[cat])) continue;
+    for (const t of activeTokens[cat]) {
+      if (t?.name) byVar.set(tokenToCssVar(t.name), t.name);
+    }
+  }
+  return byVar;
+};
+
+/**
+ * Reads a CSS rule back into token-mapping rows.
+ *
+ * A var() is matched against the project's real token names rather than being
+ * un-dashed by guesswork — `--button-padding-x` is ambiguous on its own, but there
+ * is no ambiguity when checking it against the tokens that actually exist.
+ *
+ * Anything that cannot become a mapping (an unknown var, or a literal value, which
+ * has nowhere to live in a map of token *names*) is counted and reported, never
+ * dropped silently. Returns `error` instead of throwing.
+ */
+const parseComponentCss = (text, activeTokens) => {
+  const src = String(text || '');
+  if (!src.trim()) return { error: 'Empty — paste a CSS rule, or switch back to Token Mappings.' };
+  const open = src.indexOf('{');
+  const close = src.lastIndexOf('}');
+  if (open === -1 || close === -1 || close < open) {
+    return { error: 'Expected a CSS rule like .my-component { … }' };
+  }
+  const byVar = tokenNameIndex(activeTokens);
+  const rows = [];
+  const skipped = [];
+  const seen = new Set();
+
+  for (const chunk of src.slice(open + 1, close).split(';')) {
+    const line = chunk.trim();
+    if (!line || line.startsWith('/*')) continue;
+    const at = line.indexOf(':');
+    if (at === -1) { skipped.push(line.slice(0, 24)); continue; }
+    const prop = line.slice(0, at).trim();
+    const raw = line.slice(at + 1).trim();
+    if (!prop) { skipped.push(line.slice(0, 24)); continue; }
+    const ref = raw.match(/^var\(\s*(--[\w-]+)\s*\)$/);
+    if (!ref) { skipped.push(prop); continue; }
+    const tokenName = byVar.get(ref[1]);
+    if (!tokenName) { skipped.push(prop); continue; }
+    if (seen.has(prop)) continue;
+    seen.add(prop);
+    rows.push({ key: prop, value: tokenName });
+  }
+
+  if (!rows.length) {
+    // Applying an empty result would silently clear every mapping the component has.
+    // A rule we could not read is a failure to report, not an instruction to wipe.
+    return { error: skipped.length
+      ? 'Nothing here maps to a token in this project: ' + skipped.slice(0, 4).join(', ')
+      : 'No declarations found inside the rule.' };
+  }
+  return { rows, skipped };
+};
+
+/** Reads the JSON spec back. Returns `error` rather than throwing. */
+const parseComponentJson = (text) => {
+  if (!String(text).trim()) return { error: 'Empty — paste a component, or switch back to Token Mappings.' };
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) { return { error: 'Not valid JSON: ' + e.message }; }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { error: 'Expected a JSON object describing one component.' };
+  }
+  if (data.tokens != null && (typeof data.tokens !== 'object' || Array.isArray(data.tokens))) {
+    return { error: '"tokens" must be an object of property → token name.' };
+  }
+  const rows = Object.entries(data.tokens || {})
+    .filter(([, v]) => typeof v === 'string' && v)
+    .map(([key, value]) => ({ key, value }));
+  return {
+    name: typeof data.name === 'string' ? data.name : undefined,
+    description: typeof data.description === 'string' ? data.description : undefined,
+    template: typeof data.template === 'string' ? data.template : undefined,
+    type: typeof data.type === 'string' ? data.type : undefined,
+    rows,
+  };
+};
+
 /* ── Component Wizard dialog ── */
-function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existingNames }) {
+// A blank component created inside a type folder starts on that type's template,
+// via TYPE_TO_TEMPLATE from the taxonomy — so it renders as the thing the folder says
+// it is instead of defaulting to a button.
+
+function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existingNames, initialCategory, initialType }) {
   const isEdit = !!componentToEdit;
 
-  // Preset component templates
-  const PRESET_COMPONENTS = [
-    {
-      id: 'custom',
-      name: '',
-      label: 'Custom Component (Blank)',
-      category: 'Actions & Buttons',
-      description: '',
-      template: 'button',
-      tokens: { bg: '', textColor: '', padding: '', borderRadius: '', fontFamily: '', fontSize: '' }
-    },
-    {
-      id: 'primary-button',
-      name: 'PrimaryButton',
-      label: 'Primary Button',
-      category: 'Actions & Buttons',
-      description: 'Standard brand action button',
-      template: 'button',
-      tokens: {
-        bg: ['button.bg', 'color.action', 'brand.color.primary'],
-        textColor: ['button.text', 'color.text.primary', 'brand.color.text'],
-        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
-        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
-        fontFamily: ['brand.font.body', 'brand.font.heading'],
-        fontSize: ['font.size.base', 'font.size.md']
-      }
-    },
-    {
-      id: 'secondary-button',
-      name: 'SecondaryButton',
-      label: 'Secondary Button',
-      category: 'Actions & Buttons',
-      description: 'Secondary action button for auxiliary choices',
-      template: 'button',
-      tokens: {
-        bg: ['color.background.surface', 'brand.color.surface'],
-        textColor: ['color.text.primary', 'brand.color.text'],
-        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
-        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
-        fontFamily: ['brand.font.body', 'brand.font.heading'],
-        fontSize: ['font.size.base', 'font.size.md']
-      }
-    },
-    {
-      id: 'input-field',
-      name: 'InputField',
-      label: 'Text Input Field',
-      category: 'Form Inputs',
-      description: 'Standard text input field component',
-      template: 'input',
-      tokens: {
-        bg: ['input.bg', 'color.background.surface', 'brand.color.surface'],
-        textColor: ['input.text', 'color.text.primary', 'brand.color.text'],
-        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
-        borderRadius: ['input.radius', 'radius.component', 'brand.radius.base'],
-        fontFamily: ['brand.font.body', 'brand.font.heading'],
-        fontSize: ['font.size.base', 'font.size.md']
-      }
-    },
-    {
-      id: 'brand-badge',
-      name: 'BrandBadge',
-      label: 'Status/Brand Badge',
-      category: 'Feedback & Status',
-      description: 'Decorative badge or label tag',
-      template: 'badge',
-      tokens: {
-        bg: ['color.action', 'brand.color.accent'],
-        textColor: ['color.text.primary', 'brand.color.text'],
-        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
-        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
-        fontFamily: ['brand.font.body', 'brand.font.heading'],
-        fontSize: ['font.size.xs', 'font.size.sm']
-      }
-    },
-    {
-      id: 'info-card',
-      name: 'InformationCard',
-      label: 'Information Card',
-      category: 'Display & Data',
-      description: 'Card container block for structured content display',
-      template: 'card',
-      tokens: {
-        bg: ['input.bg', 'color.background.surface', 'brand.color.surface'],
-        textColor: ['color.text.primary', 'brand.color.text'],
-        padding: ['button.padding', 'spacing.component', 'brand.spacing.base'],
-        borderRadius: ['button.radius', 'radius.component', 'brand.radius.base'],
-        fontFamily: ['brand.font.body', 'brand.font.heading'],
-        fontSize: ['font.size.base', 'font.size.md']
-      }
-    }
-  ];
+  // Code view state. Declared at the top of this component on purpose: anything below
+  // an early return, or accidentally anchored into ProjectDetail, becomes a conditional
+  // hook and crashes the page with "Rendered more hooks than during the previous render".
+  const [editorTab, setEditorTab] = useState('properties');
+  const [codeFormat, setCodeFormat] = useState('css');
+  const [codeDraft, setCodeDraft] = useState(null);
+  const [codeError, setCodeError] = useState('');
+  const [codeNote, setCodeNote] = useState('');
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  // Presets covering every type in the taxonomy. Each carries its `type`, and the
+  // category/template are derived from it so a preset can never disagree with the
+  // folder it appears under. The token values are fallback chains: findToken walks
+  // each list and takes the first name that exists in the project.
+  const PRESET_COMPONENTS = React.useMemo(() => {
+    const SURFACE = ['color.background.surface', 'brand.color.surface'];
+    const TEXT = ['color.text.primary', 'brand.color.text'];
+    const ACTION = ['button.bg', 'color.action', 'brand.color.primary'];
+    const PAD = ['button.padding', 'spacing.component', 'brand.spacing.base'];
+    const RADIUS = ['button.radius', 'radius.component', 'brand.radius.base'];
+    const FONT = ['brand.font.body', 'brand.font.heading'];
+    const SIZE = ['font.size.base', 'font.size.md'];
+    const SMALL = ['font.size.xs', 'font.size.sm'];
+
+    // [id, name, label, type, description, bg, textColor, fontSize]
+    const SPECS = [
+      ['primary-button', 'PrimaryButton', 'Primary Button', 'Buttons', 'Standard brand action button', ACTION, TEXT, SIZE],
+      ['secondary-button', 'SecondaryButton', 'Secondary Button', 'Buttons', 'Supporting action for auxiliary choices', SURFACE, TEXT, SIZE],
+      ['outline-button', 'OutlineButton', 'Outline Button', 'Buttons', 'Bordered button for secondary actions', [], ACTION, SIZE],
+      ['ghost-button', 'GhostButton', 'Ghost Button', 'Buttons', 'Borderless button for low-emphasis actions', [], ACTION, SIZE],
+      ['destructive-button', 'DestructiveButton', 'Destructive Button', 'Buttons', 'Button for irreversible actions', [], TEXT, SIZE],
+      ['icon-button', 'IconButton', 'Icon Button', 'Buttons', 'Compact icon-only action', SURFACE, TEXT, SMALL],
+      ['split-button', 'SplitButton', 'Split Button', 'Buttons', 'Primary action with an attached menu toggle', ACTION, TEXT, SIZE],
+      ['link-button', 'LinkButton', 'Link Button', 'Buttons', 'Action styled as an inline text link', [], ACTION, SIZE],
+      ['loading-button', 'LoadingButton', 'Loading Button', 'Buttons', 'Action showing work in progress', ACTION, TEXT, SIZE],
+      ['fab-button', 'FloatingActionButton', 'Floating Action Button', 'Buttons', 'Circular action floating above the page', ACTION, TEXT, SIZE],
+      ['button-group', 'ButtonGroup', 'Button Group', 'Buttons', 'Related actions joined into one control', SURFACE, TEXT, SIZE],
+
+      ['dropdown-menu', 'DropdownMenu', 'Dropdown Menu', 'Dropdowns & Menus', 'Menu overlay opened from a trigger', SURFACE, TEXT, SIZE],
+      ['context-menu', 'ContextMenu', 'Context Menu', 'Dropdowns & Menus', 'Contextual actions for the selected item', SURFACE, TEXT, SMALL],
+      ['select-dropdown', 'SelectDropdown', 'Select Dropdown', 'Dropdowns & Menus', 'Single choice from a list of options', SURFACE, TEXT, SIZE],
+      ['multi-select', 'MultiSelect', 'Multi-select Dropdown', 'Dropdowns & Menus', 'Several choices from a list of options', SURFACE, TEXT, SIZE],
+      ['nav-dropdown', 'NavDropdown', 'Navigation Dropdown', 'Dropdowns & Menus', 'Menu of destinations opened from the nav', SURFACE, TEXT, SIZE],
+      ['action-menu', 'ActionMenu', 'Action Menu', 'Dropdowns & Menus', 'Overflow menu of row or card actions', SURFACE, TEXT, SMALL],
+      ['combo-box', 'ComboBox', 'Combo Box', 'Dropdowns & Menus', 'Type-ahead field that filters its options', SURFACE, TEXT, SIZE],
+      ['user-menu', 'UserMenu', 'User Menu', 'Dropdowns & Menus', 'Account actions opened from an avatar', SURFACE, TEXT, SMALL],
+
+      ['tooltip', 'Tooltip', 'Tooltip', 'Tooltips', 'Short helper text shown on hover or focus', SURFACE, TEXT, SMALL],
+      ['info-tooltip', 'InfoTooltip', 'Info Tooltip', 'Tooltips', 'Explains a label or field on demand', SURFACE, TEXT, SMALL],
+      ['rich-tooltip', 'RichTooltip', 'Rich Tooltip', 'Tooltips', 'Longer helper text with a title', SURFACE, TEXT, SMALL],
+      ['shortcut-tooltip', 'ShortcutTooltip', 'Keyboard Shortcut Tooltip', 'Tooltips', 'Names the action and its shortcut', SURFACE, TEXT, SMALL],
+      ['error-tooltip', 'ErrorTooltip', 'Error Tooltip', 'Tooltips', 'Explains why an input is invalid', [], TEXT, SMALL],
+      ['onboarding-tooltip', 'OnboardingTooltip', 'Onboarding Tooltip', 'Tooltips', 'Points out a feature on first use', ACTION, TEXT, SMALL],
+
+      ['input-field', 'InputField', 'Text Input Field', 'Text Inputs', 'Standard text input field', ['input.bg', ...SURFACE], ['input.text', ...TEXT], SIZE],
+      ['email-input', 'EmailInput', 'Email Input', 'Text Inputs', 'Email address field', ['input.bg'], ['input.text'], SIZE],
+      ['password-input', 'PasswordInput', 'Password Input', 'Text Inputs', 'Masked credential field', ['input.bg'], ['input.text'], SIZE],
+      ['search-input', 'SearchInput', 'Search Input', 'Text Inputs', 'Search field with query text', ['input.bg'], ['input.text'], SIZE],
+      ['textarea-input', 'TextareaInput', 'Textarea', 'Text Inputs', 'Multi-line text field', ['input.bg'], ['input.text'], SIZE],
+      ['number-input', 'NumberInput', 'Number Input', 'Text Inputs', 'Numeric field with stepper affordance', ['input.bg'], ['input.text'], SIZE],
+      ['phone-input', 'PhoneInput', 'Phone Input', 'Text Inputs', 'Telephone number field', ['input.bg'], ['input.text'], SIZE],
+      ['url-input', 'UrlInput', 'URL Input', 'Text Inputs', 'Web address field', ['input.bg'], ['input.text'], SIZE],
+      ['input-with-label', 'LabelledInput', 'Labelled Input', 'Text Inputs', 'Field paired with its label and hint', ['input.bg'], ['input.text'], SIZE],
+      ['input-error', 'InputWithError', 'Input With Error', 'Text Inputs', 'Field in its invalid state', ['input.bg'], ['input.text'], SIZE],
+
+      ['checkbox', 'Checkbox', 'Checkbox', 'Selection Controls', 'Binary tick control', ACTION, TEXT, SMALL],
+      ['checkbox-group', 'CheckboxGroup', 'Checkbox Group', 'Selection Controls', 'Several independent tick options', ACTION, TEXT, SMALL],
+      ['radio-group', 'RadioGroup', 'Radio Group', 'Selection Controls', 'Single choice from a set', ACTION, TEXT, SMALL],
+      ['toggle-switch', 'ToggleSwitch', 'Toggle / Switch', 'Selection Controls', 'On-off state switch', ACTION, TEXT, SMALL],
+      ['segmented-control', 'SegmentedControl', 'Segmented Control', 'Selection Controls', 'Mutually exclusive options in one bar', SURFACE, TEXT, SMALL],
+      ['star-rating', 'StarRating', 'Star Rating', 'Selection Controls', 'Score picked from a row of stars', ACTION, TEXT, SMALL],
+      ['choice-chips', 'ChoiceChips', 'Choice Chips', 'Selection Controls', 'Selectable chips for quick filtering', SURFACE, TEXT, SMALL],
+
+      ['color-picker', 'ColorPicker', 'Color Picker', 'Advanced Selectors', 'Swatch-based colour selector', ACTION, TEXT, SMALL],
+      ['date-picker', 'DatePicker', 'Date Picker', 'Advanced Selectors', 'Date and time selector field', SURFACE, TEXT, SMALL],
+      ['date-range-picker', 'DateRangePicker', 'Date Range Picker', 'Advanced Selectors', 'Start and end date selector', SURFACE, TEXT, SMALL],
+      ['time-picker', 'TimePicker', 'Time Picker', 'Advanced Selectors', 'Hour and minute selector', SURFACE, TEXT, SMALL],
+      ['file-upload', 'FileUpload', 'File Upload Zone', 'Advanced Selectors', 'Drop target for file uploads', ACTION, TEXT, SMALL],
+      ['image-upload', 'ImageUpload', 'Image Upload', 'Advanced Selectors', 'Drop target that previews the image', ACTION, TEXT, SMALL],
+      ['slider-input', 'SliderInput', 'Slider', 'Advanced Selectors', 'Value picked along a track', ACTION, TEXT, SMALL],
+
+      ['accordion', 'Accordion', 'Accordion', 'Accordions', 'Stacked expandable content panels', SURFACE, TEXT, SIZE],
+      ['faq-accordion', 'FaqAccordion', 'FAQ Accordion', 'Accordions', 'Question and answer disclosure list', SURFACE, TEXT, SIZE],
+      ['settings-accordion', 'SettingsAccordion', 'Settings Accordion', 'Accordions', 'Grouped settings that expand in place', SURFACE, TEXT, SIZE],
+      ['nested-accordion', 'NestedAccordion', 'Nested Accordion', 'Accordions', 'Disclosure panels inside another panel', SURFACE, TEXT, SIZE],
+      ['collapsible-panel', 'CollapsiblePanel', 'Collapsible Panel', 'Accordions', 'A single section that folds away', SURFACE, TEXT, SIZE],
+
+      ['info-card', 'InformationCard', 'Information Card', 'Cards', 'Container for structured content', ['input.bg', ...SURFACE], TEXT, SIZE],
+      ['media-card', 'MediaCard', 'Media Card', 'Cards', 'Card leading with an image or media block', SURFACE, TEXT, SIZE],
+      ['product-card', 'ProductCard', 'Product Card', 'Cards', 'Item with image, price and an action', SURFACE, TEXT, SIZE],
+      ['stat-card', 'StatCard', 'Stat Card', 'Cards', 'Single metric with a label and trend', SURFACE, TEXT, SIZE],
+      ['profile-card', 'ProfileCard', 'Profile Card', 'Cards', 'Person with avatar, role and actions', SURFACE, TEXT, SIZE],
+      ['pricing-card', 'PricingCard', 'Pricing Card', 'Cards', 'Plan with price, features and a call to action', SURFACE, TEXT, SIZE],
+      ['empty-state-card', 'EmptyStateCard', 'Empty State Card', 'Cards', 'Explains an empty area and what to do next', SURFACE, TEXT, SIZE],
+
+      ['tab-bar', 'TabBar', 'Tab Bar', 'Tabs', 'Tabbed switcher between panels', SURFACE, TEXT, SIZE],
+      ['underline-tabs', 'UnderlineTabs', 'Underline Tabs', 'Tabs', 'Tabs marked by an underline indicator', SURFACE, TEXT, SIZE],
+      ['pill-tabs', 'PillTabs', 'Pill Tabs', 'Tabs', 'Tabs shaped as filled pills', ACTION, TEXT, SIZE],
+      ['vertical-tabs', 'VerticalTabs', 'Vertical Tabs', 'Tabs', 'Tabs stacked down the side of the panel', SURFACE, TEXT, SIZE],
+      ['scrollable-tabs', 'ScrollableTabs', 'Scrollable Tabs', 'Tabs', 'Overflowing tabs that scroll sideways', SURFACE, TEXT, SIZE],
+
+      ['modal-dialog', 'ModalDialog', 'Modal Dialog', 'Modals & Dialogs', 'Overlay window for a focused task', SURFACE, TEXT, SIZE],
+      ['confirm-dialog', 'ConfirmDialog', 'Confirmation Dialog', 'Modals & Dialogs', 'Dialog requiring an explicit response', SURFACE, TEXT, SIZE],
+      ['alert-dialog', 'AlertDialog', 'Alert Dialog', 'Modals & Dialogs', 'Warns before a destructive action', SURFACE, TEXT, SIZE],
+      ['form-dialog', 'FormDialog', 'Form Dialog', 'Modals & Dialogs', 'Short form completed without leaving the page', SURFACE, TEXT, SIZE],
+      ['fullscreen-modal', 'FullscreenModal', 'Fullscreen Modal', 'Modals & Dialogs', 'Takeover for a longer task', SURFACE, TEXT, SIZE],
+      ['sheet-dialog', 'SheetDialog', 'Sheet Dialog', 'Modals & Dialogs', 'Panel that slides in from an edge', SURFACE, TEXT, SIZE],
+
+      ['data-table', 'DataTable', 'Data Table', 'Grids & Tables', 'Sortable rows and columns of data', SURFACE, TEXT, SMALL],
+      ['compact-table', 'CompactTable', 'Compact Table', 'Grids & Tables', 'Dense table for scanning many rows', SURFACE, TEXT, SMALL],
+      ['selectable-table', 'SelectableTable', 'Selectable Table', 'Grids & Tables', 'Table whose rows can be picked in bulk', SURFACE, TEXT, SMALL],
+      ['data-grid', 'DataGrid', 'Data Grid', 'Grids & Tables', 'Editable grid with pinned columns', SURFACE, TEXT, SMALL],
+      ['empty-table', 'EmptyTable', 'Empty Table', 'Grids & Tables', 'Table with no rows yet', SURFACE, TEXT, SMALL],
+
+      ['brand-badge', 'StatusBadge', 'Status Badge', 'Badges & Tags', 'Compact status indicator', ['color.action', 'brand.color.accent'], TEXT, SMALL],
+      ['tag-chip', 'TagChip', 'Tag / Chip', 'Badges & Tags', 'Category label chip', SURFACE, TEXT, SMALL],
+      ['count-badge', 'CountBadge', 'Count Badge', 'Badges & Tags', 'Numeric counter on an icon or tab', ACTION, TEXT, SMALL],
+      ['dot-badge', 'DotBadge', 'Dot Badge', 'Badges & Tags', 'Small dot marking unread or active state', ACTION, TEXT, SMALL],
+      ['removable-tag', 'RemovableTag', 'Removable Tag', 'Badges & Tags', 'Chip the user can dismiss', SURFACE, TEXT, SMALL],
+      ['priority-tag', 'PriorityTag', 'Priority Tag', 'Badges & Tags', 'Severity or priority label', [], TEXT, SMALL],
+
+      ['bar-chart', 'BarChart', 'Bar Chart', 'Charts', 'Categorical bar comparison', ACTION, TEXT, SMALL],
+      ['line-chart', 'LineChart', 'Line Chart', 'Charts', 'Trend over a continuous range', ACTION, TEXT, SMALL],
+      ['area-chart', 'AreaChart', 'Area Chart', 'Charts', 'Filled trend showing volume over time', ACTION, TEXT, SMALL],
+      ['pie-chart', 'PieChart', 'Pie Chart', 'Charts', 'Parts of a whole', ACTION, TEXT, SMALL],
+      ['doughnut-chart', 'DoughnutChart', 'Doughnut Chart', 'Charts', 'Parts of a whole with a centre label', ACTION, TEXT, SMALL],
+      ['sparkline', 'Sparkline', 'Sparkline', 'Charts', 'Tiny inline trend beside a metric', ACTION, TEXT, SMALL],
+
+      ['avatar', 'Avatar', 'Avatar', 'Images & Avatars', 'Circular representation of a user or entity', ACTION, TEXT, SMALL],
+      ['avatar-group', 'AvatarGroup', 'Avatar Group', 'Images & Avatars', 'Overlapping avatars for a set of people', ACTION, TEXT, SMALL],
+      ['image-thumbnail', 'ImageThumbnail', 'Image Thumbnail', 'Images & Avatars', 'Small preview of a larger image', SURFACE, TEXT, SMALL],
+      ['logo-mark', 'LogoMark', 'Logo Mark', 'Images & Avatars', 'Brand mark used in nav and headers', SURFACE, TEXT, SMALL],
+      ['image-placeholder', 'ImagePlaceholder', 'Image Placeholder', 'Images & Avatars', 'Stand-in shown while an image loads', SURFACE, TEXT, SMALL],
+
+      ['breadcrumbs', 'Breadcrumbs', 'Breadcrumbs', 'Breadcrumbs', 'Hierarchical path to the current page', [], TEXT, SMALL],
+      ['compact-breadcrumbs', 'CompactBreadcrumbs', 'Compact Breadcrumbs', 'Breadcrumbs', 'Long path collapsed with an ellipsis', [], TEXT, SMALL],
+      ['icon-breadcrumbs', 'IconBreadcrumbs', 'Icon Breadcrumbs', 'Breadcrumbs', 'Path whose first crumb is a home icon', [], TEXT, SMALL],
+
+      ['pagination', 'Pagination', 'Pagination', 'Pagination', 'Steps across multi-page content', ACTION, TEXT, SMALL],
+      ['simple-pagination', 'SimplePagination', 'Simple Pagination', 'Pagination', 'Previous and next only', SURFACE, TEXT, SMALL],
+      ['load-more', 'LoadMore', 'Load More', 'Pagination', 'Appends the next page in place', SURFACE, TEXT, SMALL],
+      ['page-size-picker', 'PageSizePicker', 'Page Size Picker', 'Pagination', 'Chooses how many rows per page', SURFACE, TEXT, SMALL],
+
+      ['nav-bar', 'NavBar', 'Navigation Bar', 'Nav Bars / Drawers', 'Top-level application navigation', SURFACE, TEXT, SIZE],
+      ['side-drawer', 'SideDrawer', 'Side Drawer', 'Nav Bars / Drawers', 'Side sheet holding global paths', SURFACE, TEXT, SIZE],
+      ['side-nav', 'SideNav', 'Side Navigation', 'Nav Bars / Drawers', 'Persistent vertical navigation rail', SURFACE, TEXT, SIZE],
+      ['mobile-drawer', 'MobileDrawer', 'Mobile Drawer', 'Nav Bars / Drawers', 'Off-canvas menu for small screens', SURFACE, TEXT, SIZE],
+      ['bottom-nav', 'BottomNav', 'Bottom Navigation', 'Nav Bars / Drawers', 'Primary destinations along the bottom edge', SURFACE, TEXT, SIZE],
+      ['toolbar', 'Toolbar', 'Toolbar', 'Nav Bars / Drawers', 'Row of tools above a working area', SURFACE, TEXT, SIZE],
+    ];
+
+    return [
+      {
+        id: 'custom',
+        name: '',
+        label: 'Custom Component (Blank)',
+        category: CATEGORY_LIST[0],
+        type: TYPES_FOR_CATEGORY(CATEGORY_LIST[0])[0],
+        description: '',
+        template: 'button',
+        tokens: { bg: '', textColor: '', padding: '', borderRadius: '', fontFamily: '', fontSize: '' },
+      },
+      ...SPECS.map(([id, name, label, type, description, bg, textColor, fontSize]) => ({
+        id,
+        name,
+        label,
+        type,
+        category: COMPONENT_TYPE_CATEGORY[type],
+        template: TYPE_TO_TEMPLATE[type],
+        description,
+        tokens: { bg, textColor, padding: PAD, borderRadius: RADIUS, fontFamily: FONT, fontSize },
+      })),
+    ];
+  }, []);
 
   const getTokensOfType = (type) => {
     const list = [];
@@ -6644,28 +7181,38 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
     return Array.isArray(list) ? list.map(t => t.name).filter(Boolean) : [];
   };
 
+  // Editing resolves through the taxonomy, which already handles every legacy category
+  // name (including the old Atom/Molecule/Organism values) via LEGACY_CATEGORY_ALIAS.
   const getInitialCategory = () => {
-    if (!isEdit) return 'Actions & Buttons';
-    let cat = componentToEdit.category;
-    if (cat === 'Atom') {
-      if (componentToEdit.template === 'button') return 'Actions & Buttons';
-      else if (componentToEdit.template === 'input') return 'Form Inputs';
-      else if (componentToEdit.template === 'badge') return 'Feedback & Status';
-      else return 'Actions & Buttons';
-    } else if (cat === 'Molecule') {
-      if (componentToEdit.template === 'card') return 'Display & Data';
-      else return 'Display & Data';
-    } else if (cat === 'Organism') {
-      return 'Navigation';
-    }
-    return cat || 'Actions & Buttons';
+    if (!isEdit) return initialCategory || CATEGORY_LIST[0];
+    return categoryForComponent(componentToEdit);
   };
 
   const [selectedPreset, setSelectedPreset] = useState('custom');
   const [name, setName] = useState(isEdit ? componentToEdit.name : '');
   const [description, setDescription] = useState(isEdit ? componentToEdit.description : '');
   const [category, setCategory] = useState(getInitialCategory());
-  const [template, setTemplate] = useState(isEdit ? componentToEdit.template : 'button');
+  // Opened from a type folder, a blank component starts on that type's template so it
+  // renders as the thing the folder says it is rather than defaulting to a button.
+  const [template, setTemplate] = useState(
+    isEdit ? componentToEdit.template : (TYPE_TO_TEMPLATE[initialType] || 'button')
+  );
+
+  // Preview ground, so a designer can check the component on both.
+  const [previewLight, setPreviewLight] = useState(false);
+
+  // What the mapped rows currently add up to, so the preview beside the form
+  // shows the component as it will actually look — no save-and-reopen loop.
+  const previewStyle = () => {
+    const out = {};
+    for (const row of tokenRows) {
+      if (!row.value) continue;
+      const resolved = resolveTokenName(activeTokens, row.value);
+      if (!resolved) continue;
+      out[cssPropToStyleKey(cssPropForTokenKey(row.key))] = resolved;
+    }
+    return out;
+  };
 
   // Token mappings — one row per mapped CSS property. A row's `key` is either
   // a legacy storage key or a raw CSS property name; `cssPropForTokenKey`
@@ -6680,6 +7227,11 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
     }
     return DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({ key, value: '' }));
   });
+  // Only rows that resolve to a real value count as mapped — a row pointing at
+  // a token the project no longer defines is not styling anything.
+  const mappedCount = tokenRows.filter(
+    r => r.value && resolveTokenName(activeTokens, r.value)
+  ).length;
   const [checkedRowKeys, setCheckedRowKeys] = useState(() => new Set());
 
   const updateRowValue = (key, value) => setTokenRows(rows => rows.map(r => (r.key === key ? { ...r, value } : r)));
@@ -6707,6 +7259,31 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
   });
   const allRowsChecked = tokenRows.length > 0 && tokenRows.every(r => checkedRowKeys.has(r.key));
   const toggleAllRowsChecked = () => setCheckedRowKeys(allRowsChecked ? new Set() : new Set(tokenRows.map(r => r.key)));
+  // Generated from the fields, so the code always reflects what is mapped right now.
+  const generatedComponentCode =
+    codeFormat === 'css' ? componentToCssText(name, tokenRows)
+    : codeFormat === 'jsx' ? componentToJsxText(name, template)
+    : componentToJsonText(name, TEMPLATE_TO_TYPE[template] || '', template, description, tokenRows);
+  const componentCodeText = codeDraft === null ? generatedComponentCode : codeDraft;
+
+  // Applies a parsed result to the form. Anything that failed to parse never reaches
+  // here, so a bad paste always leaves the component exactly as it was.
+  const applyParsedCode = (parsed) => {
+    if (parsed.error) { setCodeError(parsed.error); return; }
+    setCodeError('');
+    if (parsed.rows) setTokenRows(parsed.rows);
+    if (parsed.name !== undefined) setName(parsed.name);
+    if (parsed.description !== undefined) setDescription(parsed.description);
+    if (parsed.template && TEMPLATE_TO_TYPE[parsed.template]) {
+      setTemplate(parsed.template);
+      setCategory(COMPONENT_TYPE_CATEGORY[TEMPLATE_TO_TYPE[parsed.template]] || category);
+    }
+    const skipped = parsed.skipped || [];
+    setCodeNote(skipped.length
+      ? skipped.length + ' declaration' + (skipped.length === 1 ? '' : 's') + ' skipped — no matching token: ' + skipped.slice(0, 4).join(', ')
+      : '');
+  };
+
   const removeCheckedRows = () => {
     setTokenRows(rows => rows.filter(r => !checkedRowKeys.has(r.key)));
     setCheckedRowKeys(new Set());
@@ -6718,8 +7295,11 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
     if (preset) {
       setName(preset.name);
       setDescription(preset.description);
-      setCategory(preset.category);
-      setTemplate(preset.template);
+      // The Custom preset carries a default category. Opened from a folder that would
+      // silently refile the component elsewhere, so the folder wins for Custom.
+      const blank = preset.id === 'custom';
+      setCategory(blank && initialCategory ? initialCategory : preset.category);
+      setTemplate(blank && initialType ? (TYPE_TO_TEMPLATE[initialType] || preset.template) : preset.template);
       if (preset.id === 'custom') {
         setTokenRows(DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({ key, value: '' })));
       } else {
@@ -6744,6 +7324,9 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
       name: name.trim(),
       description: description.trim() || 'Custom component',
       category,
+      // Stored for readability only — the tree derives the type from `template`,
+      // so a component can never be filed somewhere it cannot be drawn.
+      type: TEMPLATE_TO_TYPE[template] || undefined,
       template,
       tokens,
     });
@@ -6783,7 +7366,7 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
         return {
           checked: true,
           name: rowName,
-          category: 'Actions & Buttons',
+          category: COMPONENT_TYPE_CATEGORY[UPLOAD_TYPE],
           imageUrl: cropped[i],
           accentColor: r.dominantColor,
           xPct: (r.x / naturalW) * 100,
@@ -6836,6 +7419,7 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
       name: r.name.trim(),
       description: '',
       category: r.category,
+      type: UPLOAD_TYPE,
       template: 'image',
       imageUrl: r.imageUrl,
       accentColor: r.accentColor,
@@ -6854,7 +7438,7 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
     }}>
       <div style={{
         background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-        borderRadius: '16px', padding: '2rem', width: '600px',
+        borderRadius: '16px', padding: '2rem', width: 'min(940px, 94vw)',
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
         display: 'flex', flexDirection: 'column', gap: '1.5rem',
@@ -6892,6 +7476,14 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
 
         {entryTab === 'manual' && (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Fields on the left, the component itself on the right. A designer
+              mapping a token sees the result immediately instead of saving,
+              closing and reopening the preview drawer to check. */}
+          <div className="pd-editor-split" style={{
+            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 268px',
+            gap: '1.5rem', alignItems: 'start',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
           {!isEdit && (
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Choose Preset Template</label>
@@ -6901,9 +7493,15 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
                 onChange={(e) => handlePresetChange(e.target.value)}
                 style={{ cursor: 'pointer', borderColor: 'var(--accent)' }}
               >
-                {PRESET_COMPONENTS.map(p => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
+                {/* Opened from a folder, only that folder's presets are offered (Custom
+                    always is, so a blank component can be started anywhere). */}
+                {PRESET_COMPONENTS
+                  .filter(p => p.id === 'custom'
+                    || (initialType ? p.type === initialType
+                      : !initialCategory || p.category === initialCategory))
+                  .map(p => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
               </select>
             </div>
           )}
@@ -6921,20 +7519,27 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
               />
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Category</label>
+              {/* One control for both: the type decides which template draws the
+                  preview and which folder the component files into, so a separate
+                  category picker could only ever disagree with the tree. */}
+              <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Type</label>
               <select
                 className="form-input"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                value={TEMPLATE_TO_TYPE[template] || ''}
+                onChange={(e) => {
+                  const nextType = e.target.value;
+                  setTemplate(TYPE_TO_TEMPLATE[nextType] || template);
+                  setCategory(COMPONENT_TYPE_CATEGORY[nextType] || category);
+                }}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="Actions & Buttons">Actions & Buttons</option>
-                <option value="Form Inputs">Form Inputs</option>
-                <option value="Display & Data">Display & Data</option>
-                <option value="Feedback & Status">Feedback & Status</option>
-                <option value="Navigation">Navigation</option>
-                <option value="Overlays">Overlays</option>
-                <option value="Layout Primitives">Layout Primitives</option>
+                {COMPONENT_TAXONOMY.map(group => (
+                  <optgroup key={group.category} label={group.category}>
+                    {group.types.map(t => (
+                      <option key={t.type} value={t.type}>{t.type}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
           </div>
@@ -6950,134 +7555,233 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
             />
           </div>
 
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Preview Template</label>
-            <select
-              className="form-input"
-              value={template}
-              onChange={(e) => setTemplate(e.target.value)}
-              style={{ cursor: 'pointer' }}
-            >
-              <option value="button">Button template</option>
-              <option value="badge">Badge template</option>
-              <option value="card">Card template</option>
-              <option value="input">Input template</option>
-            </select>
-          </div>
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <h4 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Token Mappings</h4>
-              {checkedRowKeys.size > 0 && (
-                <button
-                  type="button"
-                  onClick={removeCheckedRows}
-                  style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '0.75rem', cursor: 'pointer', padding: 0 }}
-                >
-                  Remove {checkedRowKeys.size} selected
-                </button>
-              )}
-            </div>
-
-            <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{
-                display: 'grid', gridTemplateColumns: '24px 1.1fr 1fr 1.3fr 56px', gap: '0.5rem', alignItems: 'center',
-                padding: '0.5rem 0.75rem', background: 'var(--bg-tertiary)', borderBottom: tokenRows.length ? '1px solid var(--border)' : 'none',
-              }}>
-                <input
-                  type="checkbox"
-                  checked={allRowsChecked}
-                  onChange={toggleAllRowsChecked}
-                  disabled={!tokenRows.length}
-                  style={{ accentColor: 'var(--accent)', cursor: tokenRows.length ? 'pointer' : 'default', width: '14px', height: '14px' }}
-                />
-                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em' }}>Property</span>
-                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em' }}>Name</span>
-                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em' }}>Value</span>
-                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.03em', textAlign: 'right' }}>Tools</span>
-              </div>
-
-              {tokenRows.length === 0 && (
-                <div style={{ padding: '1rem 0.75rem', fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-                  No properties mapped yet — add one below.
-                </div>
-              )}
-
-              {tokenRows.map((row, i) => {
-                const cssProp = cssPropForTokenKey(row.key);
-                const tokenOptions = getTokensForProperty(cssProp);
-                const usedProps = tokenRows.map(r => cssPropForTokenKey(r.key));
-                return (
-                  <div
-                    key={row.key}
+            {/* Mappings and code are two views of the same thing, so they swap in place
+                rather than stacking — the dialog already runs past the bottom of a
+                laptop screen, and a panel added below here would never be seen. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '7px', padding: '2px' }}>
+                {[['properties', 'Token Mappings'], ['code', 'Code']].map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setEditorTab(tab)}
                     style={{
-                      display: 'grid', gridTemplateColumns: '24px 1.1fr 1fr 1.3fr 56px', gap: '0.5rem', alignItems: 'center',
-                      padding: '0.5rem 0.75rem', borderBottom: i < tokenRows.length - 1 ? '1px solid var(--border)' : 'none',
+                      border: 'none', borderRadius: '5px', cursor: 'pointer', fontFamily: 'inherit',
+                      padding: '0.3rem 0.7rem', fontSize: '0.73rem',
+                      background: editorTab === tab ? 'var(--bg-secondary)' : 'none',
+                      color: editorTab === tab ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      fontWeight: editorTab === tab ? 600 : 400,
                     }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checkedRowKeys.has(row.key)}
-                      onChange={() => toggleRowChecked(row.key)}
-                      style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '14px', height: '14px' }}
-                    />
-                    <select
-                      value={cssProp}
-                      onChange={(e) => changeRowProperty(row.key, e.target.value)}
-                      title="CSS property this row maps"
-                      style={{
-                        fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-primary)',
-                        background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px',
-                        padding: '0.25rem 0.3rem', maxWidth: '100%', cursor: 'pointer',
-                      }}
-                    >
-                      {CSS_PROPERTY_GROUPS.map(group => (
-                        <optgroup key={group.display} label={group.display}>
-                          {group.properties.map(p => (
-                            <option key={p} value={p} disabled={p !== cssProp && usedProps.includes(p)}>{p}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {humanizeCssProp(cssProp)}
-                    </span>
-                    <select
-                      className="form-input"
-                      value={row.value}
-                      onChange={(e) => updateRowValue(row.key, e.target.value)}
-                      title={tokenOptions.length ? undefined : `No ${getCategoryForType(cssProp)} tokens defined yet`}
-                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.4rem' }}
-                    >
-                      <option value="">
-                        {tokenOptions.length ? '-- None --' : `No ${getCategoryForType(cssProp)} tokens yet`}
-                      </option>
-                      {tokenOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
-                      <span
-                        title={row.value ? `Linked to ${row.value}` : 'Not linked to a token yet'}
-                        style={{ color: row.value ? 'var(--accent)' : 'var(--text-tertiary)', opacity: row.value ? 1 : 0.4, display: 'flex', alignItems: 'center', padding: '0.2rem' }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
-                        </svg>
-                      </span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {editorTab === 'code' && (
+                <>
+                  <div style={{ display: 'flex', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px', marginLeft: 'auto' }}>
+                    {[['css', 'CSS'], ['jsx', 'JSX'], ['json', 'JSON']].map(([fmt, label]) => (
                       <button
+                        key={fmt}
                         type="button"
-                        onClick={() => removeRow(row.key)}
-                        title="Remove property"
-                        style={{ background: 'none', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer', padding: '0.2rem', display: 'flex', alignItems: 'center' }}
+                        onClick={() => { setCodeFormat(fmt); setCodeDraft(null); setCodeError(''); setCodeNote(''); }}
+                        style={{
+                          border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit',
+                          padding: '0.2rem 0.5rem', fontSize: '0.67rem',
+                          background: codeFormat === fmt ? 'var(--bg-secondary)' : 'none',
+                          color: codeFormat === fmt ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                          fontWeight: codeFormat === fmt ? 600 : 400,
+                        }}
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                        </svg>
+                        {label}
                       </button>
-                    </div>
+                    ))}
                   </div>
-                );
-              })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(componentCodeText);
+                      setCodeCopied(true);
+                      setTimeout(() => setCodeCopied(false), 1400);
+                    }}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                      borderRadius: '6px', padding: '0.25rem 0.55rem',
+                      color: codeCopied ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '0.67rem', cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                    {codeCopied ? 'Copied' : 'Copy'}
+                  </button>
+                </>
+              )}
             </div>
+
+            {editorTab === 'code' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                <textarea
+                  className="pd-component-code"
+                  value={componentCodeText}
+                  readOnly={codeFormat === 'jsx'}
+                  spellCheck={false}
+                  onChange={(e) => {
+                    const text = e.target.value;
+                    setCodeDraft(text);
+                    if (codeFormat === 'css') applyParsedCode(parseComponentCss(text, activeTokens));
+                    else if (codeFormat === 'json') applyParsedCode(parseComponentJson(text));
+                  }}
+                  onBlur={() => { if (!codeError) setCodeDraft(null); }}
+                  style={{
+                    width: '100%', height: '240px', resize: 'vertical',
+                    background: 'var(--bg)', color: 'var(--text-primary)',
+                    border: `1px solid ${codeError ? '#EF4444' : 'var(--border)'}`,
+                    borderRadius: '8px', padding: '0.7rem 0.8rem',
+                    fontFamily: 'var(--font-mono)', fontSize: '0.73rem', lineHeight: 1.6,
+                    outline: 'none', tabSize: 2,
+                  }}
+                />
+                {codeError ? (
+                  <span style={{ fontSize: '0.68rem', color: '#EF4444' }}>{codeError}</span>
+                ) : codeNote ? (
+                  <span style={{ fontSize: '0.68rem', color: '#F59E0B' }}>{codeNote}</span>
+                ) : (
+                  <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                    {codeFormat === 'jsx'
+                      ? 'JSX is copy-only — component markup cannot be read back into token mappings.'
+                      : codeFormat === 'css'
+                        ? 'Edit or paste a CSS rule — each var() is matched against your tokens and becomes a mapping.'
+                        : 'Edit or paste the component spec — name, type and mappings all follow along.'}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {editorTab === 'properties' && (<>
+            {tokenRows.length === 0 && (
+              <div style={{
+                padding: '1rem 0.85rem', fontSize: '0.78rem', color: 'var(--text-tertiary)',
+                border: '1px solid var(--border)', borderRadius: '10px',
+              }}>
+                No properties mapped yet — add one below.
+              </div>
+            )}
+
+            {/* Rows are grouped the way the token sidebar is, so a designer scans
+                "the colours" and "the spacing" rather than one flat list. */}
+            {CSS_PROPERTY_GROUPS.map(group => {
+              const rows = tokenRows.filter(r => group.properties.includes(cssPropForTokenKey(r.key)));
+              if (!rows.length) return null;
+              return (
+                <div key={group.display} style={{ marginBottom: '0.9rem' }}>
+                  <div style={{
+                    fontSize: '0.63rem', textTransform: 'uppercase', letterSpacing: '0.06em',
+                    color: 'var(--text-tertiary)', marginBottom: '0.35rem',
+                  }}>
+                    {group.display}
+                  </div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'visible' }}>
+                    {rows.map((row, i) => {
+                      const cssProp = cssPropForTokenKey(row.key);
+                      const tokenOptions = getTokensForProperty(cssProp);
+                      const usedProps = tokenRows.map(r => cssPropForTokenKey(r.key));
+                      const resolved = resolveTokenName(activeTokens, row.value);
+                      const emptyLabel = `No ${getCategoryForType(cssProp)} tokens yet`;
+                      return (
+                        <div
+                          key={row.key}
+                          style={{
+                            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.25fr) 24px',
+                            gap: '0.6rem', alignItems: 'center', padding: '0.5rem 0.7rem',
+                            borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none',
+                          }}
+                        >
+                          {/* The human name leads; the raw CSS property is the detail
+                              underneath, and is still the control that changes it. */}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{
+                              fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 500,
+                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>
+                              {humanizeCssProp(cssProp)}
+                            </div>
+                            <select
+                              value={cssProp}
+                              onChange={(e) => changeRowProperty(row.key, e.target.value)}
+                              title="CSS property this row maps"
+                              style={{
+                                fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--text-tertiary)',
+                                background: 'none', border: 'none', borderRadius: '4px',
+                                padding: 0, maxWidth: '100%', cursor: 'pointer', marginTop: '0.1rem',
+                              }}
+                            >
+                              {CSS_PROPERTY_GROUPS.map(g => (
+                                <optgroup key={g.display} label={g.display}>
+                                  {g.properties.map(p => (
+                                    <option key={p} value={p} disabled={p !== cssProp && usedProps.includes(p)}>{p}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </div>
+
+                          {isColorProp(cssProp) ? (
+                            <TokenSwatchPicker
+                              value={row.value}
+                              options={tokenOptions}
+                              activeTokens={activeTokens}
+                              emptyLabel={emptyLabel}
+                              onChange={(v) => updateRowValue(row.key, v)}
+                            />
+                          ) : (
+                            <div style={{ minWidth: 0 }}>
+                              <select
+                                className="form-input"
+                                value={row.value}
+                                onChange={(e) => updateRowValue(row.key, e.target.value)}
+                                title={tokenOptions.length ? undefined : emptyLabel}
+                                style={{ fontSize: '0.74rem', padding: '0.3rem 0.4rem', width: '100%' }}
+                              >
+                                <option value="">{tokenOptions.length ? 'Not mapped' : emptyLabel}</option>
+                                {tokenOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                              {/* The value the token actually resolves to — the thing the
+                                  old "Value" column claimed to show but never did. */}
+                              <div style={{
+                                fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)',
+                                marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>
+                                {row.value ? (resolved || 'unresolved') : ' '}
+                              </div>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => removeRow(row.key)}
+                            title={'Remove ' + humanizeCssProp(cssProp)}
+                            style={{
+                              background: 'none', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer',
+                              padding: '0.2rem', display: 'flex', alignItems: 'center', justifySelf: 'end',
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                            </svg>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
 
             {(() => {
               const usedProps = new Set(tokenRows.map(r => cssPropForTokenKey(r.key)));
@@ -7090,17 +7794,71 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
                   value=""
                   onChange={(e) => { if (e.target.value) addRow(e.target.value); }}
                   className="form-input"
-                  style={{ marginTop: '0.75rem', fontSize: '0.78rem', maxWidth: '260px', cursor: 'pointer' }}
+                  style={{ marginTop: '0.25rem', fontSize: '0.78rem', maxWidth: '260px', cursor: 'pointer' }}
                 >
                   <option value="">+ Add token property…</option>
                   {groups.map(g => (
                     <optgroup key={g.display} label={g.display}>
-                      {g.properties.map(p => <option key={p} value={p}>{p}</option>)}
+                      {g.properties.map(p => <option key={p} value={p}>{humanizeCssProp(p)}</option>)}
                     </optgroup>
                   ))}
                 </select>
               );
             })()}
+            </>)}
+          </div>
+            </div>
+
+            <aside className="pd-editor-preview" style={{ position: 'sticky', top: 0, minWidth: 0 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: '0.5rem', gap: '0.5rem',
+              }}>
+                <span style={{ fontSize: '0.63rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>
+                  Preview
+                </span>
+                {/* Designers check a component against both grounds, so the
+                    preview can be flipped without leaving the editor. */}
+                <div style={{ display: 'flex', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px' }}>
+                  {[['dark', 'Dark'], ['light', 'Light']].map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setPreviewLight(mode === 'light')}
+                      style={{
+                        border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit',
+                        padding: '0.15rem 0.4rem', fontSize: '0.63rem',
+                        background: (mode === 'light') === previewLight ? 'var(--bg-secondary)' : 'none',
+                        color: (mode === 'light') === previewLight ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                minHeight: '170px', padding: '1rem', overflow: 'hidden',
+                borderRadius: '10px', border: '1px solid var(--border)',
+                background: previewLight ? '#F4F4F6' : 'var(--bg)',
+              }}>
+                {renderComponentPreview(
+                  { ...(componentToEdit || {}), name: name || 'Component', template },
+                  previewStyle(),
+                  previewLight
+                    ? { surface: '#ffffff', surfaceAlt: '#f1f1f4', text: '#171717', muted: '#71717a', border: '#e4e4e7', shadow: '0 4px 12px rgba(0,0,0,0.12)' }
+                    : {}
+                )}
+              </div>
+
+              <p style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', margin: '0.5rem 0 0', lineHeight: 1.5 }}>
+                {mappedCount
+                  ? mappedCount + ' propert' + (mappedCount === 1 ? 'y' : 'ies') + ' mapped. Unmapped ones fall back to the preview’s own styling.'
+                  : 'Nothing mapped yet — this is the untouched ' + (TEMPLATE_TO_TYPE[template] || template) + ' preview.'}
+              </p>
+            </aside>
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
@@ -7254,23 +8012,13 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
                               style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem' }}
                             />
                           </div>
-                          <div>
-                            <label style={{ fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-tertiary)', display: 'block', marginBottom: '0.2rem' }}>Category</label>
-                            <select
-                              className="form-input"
-                              value={row.category}
-                              onChange={(e) => updateUploadRow(i, { category: e.target.value })}
-                              disabled={!row.checked}
-                              style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', cursor: 'pointer' }}
-                            >
-                              <option value="Actions & Buttons">Actions & Buttons</option>
-                              <option value="Form Inputs">Form Inputs</option>
-                              <option value="Display & Data">Display & Data</option>
-                              <option value="Feedback & Status">Feedback & Status</option>
-                              <option value="Navigation">Navigation</option>
-                              <option value="Overlays">Overlays</option>
-                              <option value="Layout Primitives">Layout Primitives</option>
-                            </select>
+                          {/* Every uploaded region is saved as an image component, so it
+                              always files under Images & Avatars. A category picker here
+                              would set a field the tree does not read. */}
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>
+                            Files under <span style={{ color: 'var(--text-secondary)' }}>
+                              {COMPONENT_TYPE_CATEGORY[UPLOAD_TYPE]} › {UPLOAD_TYPE}
+                            </span>
                           </div>
                           {error && <span style={{ fontSize: '0.7rem', color: '#EF4444' }}>{error}</span>}
                         </div>

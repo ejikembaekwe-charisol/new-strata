@@ -116,19 +116,3 @@ export function tokensFromChoices(palette, pairing) {
   }
   return tokens;
 }
-
-/**
- * addProject stores tokens in the category-keyed shape that migrateTokensToLayers expects,
- * not a flat array — so build that shape directly here.
- */
-export function tokenMapFromChoices(palette, pairing) {
-  const map = {
-    Color: [], Typography: [], Spacing: [], Sizing: [], Layout: [],
-    Flexbox: [], Lists: [], Border: [], Shadow: [], Motion: [],
-  };
-  for (const t of tokensFromChoices(palette, pairing)) {
-    if (t.type === 'color') map.Color.push(t);
-    else if (t.type === 'fontFamily') map.Typography.push(t);
-  }
-  return map;
-}

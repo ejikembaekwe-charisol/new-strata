@@ -3,6 +3,7 @@ import {
   PALETTES, FONT_PAIRINGS, INDUSTRIES, VIBES, CUSTOM_ID, KNOWN_FAMILIES,
   getSuggestion, resolvePalette, resolvePairing, industryLabel,
 } from './designSystemData';
+import { ColorSwatchButton } from '../ColorPicker';
 
 // Steps for the from-scratch path. Hand-rolled inline styles on CSS vars, matching the
 // rest of the app rather than introducing a component kit only here.
@@ -133,11 +134,11 @@ export function ColorsStep({ data, set }) {
           <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.8rem' }}>Your own colours</div>
           {[['primary', 'Primary'], ['secondary', 'Secondary'], ['accent', 'Accent']].map(([key, name]) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <input
-                type="color"
+              <ColorSwatchButton
                 value={custom[key] || '#000000'}
-                onChange={(e) => setCustom(key, e.target.value.toUpperCase())}
-                style={{ width: '30px', height: '28px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '6px', flexShrink: 0 }}
+                onChange={(v) => setCustom(key, v.toUpperCase())}
+                title={name}
+                size={30}
               />
               <span style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', flex: 1 }}>{name}</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{custom[key] || '—'}</span>

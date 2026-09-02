@@ -15,6 +15,7 @@ import {
   maskSecret, setSessionToken, getSessionToken, clearSessionToken,
 } from '../utils/figmaTokens';
 import FigmaTokenModal from './FigmaTokenModal';
+import { ColorSwatchButton } from './ColorPicker';
 
 const MAX_IMAGES = 5;
 const MAX_GOALS = 3;
@@ -574,7 +575,7 @@ export default function BrandContextEngine({ project, owner = '', initialStep = 
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
             <span style={{ ...lbl, marginBottom: 0 }}>Primary color:</span>
-            <input type="color" value={bc.description.primaryColor || '#3B82F6'} onChange={(e) => patch('description', { primaryColor: e.target.value })} style={{ width: '38px', height: '32px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '6px' }} />
+            <ColorSwatchButton value={bc.description.primaryColor || '#3B82F6'} onChange={(v) => patch('description', { primaryColor: v })} title="Primary colour" size={32} />
             <input style={{ ...field, width: '120px', fontFamily: 'var(--font-mono)' }} placeholder="#3B82F6" value={bc.description.primaryColor || ''} onChange={(e) => patch('description', { primaryColor: e.target.value })} />
             <div style={{ flex: 1 }} />
             {extractBtn('description', 'Extract Brief')}
@@ -649,13 +650,15 @@ export default function BrandContextEngine({ project, owner = '', initialStep = 
             {ex.colors.length === 0 && <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>None found</span>}
             {ex.colors.map((c, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.3rem 0.5rem' }}>
-                <input
-                  type="color" value={c}
-                  onChange={(e) => {
-                    const colors = ex.colors.slice(); colors[i] = e.target.value.toUpperCase();
+                <ColorSwatchButton
+                  value={c}
+                  onChange={(v) => {
+                    const colors = ex.colors.slice(); colors[i] = v.toUpperCase();
                     patch(key, { extraction: { ...ex, colors } });
                   }}
-                  style={{ width: '26px', height: '26px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '5px' }}
+                  title={c}
+                  size={26}
+                  radius={5}
                 />
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)' }}>{c}</span>
               </div>

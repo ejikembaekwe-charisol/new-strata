@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import { useAuth } from '../context/AuthContext';
+import { renderComponentPreview } from '../components/componentPreviews';
+import { entranceKeyframesCss } from '../data/motionKeyframes';
 
 const TYPE_COLORS = {
   color: '#FC0694',
@@ -200,10 +202,10 @@ const getMockProject = (id) => {
     },
     tokens: tokens120,
     components: [
-      { id: '1', name: 'PrimaryButton', category: 'Actions & Buttons', template: 'button', description: 'Primary brand action button', tokens: { bg: 'color.primary', textColor: 'color.text.primary', padding: 'spacing.3', borderRadius: 'border.radius.md' } },
-      { id: '2', name: 'InputField', category: 'Form Inputs', template: 'input', description: 'Standard input field component', tokens: { textColor: 'color.text.primary', padding: 'spacing.3', borderRadius: 'border.radius.md' } },
-      { id: '3', name: 'BrandBadge', category: 'Feedback & Status', template: 'badge', description: 'Decorative component badge', tokens: { bg: 'color.accent', textColor: 'color.text.primary', padding: 'spacing.1', borderRadius: 'border.radius.full' } },
-      { id: '4', name: 'InformationCard', category: 'Display & Data', template: 'card', description: 'Content display card block', tokens: { bg: 'color.surface', textColor: 'color.text.primary', padding: 'spacing.4', borderRadius: 'border.radius.lg' } }
+      { id: '1', name: 'PrimaryButton', category: 'Actions & Triggers', template: 'button', description: 'Primary brand action button', tokens: { bg: 'color.primary', textColor: 'color.text.primary', padding: 'spacing.3', borderRadius: 'border.radius.md' } },
+      { id: '2', name: 'InputField', category: 'Forms & Inputs', template: 'input', description: 'Standard input field component', tokens: { textColor: 'color.text.primary', padding: 'spacing.3', borderRadius: 'border.radius.md' } },
+      { id: '3', name: 'BrandBadge', category: 'Data Display & Visualization', template: 'badge', description: 'Decorative component badge', tokens: { bg: 'color.accent', textColor: 'color.text.primary', padding: 'spacing.1', borderRadius: 'border.radius.full' } },
+      { id: '4', name: 'InformationCard', category: 'Layout & Containers', template: 'card', description: 'Content display card block', tokens: { bg: 'color.surface', textColor: 'color.text.primary', padding: 'spacing.4', borderRadius: 'border.radius.lg' } }
     ],
     showcaseSites: [
       { name: 'Muzingo Web Player', url: 'https://muzingo.io', image: '🎵', status: 'Live' },
@@ -655,70 +657,38 @@ const SharedProject = () => {
     printWindow.document.close();
   };
 
+  // Previews come from the shared module, so a public link draws exactly the same
+  // set of component types the editor does. Only the legacy six token keys are
+  // resolved here — unchanged from before — and this view's light/dark preview
+  // surfaces are handed in rather than the app's CSS variables.
   const renderLivePreview = (comp) => {
-    const style = {
-      background: resolveTokenValue(comp.tokens?.bg),
-      color: resolveTokenValue(comp.tokens?.textColor),
-      padding: resolveTokenValue(comp.tokens?.padding),
-      borderRadius: resolveTokenValue(comp.tokens?.borderRadius),
-      fontFamily: resolveTokenValue(comp.tokens?.fontFamily),
-      fontSize: resolveTokenValue(comp.tokens?.fontSize),
-      border: 'none',
-      cursor: 'pointer',
-      display: 'inline-block',
-      textAlign: 'center',
-      fontWeight: 500,
-      transition: 'opacity 0.2s',
+    const light = previewTheme === 'light';
+    const mapped = {};
+    const put = (key, prop) => {
+      const v = resolveTokenValue(comp.tokens?.[key]);
+      if (v) mapped[prop] = v;
     };
+    put('bg', 'background');
+    put('textColor', 'color');
+    put('padding', 'padding');
+    put('borderRadius', 'borderRadius');
+    put('fontFamily', 'fontFamily');
+    put('fontSize', 'fontSize');
 
-    if (comp.template === 'button') {
-      return <button style={style}>Click Me</button>;
-    }
-    if (comp.template === 'badge') {
-      return <span style={{ ...style, display: 'inline-block', textTransform: 'uppercase', fontSize: '0.7rem', padding: '0.2rem 0.6rem', fontWeight: 700, letterSpacing: '0.05em' }}>New</span>;
-    }
-    if (comp.template === 'card') {
-      return (
-        <div style={{
-          background: resolveTokenValue(comp.tokens?.bg) || (previewTheme === 'light' ? '#ffffff' : '#13131a'),
-          color: resolveTokenValue(comp.tokens?.textColor) || (previewTheme === 'light' ? '#171717' : '#ffffff'),
-          padding: resolveTokenValue(comp.tokens?.padding) || '1rem',
-          borderRadius: resolveTokenValue(comp.tokens?.borderRadius) || '8px',
-          fontFamily: resolveTokenValue(comp.tokens?.fontFamily),
-          fontSize: resolveTokenValue(comp.tokens?.fontSize),
-          border: '1px solid var(--border)',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          textAlign: 'left',
-          width: '100%',
-          maxWidth: '220px',
-        }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '0.25rem', fontSize: '0.9rem' }}>Card Title</div>
-          <div style={{ opacity: 0.7, fontSize: '0.75rem' }}>Visual spec card.</div>
-        </div>
-      );
-    }
-    if (comp.template === 'input') {
-      return (
-        <input
-          type="text"
-          placeholder="Type here..."
-          style={{
-            background: previewTheme === 'light' ? '#f4f4f5' : '#1a1a24',
-            color: resolveTokenValue(comp.tokens?.textColor) || 'var(--text-primary)',
-            padding: resolveTokenValue(comp.tokens?.padding) || '0.5rem 1rem',
-            borderRadius: resolveTokenValue(comp.tokens?.borderRadius) || '6px',
-            fontFamily: resolveTokenValue(comp.tokens?.fontFamily),
-            fontSize: resolveTokenValue(comp.tokens?.fontSize),
-            border: `1px solid ${resolveTokenValue(comp.tokens?.bg) || 'var(--border)'}`,
-            outline: 'none',
-            width: '100%',
-            maxWidth: '180px',
-          }}
-          readOnly
-        />
-      );
-    }
-    return null;
+    return renderComponentPreview(comp, mapped, {
+      surface: light ? '#ffffff' : '#13131a',
+      surfaceAlt: light ? '#f4f4f5' : '#1a1a24',
+      text: light ? '#171717' : '#ffffff',
+      muted: light ? '#71717a' : '#a1a1aa',
+      border: light ? '#e4e4e7' : '#2a2a35',
+      shadow: '0 4px 12px rgba(0,0,0,0.1)',
+      accent: '#FC0694',
+      buttonLabel: 'Click Me',
+      inputPlaceholder: 'Type here...',
+      inputMaxWidth: '180px',
+      cardMaxWidth: '220px',
+      cardBody: 'Visual spec card.',
+    });
   };
 
   const getCSSVariables = () => {
@@ -732,6 +702,9 @@ const SharedProject = () => {
       }
     }
     css += `}`;
+    // Same reason as the project export: a motion.enter.* token is a keyframes name,
+    // so the keyframes must travel with it.
+    css += String.fromCharCode(10, 10) + entranceKeyframesCss();
     return css;
   };
 

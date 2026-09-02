@@ -292,10 +292,10 @@ export default function Generator() {
 
     // Pre-populate components
     const projectComponents = [
-      { id: 'preset-1', name: 'PrimaryButton', category: 'Actions & Buttons', template: 'button', description: 'Primary brand action button', tokens: { bg: 'button.bg', textColor: 'button.text', padding: 'button.padding', borderRadius: 'button.radius' }, isPreset: true },
-      { id: 'preset-2', name: 'InputField', category: 'Form Inputs', template: 'input', description: 'Standard input field component', tokens: { bg: 'input.bg', textColor: 'input.text', borderRadius: 'input.radius' }, isPreset: true },
-      { id: 'preset-3', name: 'BrandBadge', category: 'Feedback & Status', template: 'badge', description: 'Decorative component badge', tokens: { bg: 'button.bg', textColor: 'button.text', borderRadius: 'button.radius' }, isPreset: true },
-      { id: 'preset-4', name: 'InformationCard', category: 'Display & Data', template: 'card', description: 'Content display card block', tokens: { bg: 'input.bg', textColor: 'input.text', borderRadius: 'button.radius' }, isPreset: true }
+      { id: 'preset-1', name: 'PrimaryButton', category: 'Actions & Triggers', template: 'button', description: 'Primary brand action button', tokens: { bg: 'button.bg', textColor: 'button.text', padding: 'button.padding', borderRadius: 'button.radius' }, isPreset: true },
+      { id: 'preset-2', name: 'InputField', category: 'Forms & Inputs', template: 'input', description: 'Standard input field component', tokens: { bg: 'input.bg', textColor: 'input.text', borderRadius: 'input.radius' }, isPreset: true },
+      { id: 'preset-3', name: 'BrandBadge', category: 'Data Display & Visualization', template: 'badge', description: 'Decorative component badge', tokens: { bg: 'button.bg', textColor: 'button.text', borderRadius: 'button.radius' }, isPreset: true },
+      { id: 'preset-4', name: 'InformationCard', category: 'Layout & Containers', template: 'card', description: 'Content display card block', tokens: { bg: 'input.bg', textColor: 'input.text', borderRadius: 'button.radius' }, isPreset: true }
     ];
 
     const savedProj = addProject({
