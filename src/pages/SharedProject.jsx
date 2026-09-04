@@ -4,6 +4,8 @@ import { useProjects } from '../context/ProjectContext';
 import { useAuth } from '../context/AuthContext';
 import { renderComponentPreview } from '../components/componentPreviews';
 import { entranceKeyframesCss } from '../data/motionKeyframes';
+import { indexById, effectiveTokens, isFragment, childrenOf } from '../components/inspector/inheritance';
+import { deriveTokens } from '../data/derivedTokens';
 
 const TYPE_COLORS = {
   color: '#FC0694',
@@ -362,7 +364,10 @@ const SharedProject = () => {
   const project = projects.find(p => String(p.id) === String(id)) || getMockProject(id);
 
   const brand = project?.brand || {};
-  const tokensMap = project?.tokens || {};
+  // The same ramps the editor derives, from the same stored data, so a shared system
+  // lists Primary 50-950 rather than the one flat colour it was saved with. Idempotent,
+  // so a project already holding its ramps is untouched.
+  const tokensMap = deriveTokens(project?.tokens || {});
 
   const showcaseSites = project?.showcaseSites || [];
 
@@ -437,7 +442,9 @@ const SharedProject = () => {
         });
       });
     }
-    return result;
+    // The same ramps the editor derives, from the same stored data — so a shared system
+    // lists Primary 50-950 rather than the one flat colour it was saved with.
+    return deriveTokens(result);
   };
 
   const handleFork = () => {
@@ -661,11 +668,16 @@ const SharedProject = () => {
   // set of component types the editor does. Only the legacy six token keys are
   // resolved here — unchanged from before — and this view's light/dark preview
   // surfaces are handed in rather than the app's CSS variables.
-  const renderLivePreview = (comp) => {
+  // Same resolution as the editor, so a shared link shows what the editor shows.
+  const sharedById = indexById(project.components || []);
+  const renderLivePreview = (comp, depth = 0) => {
     const light = previewTheme === 'light';
+    // Inherited mappings count here too, or a shared link would show an extending
+    // component unstyled while the editor shows it styled.
+    const own = effectiveTokens(comp, sharedById);
     const mapped = {};
     const put = (key, prop) => {
-      const v = resolveTokenValue(comp.tokens?.[key]);
+      const v = resolveTokenValue(own[key]);
       if (v) mapped[prop] = v;
     };
     put('bg', 'background');
@@ -676,6 +688,11 @@ const SharedProject = () => {
     put('fontSize', 'fontSize');
 
     return renderComponentPreview(comp, mapped, {
+      children: isFragment(comp) && depth < 6
+        ? childrenOf(comp, sharedById).map(kid => (
+            <React.Fragment key={kid.id}>{renderLivePreview(kid, depth + 1)}</React.Fragment>
+          ))
+        : undefined,
       surface: light ? '#ffffff' : '#13131a',
       surfaceAlt: light ? '#f4f4f5' : '#1a1a24',
       text: light ? '#171717' : '#ffffff',

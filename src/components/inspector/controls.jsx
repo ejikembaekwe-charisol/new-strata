@@ -9,6 +9,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { ColorSwatchButton, hexToRgb, rgbToHex } from '../ColorPicker';
+import { groupColorNames } from '../../data/tokenGroups';
 import {
   SEGMENTED_OPTIONS, KEYWORD_OPTIONS, SLIDER_RANGES, SIDE_GROUPS,
   controlKind, isLiteralOnly, helpFor,
@@ -278,6 +279,60 @@ export const TokenColorSelect = ({ value, options, presets = [], resolve, onChan
     border: v ? '1px solid rgba(255,255,255,0.18)' : '1px dashed var(--border)',
   });
 
+  // Ramps took a project's colours from about fifteen to about fifty, and a flat list that
+  // long is worse than a short one. Grouped by the same rule the Tokens page folders by —
+  // see groupColorNames — so the two cannot disagree. Null means one group, i.e. flat.
+  const grouped = groupColorNames(options);
+  const groups = grouped || [{ label: null, names: options }];
+
+  const groupHeading = {
+    fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.05em',
+    color: 'var(--text-tertiary)', padding: '0.15rem 0.3rem 0.2rem',
+  };
+
+  const swatchButton = (name) => {
+    const v = resolve(name);
+    return (
+      <button
+        key={name}
+        type="button"
+        onClick={() => { onChange(name); setOpen(false); }}
+        title={name + (v ? '  ·  ' + v : '')}
+        style={{
+          width: '100%', aspectRatio: '1', borderRadius: '5px', cursor: 'pointer', padding: 0,
+          background: v || 'var(--bg-tertiary)',
+          border: name === value ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.15)',
+        }}
+      />
+    );
+  };
+
+  const nameButton = (name) => {
+    const v = resolve(name);
+    return (
+      <button
+        key={name}
+        type="button"
+        onClick={() => { onChange(name); setOpen(false); }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '0.4rem', width: '100%', textAlign: 'left',
+          background: name === value ? 'var(--bg-tertiary)' : 'none',
+          border: 'none', borderRadius: '5px', cursor: 'pointer',
+          padding: '0.22rem 0.3rem', fontFamily: 'inherit',
+        }}
+      >
+        <span style={swatch(v)} />
+        <span style={{
+          flex: 1, minWidth: 0, fontSize: '0.7rem', color: 'var(--text-primary)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{name}</span>
+        <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+          {v}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <>
       <button
@@ -322,25 +377,16 @@ export const TokenColorSelect = ({ value, options, presets = [], resolve, onChan
             </div>
           ) : (
             <>
-              {/* pick by eye */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.3rem' }}>
-                {options.map(name => {
-                  const v = resolve(name);
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => { onChange(name); setOpen(false); }}
-                      title={name + (v ? '  ·  ' + v : '')}
-                      style={{
-                        width: '100%', aspectRatio: '1', borderRadius: '5px', cursor: 'pointer', padding: 0,
-                        background: v || 'var(--bg-tertiary)',
-                        border: name === value ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.15)',
-                      }}
-                    />
-                  );
-                })}
-              </div>
+              {/* pick by eye — one grid per ramp, so the list reads as a palette rather
+                  than forty-odd unrelated squares */}
+              {groups.map(g => (
+                <div key={'sw:' + (g.label || '_')} style={{ marginBottom: '0.4rem' }}>
+                  {g.label && <div style={groupHeading}>{g.label}</div>}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.3rem' }}>
+                    {g.names.map(swatchButton)}
+                  </div>
+                </div>
+              ))}
               <div style={{ borderTop: '1px solid var(--border)', margin: '0.5rem 0 0.35rem' }} />
               {/* pick by name, with the colour and what it resolves to */}
               <button
@@ -354,31 +400,12 @@ export const TokenColorSelect = ({ value, options, presets = [], resolve, onChan
               >
                 Clear
               </button>
-              {options.map(name => {
-                const v = resolve(name);
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => { onChange(name); setOpen(false); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.4rem', width: '100%', textAlign: 'left',
-                      background: name === value ? 'var(--bg-tertiary)' : 'none',
-                      border: 'none', borderRadius: '5px', cursor: 'pointer',
-                      padding: '0.22rem 0.3rem', fontFamily: 'inherit',
-                    }}
-                  >
-                    <span style={swatch(v)} />
-                    <span style={{
-                      flex: 1, minWidth: 0, fontSize: '0.7rem', color: 'var(--text-primary)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>{name}</span>
-                    <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
-                      {v}
-                    </span>
-                  </button>
-                );
-              })}
+              {groups.map(g => (
+                <div key={'nm:' + (g.label || '_')}>
+                  {g.label && <div style={groupHeading}>{g.label}</div>}
+                  {g.names.map(nameButton)}
+                </div>
+              ))}
             </>
           )}
 
@@ -468,7 +495,7 @@ export const ColorControl = ({ value, onChange, resolve }) => {
  * reference's single/per-side toggle. Switching to per-side seeds each side from the
  * shorthand so nothing silently changes on screen.
  */
-export const SidesControl = ({ prop, tokens, onChangeMany }) => {
+export const SidesControl = ({ prop, tokens, onChangeMany, inherited = '' }) => {
   const sides = SIDE_GROUPS[prop];
   const anySide = sides.some(s => tokens[s]);
   const [perSide, setPerSide] = useState(anySide);
@@ -496,8 +523,13 @@ export const SidesControl = ({ prop, tokens, onChangeMany }) => {
           <input
             value={tokens[prop] || ''}
             onChange={(e) => onChangeMany({ [prop]: e.target.value })}
-            placeholder="—"
-            style={{ ...S.field, flex: 1 }}
+            placeholder={inherited || '—'}
+            title={inherited && !tokens[prop] ? 'Inherited: ' + inherited : undefined}
+            style={{
+              ...S.field, flex: 1,
+              // shown as a placeholder because it is not set here — typing overrides it
+              borderStyle: inherited && !tokens[prop] ? 'dashed' : 'solid',
+            }}
           />
         )}
         {perSide && <span style={{ flex: 1, fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>Per side</span>}
@@ -554,7 +586,7 @@ export const SidesControl = ({ prop, tokens, onChangeMany }) => {
  */
 export function InspectorRow({
   prop, label, tokens, tokenOptions, presets = [], resolve, onChange, onChangeMany,
-  onCreateToken, existingTokenNames = [],
+  onCreateToken, existingTokenNames = [], inherited = '', inheritedFrom = '',
 }) {
   const kind = controlKind(prop);
   const value = tokens[prop] || '';
@@ -573,7 +605,7 @@ export function InspectorRow({
     return (
       <div style={{ ...S.row, alignItems: 'start' }}>
         <span className="pd-inspector-label" style={{ ...S.label, paddingTop: '0.35rem' }} title={tooltipFor(label, prop)} data-prop={prop}>{label}</span>
-        <SidesControl prop={prop} tokens={tokens} onChangeMany={onChangeMany} />
+        <SidesControl prop={prop} tokens={tokens} onChangeMany={onChangeMany} inherited={inherited} />
       </div>
     );
   }
@@ -655,6 +687,53 @@ export function InspectorRow({
   };
 
   const holdingLiteral = Boolean(value) && !isToken;
+  // Three states a row can be in: its own value, a value coming from a parent, or unset.
+  // An override is only an override if something is actually being overridden.
+  const isInherited = !value && Boolean(inherited);
+  const isOverride = Boolean(value) && Boolean(inherited);
+
+  if (isInherited) {
+    return (
+      <div style={S.row}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
+          <span
+            className="pd-inspector-label"
+            style={{ ...S.label, color: 'var(--text-tertiary)' }}
+            title={tooltipFor(label, prop)}
+            data-prop={prop}
+          >
+            {label}
+          </span>
+        </span>
+        {/* Shown but not editable in place: typing here would silently create an override,
+            so the row asks first. */}
+        <button
+          type="button"
+          className="pd-inspector-inherited"
+          onClick={() => onChange(inherited)}
+          title={'Inherited' + (inheritedFrom ? ' from ' + inheritedFrom : '') + ' — click to override on this component'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.35rem', width: '100%', minWidth: 0,
+            background: 'none', border: '1px dashed var(--border)', borderRadius: '6px',
+            padding: '0.26rem 0.4rem', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+          }}
+        >
+          {kind === 'color' && (
+            <span style={{
+              width: 15, height: 15, borderRadius: '4px', flexShrink: 0,
+              background: resolve(inherited) || 'transparent',
+              border: '1px solid rgba(255,255,255,0.18)', opacity: 0.75,
+            }} />
+          )}
+          <span style={{
+            flex: 1, minWidth: 0, fontSize: '0.7rem', color: 'var(--text-tertiary)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{inherited}</span>
+          <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>inherited</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={S.row}>
@@ -667,6 +746,19 @@ export function InspectorRow({
         >
           {label}
         </span>
+        {isOverride && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            title={'Overriding' + (inheritedFrom ? ' ' + inheritedFrom : '') + ' — reset to the inherited value'}
+            style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
+              color: 'var(--accent)', fontSize: '0.62rem', lineHeight: 1, fontFamily: 'inherit',
+            }}
+          >
+            ↺
+          </button>
+        )}
         {!literalOnly && (
           <button
             type="button"

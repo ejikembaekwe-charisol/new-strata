@@ -229,6 +229,39 @@ export function renderComponentPreview(comp, rawMapped = {}, opts = {}) {
 
   /* ── Layout & Containers ── */
 
+  if (t === 'fragment') {
+    // A fragment draws nothing of its own — it arranges the components it holds, using its
+    // own layout mappings. `opts.children` arrives already rendered so this file stays a
+    // pure function of what it is handed, with no knowledge of the project store.
+    const kids = opts.children || [];
+    if (!kids.length) {
+      // An empty container that rendered as nothing would be indistinguishable from a
+      // broken preview, so it says what it is.
+      return (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          minWidth: '140px', minHeight: '56px', padding: '0.75rem',
+          borderRadius: mapped.borderRadius || '8px',
+          border: `1px dashed ${c.border}`, color: c.muted,
+          fontSize: '0.72rem', textAlign: 'center',
+          ...withoutSurface(mapped),
+        }}>
+          Empty fragment — add components to it
+        </div>
+      );
+    }
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexWrap: 'wrap', gap: '0.5rem', maxWidth: '100%',
+        ...mapped,
+      }}>
+        {kids}
+      </div>
+    );
+  }
+
+
   if (t === 'accordion') {
     const rows = ['Getting started', 'Configuration', 'Troubleshooting'];
     return (

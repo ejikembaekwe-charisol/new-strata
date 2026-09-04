@@ -5,9 +5,8 @@
 // it renders whatever `component.tokens` holds and reports patches back.
 
 import { useState } from 'react';
-import { INSPECTOR_SECTIONS, isSideProperty, SIDE_GROUPS } from './inspectorSections';
+import PropertySections from './PropertySections';
 import { ENTRANCE_KEYFRAMES, entranceByAnimation } from '../../data/motionKeyframes';
-import { InspectorRow } from './controls';
 
 // Entrances come from the shared definition, so the picker, the app's stylesheet and
 // every CSS export are describing the same four animations.
@@ -46,16 +45,20 @@ const motionFor = (tokens, resolve) => {
   };
 };
 
-const humanize = (prop) => prop
-  .replace(/-/g, ' ')
-  .replace(/\b\w/g, c => c.toUpperCase());
-
 export default function ComponentInspector({
   component,
   tokensForProperty,
   presetsForProperty,
   onCreateToken,
   existingTokenNames,
+  inheritedTokens = {},
+  parent,
+  parentOptions = [],
+  onSetParent,
+  childComponents = [],
+  childOptions = [],
+  onSetChildren,
+  onSelectComponent,
   resolve,
   onChange,
   onOpenEditor,
@@ -63,20 +66,30 @@ export default function ComponentInspector({
   renderPreview,
   canEdit = true,
 }) {
-  // Layout and Styles open by default — the two people reach for first. The rest stay
-  // shut so the panel is scannable rather than a wall of 80 properties.
-  const [open, setOpen] = useState(() => new Set(['layout', 'styles']));
-  const toggle = (id) => setOpen(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
 
   // Bumping this remounts the stage, which is what restarts the CSS animation.
   const [playCount, setPlayCount] = useState(0);
   const [entrance, setEntrance] = useState('rise');
 
   const tokens = component.tokens || {};
+  const fragment = component.template === 'fragment';
+  const childIds = childComponents.map(c => c.id);
+  const move = (i, delta) => {
+    const next = childIds.slice();
+    const j = i + delta;
+    if (j < 0 || j >= next.length) return;
+    [next[i], next[j]] = [next[j], next[i]];
+    onSetChildren && onSetChildren(next);
+  };
+  const add = (id) => onSetChildren && onSetChildren([...childIds, id]);
+  const remove = (id) => onSetChildren && onSetChildren(childIds.filter(x => x !== id));
+  const arrowBtn = (disabled) => ({
+    background: 'none', border: 'none', padding: '0 0.15rem', flexShrink: 0,
+    cursor: disabled ? 'default' : 'pointer', fontSize: '0.72rem', lineHeight: 1,
+    color: disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+    opacity: disabled ? 0.35 : 1, fontFamily: 'inherit',
+  });
+
   const motion = motionFor(tokens, resolve);
   // A mapped animation-name is the component's own entrance, so it wins over the
   // picker. The picker then only previews an entrance the component has not adopted.
@@ -203,61 +216,123 @@ export default function ComponentInspector({
         </div>
       </div>
 
-      {/* Only the properties scroll. */}
-      <div className="pd-inspector-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {INSPECTOR_SECTIONS.map(section => {
-          const isOpen = open.has(section.id);
-          const setCount = section.properties.filter(p => tokens[p]).length;
-          const rows = section.properties.filter(p => !isSideProperty(p));
-          return (
-            <div key={section.id} style={{ borderTop: '1px solid var(--border)' }}>
-              <button
-                onClick={() => toggle(section.id)}
+      {/* Relationships. Extends is offered on anything; Children only on a fragment,
+          because only a fragment composes. */}
+      <div style={{ flexShrink: 0, padding: '0 0.9rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>Extends</span>
+          <select
+            value={parent ? parent.id : ''}
+            onChange={(e) => onSetParent && onSetParent(e.target.value || null)}
+            title={parent
+              ? 'Inherits every mapping from ' + parent.name + ' unless overridden here'
+              : 'Inherit mappings from another component'}
+            style={{
+              flex: 1, minWidth: 0, background: 'var(--bg-tertiary)',
+              border: '1px solid ' + (parent ? 'var(--accent)' : 'var(--border)'),
+              borderRadius: '6px', padding: '0.25rem 0.4rem',
+              color: parent ? 'var(--accent)' : 'var(--text-tertiary)',
+              fontSize: '0.7rem', fontFamily: 'inherit', cursor: 'pointer',
+            }}
+          >
+            <option value="">Nothing</option>
+            {/* Itself and its descendants are absent, so a loop cannot be chosen */}
+            {(parentOptions || []).map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          {parent && onSelectComponent && (
+            <button
+              type="button"
+              onClick={() => onSelectComponent(parent.id)}
+              title={'Open ' + parent.name}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                color: 'var(--text-tertiary)', display: 'flex', flexShrink: 0,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {fragment && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
+              Children {(childComponents || []).length > 0 && '· ' + childComponents.length}
+            </span>
+            {(childComponents || []).map((kid, i) => (
+              <div
+                key={kid.id}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%',
-                  background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                  padding: '0.7rem 1rem', textAlign: 'left',
+                  display: 'flex', alignItems: 'center', gap: '0.3rem',
+                  background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                  borderRadius: '6px', padding: '0.22rem 0.35rem',
                 }}
               >
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {section.title}
-                </span>
-                {setCount > 0 && (
-                  <span style={{
-                    fontSize: '0.62rem', color: 'var(--accent)', background: 'var(--accent-glow)',
-                    border: '1px solid rgba(252,6,148,0.25)', borderRadius: '100px', padding: '0.05rem 0.35rem',
-                  }}>
-                    {setCount}
-                  </span>
-                )}
-                <div style={{ flex: 1 }} />
-                <span style={{ color: 'var(--text-tertiary)', fontSize: '1rem', lineHeight: 1 }}>
-                  {isOpen ? '−' : '+'}
-                </span>
-              </button>
+                <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', width: '12px', flexShrink: 0 }}>{i + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => onSelectComponent && onSelectComponent(kid.id)}
+                  title={'Open ' + kid.name}
+                  style={{
+                    flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none',
+                    padding: 0, cursor: 'pointer', color: 'var(--text-primary)',
+                    fontSize: '0.7rem', fontFamily: 'inherit',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {kid.name}
+                </button>
+                {/* order matters to the layout, so it is reorderable */}
+                <button type="button" disabled={i === 0} onClick={() => move(i, -1)} title="Move up"
+                  style={arrowBtn(i === 0)}>↑</button>
+                <button type="button" disabled={i === childComponents.length - 1} onClick={() => move(i, 1)} title="Move down"
+                  style={arrowBtn(i === childComponents.length - 1)}>↓</button>
+                <button type="button" onClick={() => remove(kid.id)} title={'Remove ' + kid.name + ' from this fragment'}
+                  style={{ ...arrowBtn(false), color: 'rgba(239,68,68,0.75)' }}>×</button>
+              </div>
+            ))}
+            <select
+              value=""
+              onChange={(e) => { if (e.target.value) add(e.target.value); }}
+              style={{
+                background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                borderRadius: '6px', padding: '0.25rem 0.4rem', color: 'var(--text-secondary)',
+                fontSize: '0.7rem', fontFamily: 'inherit', cursor: 'pointer',
+              }}
+            >
+              <option value="">＋ Add child…</option>
+              {/* itself, anything already in, and anything that would nest a container
+                  inside its own content are all absent */}
+              {(childOptions || []).map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {(childOptions || []).length === 0 && (childComponents || []).length === 0 && (
+              <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>
+                No other components to add yet.
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
-              {isOpen && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0 1rem 0.9rem' }}>
-                  {rows.map(prop => (
-                    <InspectorRow
-                      key={prop}
-                      prop={prop}
-                      label={SIDE_GROUPS[prop] ? humanize(prop) : humanize(prop)}
-                      tokens={tokens}
-                      tokenOptions={tokensForProperty(prop)}
-                      presets={presetsForProperty ? presetsForProperty(prop) : []}
-                      onCreateToken={onCreateToken}
-                      existingTokenNames={existingTokenNames ? existingTokenNames() : []}
-                      resolve={resolve}
-                      onChange={(v) => patch({ [prop]: v })}
-                      onChangeMany={patch}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      {/* Only the properties scroll. */}
+      <div className="pd-inspector-scroll" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <PropertySections
+          tokens={tokens}
+          onPatch={patch}
+          tokensForProperty={tokensForProperty}
+          presetsForProperty={presetsForProperty}
+          onCreateToken={onCreateToken}
+          existingTokenNames={existingTokenNames}
+          inheritedTokens={inheritedTokens}
+          inheritedFrom={parent ? parent.name : ''}
+          resolve={resolve}
+        />
       </div>
     </div>
   );

@@ -9,6 +9,11 @@ import { getBrandCompleteness, emptyBrandContext } from '../utils/projectComplet
 import BrandContextEngine from '../components/BrandContextEngine';
 import ScratchWizard from '../components/newProject/ScratchWizard';
 import ComponentInspector from '../components/inspector/ComponentInspector';
+import PropertySections, { sectionIdsForProperties } from '../components/inspector/PropertySections';
+import {
+  indexById, effectiveTokens, tokenOrigin, isFragment, childrenOf,
+  eligibleParents, eligibleChildren, removeComponents,
+} from '../components/inspector/inheritance';
 
 import {
   COMPONENT_TAXONOMY, CATEGORY_LIST, TYPES_FOR_CATEGORY, TYPE_TO_TEMPLATE,
@@ -18,6 +23,17 @@ import {
 } from '../components/componentTaxonomy';
 import { renderComponentPreview } from '../components/componentPreviews';
 import { ColorSwatchButton } from '../components/ColorPicker';
+import { deriveTokens } from '../data/derivedTokens';
+import { buildUsageIndex, usageOf, referrersOf, isDeadToken } from '../data/tokenUsage';
+import { renameRamp, recolorRamp, slugifyRole } from '../data/tokenRefactor';
+import { styleOf } from '../data/textStyles';
+import { normalizeTypeKey } from '../data/tokenTypes';
+import RampModal from '../components/RampModal';
+import ScaleModal from '../components/ScaleModal';
+import {
+  TOKEN_LAYERS, TOKEN_LAYER_LABELS, layerColorFor,
+  groupsFor, rowLabelFor,
+} from '../data/tokenGroups';
 import { MOCK_TOKENS } from '../data/designSystemSeed';
 import { entranceKeyframesCss, ENTRANCE_KEYFRAMES, entranceByAnimation } from '../data/motionKeyframes';
 import { extractColorsFromImage, extractFontSizesFromImage, detectComponentRegions, cropImageRegionToDataUrl, resizeImageToDataUrl, suggestUniqueName } from '../utils/colorExtract';
@@ -104,17 +120,17 @@ const TOKEN_TYPES = [
   { id: 'Lists', icon: <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg> },
 ];
 
-// Token LAYERS (for the pill switcher)
-const TOKEN_LAYERS = ['Brand', 'Semantic', 'Component'];
-
 // Token table: name, value, preview. The type column went away — the folder says it.
 const TOKEN_TABLE_COLS = 'minmax(0, 1.5fr) minmax(0, 1fr) 150px';
 const nlnl = String.fromCharCode(10, 10);
-const TOKEN_LAYER_LABELS = { Brand: 'Brand', Semantic: 'Semantic', Component: 'Scoped' };
 
 // Types whose "Visual Preview" cell already renders a swatch + the raw value
 // (must match the color cases in renderTokenPreview) — used to skip the
 // redundant duplicate value line on the mobile token card.
+// Undo depth. A snapshot of this project is roughly 25KB, so fifty is about a megabyte
+// of memory and nothing on disk — the history is deliberately not persisted.
+const HISTORY_LIMIT = 50;
+
 const COLOR_VALUE_TYPES = new Set(['color', 'background-color', 'border-color', 'outline-color', 'text-decoration-color', 'accent-color', 'fill', 'stroke']);
 
 // Sidebar main navigation tabs — shared by the desktop list, the mobile icon rail, and the mobile nav overlay
@@ -140,7 +156,9 @@ const FONT_CHOICES = ['Outfit', 'Inter', 'Roboto', 'DM Sans', 'Poppins', 'Manrop
 // Flat token store: { Color: [{name, value, type, layer}, ...], Typography: [...], ... }
 
 // Migrate old formats to the new flat-by-type structure
-const migrateTokensToLayers = (saved) => {
+const migrateTokensToLayers = (saved) => deriveTokens(migrateTokenShape(saved));
+
+const migrateTokenShape = (saved) => {
   if (!saved) return MOCK_TOKENS;
 
   // Already in new format if keys are type names
@@ -352,10 +370,20 @@ function ProjectDetailInner() {
   const [scratchWizard, setScratchWizard] = useState(false);
   const [toggledTokenFolders, setToggledTokenFolders] = useState(() => new Set());
   const [previewComponentId, setPreviewComponentId] = useState(null);
+  // Which token's dependents are showing. Shares the rail with previewComponentId, so
+  // opening either closes the other rather than stacking two panels over the table.
+  const [usageTokenName, setUsageTokenName] = useState(null);
+  // Which ramp folder is being renamed, and what has been typed so far.
+  const [renamingRamp, setRenamingRamp] = useState(null);
+  // What the last refactor did, or why it was refused. Shown under the toolbar.
+  const [refactorNote, setRefactorNote] = useState(null);
+  const [expandedUsage, setExpandedUsage] = useState(() => new Set());
   const [previewOnLight, setPreviewOnLight] = useState(false);
   const previewDrawerRef = useRef(null);
 
   // Handoff state variables
+  const [rampModalOpen, setRampModalOpen] = useState(false);
+  const [scaleModalOpen, setScaleModalOpen] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -388,13 +416,20 @@ function ProjectDetailInner() {
 
   // Asset model states
   const [uploadedAssets, setUploadedAssets] = useState([]);
+
+  // Undo/redo over design content only — tokens, components, brand, assets. Project
+  // settings (name, visibility, members) stay out: undoing "removed a teammate" with a
+  // keystroke is a different kind of promise than undoing a colour.
+  //
+  // Declared up here, above this component's early return, because everything below it is
+  // conditional and a hook there crashes the page.
+  const [history, setHistory] = useState({ past: [], future: [] });
   const [brandBibleDirty, setBrandBibleDirty] = useState(false);
   const [pendingChange, setPendingChange] = useState(null);
   const [selectedImpacts, setSelectedImpacts] = useState({ tokens: {}, components: {} });
   const [impactPanelTab, setImpactPanelTab] = useState('brandBible');
   const [suggestionsModalData, setSuggestionsModalData] = useState(null);
   const [isScanningDoc, setIsScanningDoc] = useState(false);
-  const [undoState, setUndoState] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
 
   // Sync uploaded assets & dirty flag from project context
@@ -527,6 +562,116 @@ export const ThemeProvider = ({ children }) => {
     };
   }, [previewComponentId]);
 
+  // A snapshot is a shallow grab of the four pieces of design state. Shallow is enough
+  // because every mutation path already builds new objects rather than mutating in place —
+  // updateTokensState and friends spread, they never push.
+  const designSnapshot = () => ({
+    tokens: activeTokens,
+    components,
+    brandData,
+    uploadedAssets,
+  });
+
+  const applyDesignSnapshot = (snap) => {
+    setActiveTokens(snap.tokens);
+    setComponents(snap.components);
+    setBrandData(snap.brandData);
+    setUploadedAssets(snap.uploadedAssets || []);
+    // One write, so a reader can never catch the project half-restored.
+    updateProject(id, {
+      tokens: snap.tokens,
+      components: snap.components,
+      brand: snap.brandData,
+      uploadedAssets: snap.uploadedAssets || [],
+    });
+  };
+
+  /**
+   * Every design edit goes through here: the state before the edit is pushed onto the
+   * stack, then the edit is applied. `next` carries only the pieces that changed.
+   *
+   * A new action clears the redo branch, which is what keeps the history a line rather
+   * than a tree — redoing after a fresh edit would reapply something that no longer
+   * follows from what is on screen.
+   */
+  const commitDesign = (label, next, explicitBefore) => {
+    // An explicit baseline matters for the impact-panel flow: handleEditToken applies its
+    // edit to state optimistically so the panel can show what would move, so by the time
+    // applyChange runs, "now" is already the edited state. Undoing to that would undo
+    // nothing. The pre-edit snapshot is captured before the optimistic apply instead.
+    const before = explicitBefore || designSnapshot();
+    setHistory(h => ({
+      past: [...h.past, { label, state: before }].slice(-HISTORY_LIMIT),
+      future: [],
+    }));
+    applyDesignSnapshot({ ...before, ...next });
+  };
+
+  // A dialog or inline editor left open over a restored value would be editing something
+  // that no longer exists. The two rails guard themselves — each returns null for a token
+  // or component it cannot find — so only the modal ones need closing.
+  const closeEditorsForHistory = () => {
+    setTokenModal(null);
+    setComponentModal(null);
+    setRenamingRamp(null);
+    setEditingTokenName(null);
+  };
+
+  const undo = () => {
+    if (history.past.length === 0) return;
+    const entry = history.past[history.past.length - 1];
+    // Captured before anything moves, so redo returns to exactly what undo left.
+    const current = designSnapshot();
+    // The updater stays pure: applying a snapshot writes to the project, and React is free
+    // to run an updater more than once.
+    setHistory(h => ({
+      past: h.past.slice(0, -1),
+      future: [{ label: entry.label, state: current }, ...h.future].slice(0, HISTORY_LIMIT),
+    }));
+    applyDesignSnapshot(entry.state);
+    closeEditorsForHistory();
+    setShowUndoToast(false);
+  };
+
+  const redo = () => {
+    if (history.future.length === 0) return;
+    const entry = history.future[0];
+    const current = designSnapshot();
+    setHistory(h => ({
+      past: [...h.past, { label: entry.label, state: current }].slice(-HISTORY_LIMIT),
+      future: h.future.slice(1),
+    }));
+    applyDesignSnapshot(entry.state);
+    closeEditorsForHistory();
+  };
+
+  // Ctrl+Z / Ctrl+Y and the Mac equivalents. Ctrl+Shift+Z redoes as well, because that is
+  // what many people reach for.
+  //
+  // Skipped entirely while focus is in a field: mid-typing, Ctrl+Z means "undo my typing",
+  // and this app commits inline edits on Enter or blur, so until then the keystroke
+  // belongs to the input.
+  React.useEffect(() => {
+    const isTyping = () => {
+      const el = document.activeElement;
+      if (!el) return false;
+      return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable;
+    };
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = String(e.key || '').toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      if (isTyping()) return;
+      e.preventDefault();
+      if (key === 'y' || e.shiftKey) redo(); else undo();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // No dependency array on purpose: these handlers close over the history and the
+    // current design state, and a stale closure would undo to the wrong snapshot.
+    // Rebinding one listener per render costs less than that bug.
+  });
+
   // Registering the tab on mount covers every way into a project — the list, a freshly created
   // one, a pasted deep link, the branch switcher — rather than scattering openTab across callers.
   React.useEffect(() => {
@@ -610,15 +755,15 @@ This document serves as our living source of truth.`
     return <div className="loading-screen"><div className="loading-spinner"></div></div>;
   }
 
-  // Helper functions for state synchronization
-  const updateTokensState = (newTokens) => {
-    setActiveTokens(newTokens);
-    updateProject(id, { tokens: newTokens });
+  // Helper functions for state synchronization. Both route through commitDesign, so every
+  // token and component edit in the app lands on the undo stack without each of the
+  // fourteen call sites having to remember to.
+  const updateTokensState = (newTokens, label = 'Token change') => {
+    commitDesign(label, { tokens: newTokens });
   };
 
-  const updateComponentsState = (newComponents) => {
-    setComponents(newComponents);
-    updateProject(id, { components: newComponents });
+  const updateComponentsState = (newComponents, label = 'Component change') => {
+    commitDesign(label, { components: newComponents });
   };
 
   // State actions for tokens
@@ -627,7 +772,7 @@ This document serves as our living source of truth.`
       ...activeTokens,
       [category]: [...(activeTokens[category] || []), token]
     };
-    updateTokensState(updated);
+    updateTokensState(updated, 'Add ' + token.name);
   };
 
   // Adds many tokens (e.g. a batch from the token-upload table) in one state
@@ -639,12 +784,12 @@ This document serves as our living source of truth.`
       const category = getCategoryForType(token.type);
       updated[category] = [...(updated[category] || []), token];
     }
-    updateTokensState(updated);
+    updateTokensState(updated, 'Add ' + tokens.length + ' tokens');
   };
 
   const handleEditToken = (category, originalName, updatedToken) => {
     const originalToken = activeTokens[category]?.find(t => t.name === originalName);
-    
+
     setPendingChange({
       type: 'token',
       category,
@@ -652,7 +797,11 @@ This document serves as our living source of truth.`
       updatedToken,
       originalToken,
       oldValue: originalToken?.value,
-      newValue: updatedToken.value
+      newValue: updatedToken.value,
+      // The state as it stands before the optimistic apply below. applyChange uses this as
+      // the undo baseline, so Ctrl+Z returns to the value you started from.
+      snapshotBefore: designSnapshot(),
+      label: 'Edit ' + originalName,
     });
 
     let updated = { ...activeTokens };
@@ -673,7 +822,7 @@ This document serves as our living source of truth.`
       ...activeTokens,
       [category]: activeTokens[category].filter(t => t.name !== name)
     };
-    updateTokensState(updated);
+    updateTokensState(updated, 'Delete ' + name);
   };
 
   const handleDuplicateToken = (category, token) => {
@@ -690,7 +839,7 @@ This document serves as our living source of truth.`
       id: String(Date.now()),
       ...comp
     };
-    updateComponentsState([...components, newComp]);
+    updateComponentsState([...components, newComp], 'Add ' + (newComp.name || 'component'));
   };
 
   // Adds many components (e.g. a batch of regions detected from one design
@@ -700,34 +849,54 @@ This document serves as our living source of truth.`
   // String(Date.now()) per item in a tight synchronous loop can collide.
   const handleAddComponents = (comps) => {
     const newComps = comps.map((c, i) => ({ id: `${Date.now()}-${i}`, ...c }));
-    updateComponentsState([...components, ...newComps]);
+    updateComponentsState([...components, ...newComps], 'Add ' + newComps.length + ' components');
   };
 
   const handleEditComponent = (updatedComp) => {
-    updateComponentsState(components.map(c => c.id === updatedComp.id ? updatedComp : c));
+    updateComponentsState(
+      components.map(c => c.id === updatedComp.id ? updatedComp : c),
+      'Edit ' + (updatedComp.name || 'component'),
+    );
   };
 
+  // Deleting has to repair references, not just drop the row: a deleted parent's mappings
+  // are flattened into its children so they keep their appearance, and a deleted child is
+  // removed from every fragment holding it. See removeComponents.
   const handleDeleteComponent = (compId) => {
-    updateComponentsState(components.filter(c => c.id !== compId));
+    const name = components.find(c => c.id === compId)?.name;
+    updateComponentsState(removeComponents(components, [compId]), 'Delete ' + (name || 'component'));
     setSelectedComponentIds(prev => { const next = new Set(prev); next.delete(compId); return next; });
+    setPreviewComponentId(prev => (prev === compId ? null : prev));
   };
 
   const handleDeleteComponents = (compIds) => {
     const ids = new Set(compIds);
-    updateComponentsState(components.filter(c => !ids.has(c.id)));
+    updateComponentsState(removeComponents(components, compIds), 'Delete ' + ids.size + ' components');
     setSelectedComponentIds(new Set());
+    setPreviewComponentId(prev => (ids.has(prev) ? null : prev));
   };
 
   // Recursive token value resolver for references (e.g. {brand.color.primary})
-  const resolveTokenValue = (tokenValueOrName) => {
+  //
+  // `seen` guards against an alias loop. Two tokens pointing at each other used to recurse
+  // until the stack gave out, and because every row resolves its own value that blanked the
+  // whole Tokens tab rather than spoiling one row. getTokenInheritanceChain below has always
+  // capped its walk; this is the same protection, by the reference already visited.
+  const resolveTokenValue = (tokenValueOrName, seen) => {
     if (!tokenValueOrName) return '';
     let val = String(tokenValueOrName).trim();
-    
+
+    const visited = seen || new Set();
+    // Back where we started: hand back the reference rather than following it again. A
+    // cyclic token has no value to resolve to, and saying so beats crashing the page.
+    if (visited.has(val)) return val;
+    visited.add(val);
+
     // Check if it's a token name directly (legacy mappings)
     if (!val.startsWith('{')) {
       for (const cat in activeTokens) {
         const found = activeTokens[cat]?.find(t => t.name === val);
-        if (found) return resolveTokenValue(found.value);
+        if (found) return resolveTokenValue(found.value, visited);
       }
     }
     
@@ -737,7 +906,7 @@ This document serves as our living source of truth.`
       const refName = match[1];
       for (const cat in activeTokens) {
         const found = activeTokens[cat]?.find(t => t.name === refName);
-        if (found) return resolveTokenValue(found.value);
+        if (found) return resolveTokenValue(found.value, visited);
       }
     }
     
@@ -789,12 +958,96 @@ This document serves as our living source of truth.`
     return chain;
   };
 
+  // Components keyed by id — what the inheritance and composition helpers take. Plain
+  // derivation, not a hook, so it sits safely below the loading guards above.
+  const componentsById = indexById(components);
+
+  // Deliberately not a useMemo. ProjectDetail has an early return below and has crashed
+  // twice on a hook placed after it; componentsById above is a plain const for the same
+  // reason. One pass over ~170 tokens is not worth the risk.
+  const tokenUsage = buildUsageIndex(activeTokens, components);
+
+  // The two rails take turns. Opening one closes the other, so the table is never behind
+  // two panels, and the expansion state resets rather than carrying over to another token.
+  // A rename changes tokens *and* components, and they must land together — two writes
+  // would be two states a reader could catch in between. One updateProject is the honest
+  // representation of one refactor.
+  const commitRefactor = ({ tokens, components: nextComponents }, label = 'Ramp change') => {
+    commitDesign(label, nextComponents ? { tokens, components: nextComponents } : { tokens });
+  };
+
+  // Neither of these goes through handleEditToken: it repairs no references and does not
+  // persist, so using it here would leave every alias pointing at a name that had moved.
+  const commitRampRename = (role, typed) => {
+    setRenamingRamp(null);
+    const slug = slugifyRole(typed);
+    // Nothing typed, or the same name back — a cancel, not an error.
+    if (!slug || slug === role) return;
+
+    const result = renameRamp(activeTokens, components, role, typed);
+    if (!result.ok) {
+      if (result.reason !== 'unchanged') setRefactorNote({ kind: 'error', text: result.reason });
+      return;
+    }
+    commitRefactor(result, 'Rename ramp to ' + result.role);
+    // The rail may be showing a name that no longer exists.
+    setUsageTokenName(null);
+    setRefactorNote({
+      kind: 'ok',
+      text: 'Renamed ' + result.renamed + ' tokens'
+        + (result.repaired ? ' and repaired ' + result.repaired + ' reference' + (result.repaired === 1 ? '' : 's') : '')
+        + '.',
+    });
+  };
+
+  const commitRampColor = (role, hex) => {
+    const result = recolorRamp(activeTokens, role, hex);
+    if (!result.ok) {
+      if (result.reason !== 'unchanged') setRefactorNote({ kind: 'error', text: result.reason });
+      return;
+    }
+    commitRefactor({ tokens: result.tokens }, 'Recolour ' + role + ' ramp');
+    setRefactorNote({
+      kind: 'ok',
+      text: 'Rebuilt ' + result.changed + ' steps'
+        + (result.kept.length
+          ? ' · ' + result.kept.join(', ') + ' kept because you had edited '
+            + (result.kept.length === 1 ? 'it' : 'them')
+          : '')
+        + '.',
+    });
+  };
+
+  const openUsage = (name) => {
+    setPreviewComponentId(null);
+    setExpandedUsage(new Set());
+    setUsageTokenName(prev => (prev === name ? null : name));
+  };
+
   // Turns a component's whole `tokens` map into a resolved React style object,
   // so any CSS property the user mapped (not just the original six) actually
   // shows up in the live preview.
+  // The one place a component's tokens become a style, so inheritance resolves here and
+  // every preview — rail, drawer, shared view — gets it without changes of its own.
+  // A style row shows a specimen and a size/line-height summary. Every part is resolved
+  // through the tokens themselves, so the row can only ever say what the tokens say — an
+  // unresolvable part is simply absent rather than filled in with a plausible number.
+  const styleSpecimen = (subgroup) => {
+    const part = (which) => {
+      const t = (subgroup.tokens || []).find(x => styleOf(x.name)?.part === which);
+      return t ? resolveTokenValue(t.value) : '';
+    };
+    return {
+      family: part('family'),
+      size: part('size'),
+      lineHeight: part('line-height'),
+      weight: part('weight'),
+    };
+  };
+
   const resolveMappedStyle = (comp) => {
     const out = {};
-    for (const [key, tokenName] of Object.entries(comp.tokens || {})) {
+    for (const [key, tokenName] of Object.entries(effectiveTokens(comp, componentsById))) {
       if (!tokenName) continue;
       const resolved = resolveTokenValue(tokenName);
       if (!resolved) continue;
@@ -806,9 +1059,15 @@ This document serves as our living source of truth.`
   // Live Component Preview Renderer. Every template lives in componentPreviews.jsx,
   // shared with the public shared-project view so both draw the same set. The mapped
   // style is resolved here, generically, from whatever CSS properties the user mapped.
-  const renderLivePreview = (comp) =>
+  // Depth-capped: a fragment cycle that somehow got stored must not recurse forever.
+  const renderLivePreview = (comp, depth = 0) =>
     renderComponentPreview(comp, resolveMappedStyle(comp), {
       onButtonClick: () => alert(`${comp.name} clicked!`),
+      children: isFragment(comp) && depth < 6
+        ? childrenOf(comp, componentsById).map(kid => (
+            <React.Fragment key={kid.id}>{renderLivePreview(kid, depth + 1)}</React.Fragment>
+          ))
+        : undefined,
     });
 
   const handlePrintBrandBible = () => {
@@ -1280,15 +1539,13 @@ This document serves as our living source of truth.`
       }
     });
 
-    setBrandData(finalBrand);
-    setActiveTokens(finalTokens);
-    setComponents(finalComponents);
-    
-    updateProject(id, {
-      brand: finalBrand,
-      tokens: finalTokens,
-      components: finalComponents
-    });
+    // One entry on the shared stack, so the toast's Undo and Ctrl+Z are the same action
+    // rather than a one-shot snapshot that could disagree with a stack that had moved on.
+    commitDesign(
+      pendingChange.label || 'Apply brand changes',
+      { tokens: finalTokens, components: finalComponents, brandData: finalBrand },
+      pendingChange.snapshotBefore,
+    );
 
     setBrandBibleDirty(true);
     updateProject(id, { brandBibleDirty: true });
@@ -1336,19 +1593,11 @@ This document serves as our living source of truth.`
     setPendingChange(null);
   };
 
+  // Still the toast's handler, but it is the stack's undo now — one history and one
+  // action, so the toast can never restore a snapshot the stack has already moved past.
   const handleUndo = () => {
-    if (undoState) {
-      setBrandData(undoState.brand);
-      setActiveTokens(undoState.tokens);
-      setComponents(undoState.components);
-      updateProject(id, {
-        brand: undoState.brand,
-        tokens: undoState.tokens,
-        components: undoState.components
-      });
-      setUndoState(null);
-      setShowUndoToast(false);
-    }
+    setShowUndoToast(false);
+    undo();
   };
 
   const getCSSVariablesText = () => {
@@ -1467,9 +1716,17 @@ This document serves as our living source of truth.`
   // Folders are stored as "toggled away from their default", so collapsing or
   // expanding everything means naming exactly the folders whose default is the
   // opposite of what is wanted — not just emptying the set.
+  // Second-tier keys come from the category's own grouping rule, so Colour contributes
+  // its role folders and everything else contributes its tiers. A stale key list here
+  // would leave Collapse all half-finished.
   const tokenFolderKeys = TOKEN_TYPES.flatMap(({ id }) => [
     { key: id, defaultOpen: (activeTokens[id] || []).length > 0 },
-    ...TOKEN_LAYERS.map(layer => ({ key: id + '/' + layer, defaultOpen: true })),
+    ...groupsFor(id, activeTokens[id] || []).flatMap(g => [
+      { key: id + '/' + g.key, defaultOpen: true },
+      // A style is a third tier, and it starts shut: nine styles of four tokens would
+      // otherwise bury the type scale under thirty-six rows.
+      ...(g.subgroups || []).map(sg => ({ key: id + '/' + g.key + '/' + sg.key, defaultOpen: false })),
+    ]),
   ]);
   const anyTokenFolderOpen = tokenFolderKeys.some(
     ({ key, defaultOpen }) => (toggledTokenFolders.has(key) ? !defaultOpen : defaultOpen)
@@ -1667,7 +1924,7 @@ This document serves as our living source of truth.`
   // One token row. Rendered inside its type → layer folder, so `rowType` is the folder's
   // type rather than a single global "active" category — which also means Edit, Duplicate
   // and Delete always act on the right bucket.
-  const renderTokenRow = (token, rowType, typeIcon, isLast) => {
+  const renderTokenRow = (token, rowType, typeIcon, isLast, nested = false) => {
                 const displayValue = editingTokenName === token.name ? editingTokenValue : token.value;
                 const resolvedPreviewValue = resolveTokenValue(displayValue);
                 const previewToken = { ...token, value: resolvedPreviewValue };
@@ -1683,15 +1940,55 @@ This document serves as our living source of truth.`
                       gap: '0.75rem', alignItems: 'center',
                       padding: '0.55rem 1rem',
                       borderBottom: isLast ? 'none' : '1px solid var(--border)',
-                      transition: 'background 0.15s', cursor: 'default',
+                      transition: 'background 0.15s', cursor: 'pointer',
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openUsage(token.name)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUsage(token.name); }
                     }}
                   >
-                    <span className="pd-tree-name-cell" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                    <span
+                      className={'pd-tree-name-cell' + (nested ? ' pd-tree-child-name' : '')}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}
+                    >
                       <span style={{ display: 'flex', color: 'var(--accent)', flexShrink: 0 }}>{typeIcon}</span>
-                      <span style={{
-                        fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>{token.name}</span>
+                      {/* The tier the layer folder used to announce. It stopped being a level
+                          you navigate through, so it says its piece here instead. */}
+                      <span
+                        title={(TOKEN_LAYER_LABELS[token.layer] || token.layer || 'Scoped') + ' token'}
+                        style={{
+                          width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0,
+                          background: layerColorFor(token.layer),
+                        }}
+                      />
+                      {/* A ramp step reads as just its step — the folder above already says
+                          Primary, and eleven `color.primary.*` in a column is noise. The full
+                          name stays on hover and in the kebab. */}
+                      <span
+                        title={token.name}
+                        style={{
+                          fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}
+                      >{rowLabelFor(rowType, token)}</span>
+                      {/* Only where being unreferenced is a defect: a semantic or scoped
+                          token exists to be referenced. Generated palette and scale members
+                          are exempt — see isDeadToken. */}
+                      {isDeadToken(token, tokenUsage) && (
+                        <span
+                          title={'Nothing references ' + token.name + ' yet'}
+                          style={{
+                            flexShrink: 0, fontSize: '0.58rem', textTransform: 'uppercase',
+                            letterSpacing: '0.04em', color: '#F59E0B',
+                            border: '1px solid rgba(245,158,11,0.35)', borderRadius: '100px',
+                            padding: '0.05rem 0.3rem',
+                          }}
+                        >
+                          unused
+                        </span>
+                      )}
                     </span>
                     <div
                       className={!isAlias && COLOR_VALUE_TYPES.has(token.type) ? 'pd-token-row-value-duplicate' : undefined}
@@ -1703,6 +2000,7 @@ This document serves as our living source of truth.`
                           type="text"
                           value={editingTokenValue}
                           onChange={(e) => setEditingTokenValue(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
                           onBlur={() => {
                             handleEditToken(rowType, token.name, { ...token, value: editingTokenValue });
                             setEditingTokenName(null);
@@ -1730,7 +2028,9 @@ This document serves as our living source of truth.`
                       ) : isAlias ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                           <span
-                            onDoubleClick={() => {
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
                               setEditingTokenName(token.name);
                               setEditingTokenValue(token.value);
                             }}
@@ -1758,6 +2058,7 @@ This document serves as our living source of truth.`
                             setEditingTokenName(token.name);
                             setEditingTokenValue(token.value);
                           }}
+                          onClick={(e) => e.stopPropagation()}
                           title="Double click to edit value"
                           style={{
                             fontFamily: 'var(--font-mono)',
@@ -1836,6 +2137,15 @@ This document serves as our living source of truth.`
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 161,
                                 display: 'flex', flexDirection: 'column', gap: '0.1rem',
                               }}>
+                                <button
+                                  onClick={() => {
+                                    openUsage(token.name);
+                                    setActiveDropdown(null);
+                                  }}
+                                  style={menuItemStyle}
+                                >
+                                  Usages
+                                </button>
                                 <button
                                   onClick={() => {
                                     setTokenModal({ mode: 'edit', token, category: rowType });
@@ -1943,6 +2253,40 @@ This document serves as our living source of truth.`
         {/* Last saved timestamp */}
         <span className="pd-header-saved" style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
           Saved {lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+        </span>
+
+        {/* Undo / redo. In the header rather than a tab's toolbar because Ctrl+Z works
+            everywhere, and a control that only exists on the Components tab would make
+            the shortcut look tab-specific. The tooltip names the action, because after a
+            few edits the useful question is what exactly is about to come back. */}
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
+          {[
+            { on: history.past.length > 0, label: history.past.length ? history.past[history.past.length - 1].label : null,
+              act: undo, verb: 'Undo', keys: 'Ctrl+Z',
+              d: 'M20 20v-7a4 4 0 00-4-4H4', poly: '9 14 4 9 9 4' },
+            { on: history.future.length > 0, label: history.future.length ? history.future[0].label : null,
+              act: redo, verb: 'Redo', keys: 'Ctrl+Y',
+              d: 'M4 20v-7a4 4 0 014-4h12', poly: '15 14 20 9 15 4' },
+          ].map(b => (
+            <button
+              key={b.verb}
+              type="button"
+              onClick={b.act}
+              disabled={!b.on}
+              title={b.on ? b.verb + ': ' + b.label + '  (' + b.keys + ')' : 'Nothing to ' + b.verb.toLowerCase()}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '26px', height: '26px', borderRadius: '6px', border: 'none',
+                background: 'none', padding: 0,
+                color: b.on ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                cursor: b.on ? 'pointer' : 'not-allowed', opacity: b.on ? 1 : 0.4,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points={b.poly} /><path d={b.d} />
+              </svg>
+            </button>
+          ))}
         </span>
 
         {/* Branch selector */}
@@ -2432,7 +2776,7 @@ This document serves as our living source of truth.`
 
         {/* ── Main Content ── */}
         <main
-          className={'pd-main' + (previewComponentId ? ' has-inspector' : '')}
+          className={'pd-main' + (previewComponentId || usageTokenName ? ' has-inspector' : '')}
           style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}
         >
 
@@ -3204,8 +3548,22 @@ This document serves as our living source of truth.`
                     </span>
                   </div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                    Grouped by type, then by layer.
+                    Colour is grouped by role; everything else by layer.
                   </span>
+                  {/* What the last rename or recolour actually touched, or why it was
+                      refused. A refactor across eleven tokens should not land silently. */}
+                  {refactorNote && (
+                    <span
+                      onClick={() => setRefactorNote(null)}
+                      title="Dismiss"
+                      style={{
+                        marginTop: '0.35rem', fontSize: '0.72rem', cursor: 'pointer',
+                        color: refactorNote.kind === 'error' ? '#EF4444' : 'var(--accent)',
+                      }}
+                    >
+                      {refactorNote.text}
+                    </span>
+                  )}
                 </div>
                 {can(myRole, 'tokens', 'create') && (
                   <div className="pd-tokens-header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
@@ -3280,25 +3638,84 @@ This document serves as our living source of truth.`
                         <span style={{ display: 'flex', color: 'var(--accent)' }}>{folderIcon(13)}</span>
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{typeId}</span>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{typeTokens.length}</span>
+
+                        {/* A ramp is eleven tokens and a scale is eight, so each gets its
+                            own action rather than that many trips through the single-token
+                            dialog. Only the two categories that fold into scales have one. */}
+                        {can(myRole, 'tokens', 'create') && (() => {
+                          const bulk = typeId === 'Color'
+                            ? {
+                              label: 'Ramp', open: setRampModalOpen, aria: 'Add a colour ramp',
+                              title: 'Add a colour ramp — one colour becomes a 50-950 scale',
+                            }
+                            : typeId === 'Typography'
+                              ? {
+                                label: 'Scale', open: setScaleModalOpen, aria: 'Add a type scale',
+                                title: 'Add a type scale — one size and a ratio become eight steps',
+                              }
+                              : null;
+                          if (!bulk) return null;
+                          return (
+                            <button
+                              className="pd-tree-folder-add"
+                              onClick={(e) => { e.stopPropagation(); bulk.open(true); }}
+                              title={bulk.title}
+                              aria-label={bulk.aria}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.25rem',
+                                marginLeft: 'auto', flexShrink: 0,
+                                background: 'none', border: '1px solid var(--border)', borderRadius: '6px',
+                                color: 'var(--text-secondary)', cursor: 'pointer',
+                                padding: '0.15rem 0.4rem', fontSize: '0.68rem', fontFamily: 'inherit',
+                              }}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                              </svg>
+                              {bulk.label}
+                            </button>
+                          );
+                        })()}
                       </div>
 
-                      {typeOpen && TOKEN_LAYERS.map(layer => {
-                        const layerTokens = typeTokens.filter(t => t.layer === layer);
-                        if (tokenTableSearchLower && layerTokens.length === 0) return null;
-                        const layerKey = typeId + '/' + layer;
+                      {/* Second tier: whatever the category's grouping rule says. Colour
+                          folders by role — Primary, Secondary, Accent — because that is what a
+                          designer comes looking for; everything else keeps its Brand /
+                          Semantic / Scoped tiers. See tokenGroups.js. */}
+                      {typeOpen && groupsFor(typeId, typeTokens)
+                        .filter(g => !(tokenTableSearchLower && g.tokens.length === 0))
+                        .map((group, gi, shown) => {
+                        const layerTokens = group.tokens;
+                        const layerKey = typeId + '/' + group.key;
                         const layerOpen = tokenTableSearchLower ? true : !toggledTokenFolders.has(layerKey);
-                        const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
+                        // Only Typography sections its folders; everywhere else this is undefined
+                        // and no label is drawn. A section whose folders were all empty and
+                        // dropped never becomes the previous one, so it prints no heading.
+                        const sectionLabel = group.section && group.section !== shown[gi - 1]?.section
+                          ? group.section
+                          : null;
                         return (
                           <div key={layerKey}>
-                            {/* Second tier: the layer. Its colour dot is the one part of the
-                                old pill switcher worth keeping — it reads at a glance. */}
+                            {sectionLabel && (
+                              <div
+                                className="pd-tree-section-label"
+                                style={{
+                                  padding: '0.6rem 1rem 0.3rem 2.2rem',
+                                  fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.07em',
+                                  color: 'var(--text-tertiary)', background: 'var(--bg-tertiary)',
+                                  borderBottom: '1px solid var(--border)', userSelect: 'none',
+                                }}
+                              >
+                                {sectionLabel}
+                              </div>
+                            )}
                             <div
                               className="pd-tree-folder-row pd-tree-type-row"
                               role="button"
                               tabIndex={0}
                               onClick={() => toggleTokenFolder(layerKey)}
                               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTokenFolder(layerKey); } }}
-                              title={layerOpen ? 'Collapse ' + layer : 'Expand ' + layer}
+                              title={layerOpen ? 'Collapse ' + group.label : 'Expand ' + group.label}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: '0.5rem',
                                 padding: '0.5rem 1rem 0.5rem 2.2rem', cursor: 'pointer',
@@ -3312,18 +3729,82 @@ This document serves as our living source of truth.`
                                 <polyline points="9 18 15 12 9 6" />
                               </svg>
                               <span style={{ display: 'flex', color: 'var(--accent)' }}>{folderIcon(11)}</span>
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: layerColor, flexShrink: 0 }} />
-                              <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}>
-                                {TOKEN_LAYER_LABELS[layer] || layer}
-                              </span>
+                              {/* A ramp's marker is its own base colour, and on a ramp it is
+                                  also the way in to changing it. stopPropagation because the
+                                  whole row toggles the folder. */}
+                              {group.dotStyle === 'swatch' && can(myRole, 'tokens', 'edit') ? (
+                                <span
+                                  onClick={(e) => e.stopPropagation()}
+                                  onDoubleClick={(e) => e.stopPropagation()}
+                                  style={{ display: 'flex', flexShrink: 0 }}
+                                >
+                                  <ColorSwatchButton
+                                    value={group.dot || '#000000'}
+                                    onChange={(hex) => commitRampColor(group.key, hex)}
+                                    title={'Recolour the ' + group.label + ' ramp'}
+                                    against={activeTokens.Color?.find(t => t.name === 'brand.color.background')?.value || '#0D0D12'}
+                                    size={13}
+                                    radius={3}
+                                  />
+                                </span>
+                              ) : group.dot && (
+                                <span style={group.dotStyle === 'swatch'
+                                  ? {
+                                    width: '12px', height: '12px', borderRadius: '3px', flexShrink: 0,
+                                    background: group.dot, border: '1px solid rgba(255,255,255,0.18)',
+                                  }
+                                  : { width: '6px', height: '6px', borderRadius: '50%', background: group.dot, flexShrink: 0 }
+                                } />
+                              )}
+                              {renamingRamp && renamingRamp.role === group.key ? (
+                                <input
+                                  autoFocus
+                                  value={renamingRamp.draft}
+                                  onChange={(e) => setRenamingRamp({ role: group.key, draft: e.target.value })}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onBlur={() => commitRampRename(group.key, renamingRamp.draft)}
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation();
+                                    if (e.key === 'Enter') commitRampRename(group.key, renamingRamp.draft);
+                                    else if (e.key === 'Escape') setRenamingRamp(null);
+                                  }}
+                                  style={{
+                                    background: 'var(--bg-tertiary)', border: '1px solid var(--accent)',
+                                    borderRadius: '5px', color: 'var(--text-primary)',
+                                    fontSize: '0.78rem', fontFamily: 'inherit',
+                                    padding: '0.1rem 0.3rem', width: '150px',
+                                  }}
+                                />
+                              ) : (
+                                <span
+                                  onDoubleClick={(e) => {
+                                    if (group.dotStyle !== 'swatch' || !can(myRole, 'tokens', 'edit')) return;
+                                    e.stopPropagation();
+                                    setRefactorNote(null);
+                                    setRenamingRamp({ role: group.key, draft: group.label });
+                                  }}
+                                  title={group.dotStyle === 'swatch' && can(myRole, 'tokens', 'edit')
+                                    ? 'Double-click to rename this ramp'
+                                    : undefined}
+                                  style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)' }}
+                                >
+                                  {group.label}
+                                </span>
+                              )}
                               <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)' }}>{layerTokens.length}</span>
 
                               {can(myRole, 'tokens', 'create') && (
                                 <button
                                   className="pd-tree-folder-add"
-                                  onClick={(e) => { e.stopPropagation(); setTokenModal({ mode: 'add', category: typeId, defaultLayer: layer }); }}
-                                  title={'Add a ' + (TOKEN_LAYER_LABELS[layer] || layer).toLowerCase() + ' ' + typeId.toLowerCase() + ' token'}
-                                  aria-label={'Add a token to ' + typeId + ' ' + layer}
+                                  onClick={(e) => { e.stopPropagation(); setTokenModal({
+                                    mode: 'add', category: typeId,
+                                    defaultLayer: group.defaults?.layer,
+                                    // A token added inside a ramp or a scale starts on its name.
+                                    defaultName: group.defaults?.namePrefix,
+                                    defaultType: group.defaults?.type,
+                                  }); }}
+                                  title={'Add a ' + group.label.toLowerCase() + ' ' + typeId.toLowerCase() + ' token'}
+                                  aria-label={'Add a token to ' + typeId + ' ' + group.label}
                                   style={{
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     width: '20px', height: '20px', marginLeft: 'auto', flexShrink: 0,
@@ -3347,7 +3828,76 @@ This document serves as our living source of truth.`
                               </div>
                             )}
 
-                            {layerOpen && layerTokens.map((token, i) =>
+                            {/* Third tier, where a group has one: a text style is a set of
+                                tokens, so it reads as one row that expands into its parts. */}
+                            {layerOpen && (group.subgroups || []).map(sub => {
+                              const visible = sub.tokens.filter(matchesTokenSearch);
+                              if (tokenTableSearchLower && visible.length === 0) return null;
+                              const styleKey = layerKey + '/' + sub.key;
+                              const styleOpen = tokenTableSearchLower
+                                ? true
+                                : toggledTokenFolders.has(styleKey);
+                              const spec = styleSpecimen(sub);
+                              return (
+                                <div key={styleKey}>
+                                  <div
+                                    className="pd-tree-folder-row pd-tree-style-row"
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => toggleTokenFolder(styleKey)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleTokenFolder(styleKey); } }}
+                                    title={styleOpen ? 'Collapse ' + sub.label : 'Expand ' + sub.label}
+                                    style={{
+                                      display: 'grid', gridTemplateColumns: TOKEN_TABLE_COLS,
+                                      gap: '0.75rem', alignItems: 'center',
+                                      padding: '0.45rem 1rem', cursor: 'pointer',
+                                      background: 'var(--bg-secondary)',
+                                      borderBottom: '1px solid var(--border)',
+                                      userSelect: 'none',
+                                    }}
+                                  >
+                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0, paddingLeft: '3.6rem' }}>
+                                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                        style={{ flexShrink: 0, color: 'var(--text-tertiary)', transform: styleOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                                        <polyline points="9 18 15 12 9 6" />
+                                      </svg>
+                                      <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                                        {sub.label}
+                                      </span>
+                                      <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>{sub.tokens.length}</span>
+                                    </span>
+
+                                    {/* size / line-height, the way the reference reads */}
+                                    <span style={{
+                                      fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-secondary)',
+                                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}>
+                                      {spec.size || '—'}{spec.lineHeight ? ' / ' + spec.lineHeight : ''}
+                                    </span>
+
+                                    {/* the style, drawn as itself */}
+                                    <span
+                                      title={sub.label + ' specimen'}
+                                      style={{
+                                        fontFamily: spec.family || undefined,
+                                        fontSize: spec.size || undefined,
+                                        fontWeight: spec.weight || undefined,
+                                        lineHeight: 1.1,
+                                        color: 'var(--text-primary)',
+                                        maxWidth: '120px', overflow: 'hidden', whiteSpace: 'nowrap', display: 'block',
+                                      }}
+                                    >
+                                      Ag
+                                    </span>
+                                  </div>
+
+                                  {styleOpen && visible.map((token, i) =>
+                                    renderTokenRow(token, typeId, typeIcon, i === visible.length - 1, true))}
+                                </div>
+                              );
+                            })}
+
+                            {layerOpen && !group.subgroups && layerTokens.map((token, i) =>
                               renderTokenRow(token, typeId, typeIcon, i === layerTokens.length - 1))}
                           </div>
                         );
@@ -3434,19 +3984,38 @@ This document serves as our living source of truth.`
             // ── Shared panel chrome ──────────────────────────────────────────
             // The all-components list and the single-component editor both use
             // this, so the page header can't drift apart between the two views.
+            // Edit history is tracked now, so these do what they look like. The tooltip
+            // names the action rather than just saying "Undo", because after a few edits
+            // the useful question is what exactly is about to come back.
+            const canUndo = history.past.length > 0;
+            const canRedo = history.future.length > 0;
+            const undoLabel = canUndo ? history.past[history.past.length - 1].label : null;
+            const redoLabel = canRedo ? history.future[0].label : null;
             const undoRedoBtns = (
               <>
                 <button
-                  style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
-                  title="Undo isn't available yet — edit history isn't tracked"
-                  disabled
+                  onClick={undo}
+                  disabled={!canUndo}
+                  title={canUndo ? 'Undo: ' + undoLabel + '  (Ctrl+Z)' : 'Nothing to undo'}
+                  style={{
+                    ...toolbarIconBtn,
+                    color: canUndo ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                    cursor: canUndo ? 'pointer' : 'not-allowed',
+                    opacity: canUndo ? 1 : 0.5,
+                  }}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
                 </button>
                 <button
-                  style={{ ...toolbarIconBtn, color: 'var(--text-tertiary)', cursor: 'not-allowed', opacity: 0.5 }}
-                  title="Redo isn't available yet — edit history isn't tracked"
-                  disabled
+                  onClick={redo}
+                  disabled={!canRedo}
+                  title={canRedo ? 'Redo: ' + redoLabel + '  (Ctrl+Y)' : 'Nothing to redo'}
+                  style={{
+                    ...toolbarIconBtn,
+                    color: canRedo ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                    cursor: canRedo ? 'pointer' : 'not-allowed',
+                    opacity: canRedo ? 1 : 0.5,
+                  }}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 014-4h12"/></svg>
                 </button>
@@ -3659,7 +4228,7 @@ This document serves as our living source of truth.`
                             {typeOpen && typeComps.map((comp, i) => {
                         const preset = isPresetComp(comp);
                         const isChecked = selectedComponentIds.has(comp.id);
-                        return (
+                            const row = (
                           <div
                             key={comp.id}
                             className={'pd-component-list-row' + (isChecked ? ' pd-component-list-row-selected' : '')}
@@ -3773,7 +4342,45 @@ This document serves as our living source of truth.`
 
                             </div>
                           </div>
-                        );
+                            );
+                            // A fragment shows what it holds, one tier deeper. These are
+                            // references: the same component still lives in its own type
+                            // folder, so the link glyph marks this as a use, not a copy.
+                            if (!isFragment(comp)) return row;
+                            const kids = childrenOf(comp, componentsById);
+                            if (!kids.length) return row;
+                            return (
+                              <React.Fragment key={comp.id}>
+                                {row}
+                                {kids.map(kid => (
+                                  <div
+                                    key={comp.id + ':' + kid.id}
+                                    className="pd-component-list-row pd-tree-child-row"
+                                    style={{
+                                      display: 'grid', gridTemplateColumns: LIST_TABLE_COLS, gap: '0.75rem',
+                                      alignItems: 'center', padding: '0.55rem 1rem',
+                                      borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                                    }}
+                                    onClick={() => setPreviewComponentId(kid.id)}
+                                    title={kid.name + ' — used by ' + comp.name}
+                                  >
+                                    <span className="pd-tree-name-cell pd-tree-child-name" style={{
+                                      display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0,
+                                      color: 'var(--text-secondary)', fontSize: '0.82rem',
+                                    }}>
+                                      <span style={{ display: 'flex', color: 'var(--text-tertiary)', flexShrink: 0 }}>
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                                          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                                          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                                        </svg>
+                                      </span>
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kid.name}</span>
+                                    </span>
+                                    <div />
+                                  </div>
+                                ))}
+                              </React.Fragment>
+                            );
                             })}
                                 </div>
                               );
@@ -4691,7 +5298,7 @@ export default function RootLayout({ children }) {
         <TokenModal
           // Every field is seeded from props on mount, so reusing one instance for a
           // different token would leave the previous token's values in the form.
-          key={tokenModal.mode + ':' + (tokenModal.token?.name || tokenModal.category + '/' + tokenModal.defaultLayer)}
+          key={tokenModal.mode + ':' + (tokenModal.token?.name || [tokenModal.category, tokenModal.defaultLayer, tokenModal.defaultName, tokenModal.defaultType].join('/'))}
           modal={tokenModal}
           activeTokens={activeTokens}
           onClose={() => setTokenModal(null)}
@@ -4715,6 +5322,15 @@ export default function RootLayout({ children }) {
           componentToEdit={componentModal.component}
           initialCategory={componentModal.category}
           initialType={componentModal.type}
+          allComponents={components}
+          parentOptions={eligibleParents(componentModal.component, components)}
+          // The same helpers the properties rail below is given, so a property offers the
+          // identical tokens, presets and new-token form wherever it is edited.
+          tokensForProperty={getTokenNamesForProperty}
+          presetsForProperty={getPresetTokensForProperty}
+          onCreateToken={createTokenForProperty}
+          existingTokenNames={allTokenNames}
+          resolve={resolveTokenValue}
           onClose={() => setComponentModal(null)}
           onSave={(compData) => {
             if (Array.isArray(compData)) {
@@ -4728,6 +5344,237 @@ export default function RootLayout({ children }) {
           }}
         />
       )}
+
+      {scaleModalOpen && (
+        <ScaleModal
+          existingTypographyTokens={activeTokens.Typography || []}
+          onClose={() => setScaleModalOpen(false)}
+          onCreate={(tokens) => { handleAddTokens(tokens); setScaleModalOpen(false); }}
+        />
+      )}
+
+      {rampModalOpen && (
+        <RampModal
+          existingColorTokens={activeTokens.Color || []}
+          background={activeTokens.Color?.find(t => t.name === 'brand.color.background')?.value || '#0D0D12'}
+          onClose={() => setRampModalOpen(false)}
+          onCreate={(tokens) => { handleAddTokens(tokens); setRampModalOpen(false); }}
+        />
+      )}
+
+      {/* ── Token usages ── */}
+      {/* What depends on a token. The other direction was always visible — the row prints
+          "Resolves to" and the value cell's tooltip carries the chain — but dependents were
+          only ever computable as a side effect of editing, through the impact panel. */}
+      {usageTokenName && (() => {
+        const token = tokenUsage.byName.get(usageTokenName);
+        if (!token) return null;
+        const u = usageOf(usageTokenName, tokenUsage);
+        const resolved = resolveTokenValue(token.value);
+        const chain = getTokenInheritanceChain(token.value);
+        const isAlias = String(token.value || '').trim().startsWith('{');
+
+        const toggle = (key) => setExpandedUsage(prev => {
+          const next = new Set(prev);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          return next;
+        });
+
+        const componentLink = (c) => (
+          <button
+            type="button"
+            onClick={() => {
+              setUsageTokenName(null);
+              setActiveTab('components');
+              setPreviewComponentId(c.id);
+            }}
+            title={'Open ' + c.name}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.4rem', width: '100%',
+              textAlign: 'left', background: 'none', border: 'none', padding: '0.16rem 0',
+              cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <span style={{ display: 'flex', color: 'var(--accent)', flexShrink: 0 }}>{componentIcon(11)}</span>
+            <span style={{
+              minWidth: 0, fontSize: '0.7rem', color: 'var(--text-primary)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{c.name}</span>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+              {c.prop}
+            </span>
+          </button>
+        );
+
+        // Depth-capped for the same reason the walk is: a hand-written alias loop must not
+        // recurse forever just because someone opened the panel on it.
+        const renderReferrer = (name, path, depth) => {
+          const key = path + '/' + name;
+          const own = referrersOf(name, tokenUsage);
+          const kids = own.tokens.length + own.components.length;
+          const open = expandedUsage.has(key);
+          const cap = depth >= 8;
+          return (
+            <div key={key} style={{ paddingLeft: depth ? '0.85rem' : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.16rem 0' }}>
+                {kids > 0 && !cap ? (
+                  <button
+                    type="button"
+                    onClick={() => toggle(key)}
+                    title={open ? 'Collapse' : 'Expand'}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      color: 'var(--text-tertiary)', display: 'flex', flexShrink: 0,
+                    }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                      style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
+                      <polyline points="9 18 15 12 9 6" />
+                    </svg>
+                  </button>
+                ) : (
+                  <span style={{ width: '9px', flexShrink: 0 }} />
+                )}
+                <button
+                  type="button"
+                  onClick={() => openUsage(name)}
+                  title={'Open ' + name}
+                  style={{
+                    flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none',
+                    padding: 0, cursor: 'pointer', fontFamily: 'var(--font-mono)',
+                    fontSize: '0.7rem', color: 'var(--text-primary)',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {name}
+                </button>
+                {kids > 0 && (
+                  <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{kids}</span>
+                )}
+              </div>
+              {open && !cap && (
+                <>
+                  {own.tokens.map(n => renderReferrer(n, key, depth + 1))}
+                  {own.components.map(c => (
+                    <div key={key + '/c/' + c.id + c.prop} style={{ paddingLeft: '1.7rem' }}>
+                      {componentLink(c)}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          );
+        };
+
+        const sectionLabel = {
+          fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.06em',
+          color: 'var(--text-tertiary)', marginBottom: '0.3rem',
+        };
+
+        return (
+          <div className="pd-preview-drawer" style={{
+            position: 'fixed', right: 0, bottom: 0, width: '380px',
+            background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)',
+            boxShadow: '-12px 0 32px rgba(0,0,0,0.4)', zIndex: 400,
+            display: 'flex', flexDirection: 'column',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+              padding: '0.9rem 1rem 0.7rem', borderBottom: '1px solid var(--border)', flexShrink: 0,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)',
+                  overflowWrap: 'anywhere',
+                }}>
+                  {token.name}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.3rem' }}>
+                  <span style={{
+                    width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0,
+                    background: layerColorFor(token.layer),
+                  }} />
+                  <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
+                    {(TOKEN_LAYER_LABELS[token.layer] || token.layer || 'Scoped') + ' · ' + token.category}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUsageTokenName(null)}
+                title="Close"
+                style={{
+                  background: 'none', border: 'none', color: 'var(--text-tertiary)',
+                  cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0.1rem 0.2rem', flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '0.9rem 1rem' }}>
+              {/* Downstream: what this token resolves through. Already computed for the
+                  row's tooltip, so the same chain rather than a second opinion. */}
+              <div style={{ marginBottom: '1.1rem' }}>
+                <div style={sectionLabel}>Resolves to</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  {renderTokenPreview({ ...token, value: resolved })}
+                </div>
+                {isAlias && chain.length > 1 && (
+                  <div style={{
+                    marginTop: '0.4rem', fontSize: '0.66rem', color: 'var(--text-tertiary)',
+                    fontFamily: 'var(--font-mono)', lineHeight: 1.6, overflowWrap: 'anywhere',
+                  }}>
+                    {chain.join(' ➔ ')}
+                  </div>
+                )}
+                {!isAlias && (
+                  <div style={{ marginTop: '0.3rem', fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
+                    a literal — nothing behind it
+                  </div>
+                )}
+              </div>
+
+              {/* Upstream. */}
+              <div style={sectionLabel}>
+                Used by
+                {!u.unused && (
+                  <span style={{ color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: 0 }}>
+                    {' · ' + (u.direct.tokens.length + u.direct.components.length) + ' direct, '
+                      + (u.totalTokens + u.totalComponents) + ' in all'}
+                  </span>
+                )}
+              </div>
+
+              {u.unused ? (
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                  Nothing references this yet.
+                  {isDeadToken(token, tokenUsage)
+                    ? ' A ' + (TOKEN_LAYER_LABELS[token.layer] || token.layer).toLowerCase()
+                      + ' token exists to be referenced, so this one is not doing anything.'
+                    : ' That is normal for a palette or scale entry — they are generated as a set for you to pick from.'}
+                </div>
+              ) : (
+                <>
+                  {u.direct.tokens.length > 0 && (
+                    <div style={{ marginBottom: '0.7rem' }}>
+                      {u.direct.tokens.map(n => renderReferrer(n, 'root', 0))}
+                    </div>
+                  )}
+                  {u.direct.components.length > 0 && (
+                    <div>
+                      <div style={{ ...sectionLabel, marginTop: '0.5rem' }}>Components</div>
+                      {u.direct.components.map(c => (
+                        <div key={'c/' + c.id + c.prop}>{componentLink(c)}</div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Properties inspector ── */}
       {/* Selecting a component fills this rail. It used to be a read-only preview
@@ -4747,6 +5594,16 @@ export default function RootLayout({ children }) {
         for (const [k, v] of Object.entries(comp.tokens || {})) {
           if (v) normalizedTokens[cssPropForTokenKey(k)] = v;
         }
+        // What the parent chain provides, normalised the same way. Taken from the PARENT,
+        // not from the merged result: a row needs to know what it would fall back to even
+        // when this component overrides it, or an override cannot offer a reset.
+        const parent = comp.extends ? componentsById[comp.extends] : null;
+        const inheritedTokens = {};
+        if (parent) {
+          for (const [k, v] of Object.entries(effectiveTokens(parent, componentsById))) {
+            if (v) inheritedTokens[cssPropForTokenKey(k)] = v;
+          }
+        }
         return (
           <div ref={previewDrawerRef} className="pd-preview-drawer" style={{
             position: 'fixed', right: 0, bottom: 0, width: '380px',
@@ -4756,6 +5613,16 @@ export default function RootLayout({ children }) {
           }}>
             <ComponentInspector
               component={{ ...comp, tokens: normalizedTokens }}
+              inheritedTokens={inheritedTokens}
+              parent={parent}
+              parentOptions={eligibleParents(comp, components)}
+              onSetParent={(parentId) => handleEditComponent(
+                parentId ? { ...comp, extends: parentId } : (() => { const n = { ...comp }; delete n.extends; return n; })()
+              )}
+              childComponents={childrenOf(comp, componentsById)}
+              childOptions={eligibleChildren(comp, components)}
+              onSetChildren={(ids) => handleEditComponent({ ...comp, children: ids })}
+              onSelectComponent={setPreviewComponentId}
               tokensForProperty={getTokenNamesForProperty}
               presetsForProperty={getPresetTokensForProperty}
               onCreateToken={createTokenForProperty}
@@ -5130,6 +5997,9 @@ export default function RootLayout({ children }) {
            Only the name cell is indented — the Type/Properties/Action columns stay
            aligned with the header row. */
         .pd-tree-name-cell { padding: 0 0 0 5.6rem; }
+        /* Fourth tier: a fragment's children sit one step inside the fragment itself. */
+        .pd-tree-child-name { padding-left: 7.2rem !important; }
+        .pd-tree-style-row:hover { background: rgba(255,255,255,0.03); }
         .pd-tree-type-row:hover { background: var(--bg-tertiary) !important; }
 
         .pd-tree-row-kebab,
@@ -5417,6 +6287,7 @@ export default function RootLayout({ children }) {
           /* The desktop indent costs a phone too much of the name column, so the tiers
              tighten here — still stepped, just less far. */
           .pd-tree-name-cell { padding-left: 4rem !important; }
+          .pd-tree-child-name { padding-left: 5.2rem !important; }
           .pd-tree-type-row { padding-left: 1.8rem !important; }
           /* touch has no hover, so the row and folder actions are always shown */
           .pd-tree-row-kebab, .pd-tree-folder-add { opacity: 1 !important; }
@@ -5734,8 +6605,6 @@ const CATEGORY_GROUPS = [
 // Normalizes camelCase and kebab-case variants of the same property (e.g.
 // "fontSize" / "font-size") to one key, so lookups match regardless of which
 // convention a given caller's token `type` happens to use.
-const normalizeTypeKey = (type) => (type || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-
 const getGroupDisplayForType = (type) => {
   const norm = normalizeTypeKey(type);
   const group = CATEGORY_GROUPS.find(g => g.items.some(i => normalizeTypeKey(i.type) === norm));
@@ -5761,12 +6630,6 @@ const cssPropForTokenKey = (key) => LEGACY_TOKEN_KEY_TO_CSS[key] || key;
 // "padding-top" → "paddingTop", so it can be handed to a React style object.
 const cssPropToStyleKey = (prop) => prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 
-// Every CSS property a component can map, grouped exactly like the token
-// sidebar. Derived from CATEGORY_GROUPS so the two never drift apart.
-const CSS_PROPERTY_GROUPS = CATEGORY_GROUPS.map(g => ({
-  display: g.display,
-  properties: g.items.map(i => i.type),
-}));
 
 /* ── Announcement bar promoting the Upload Image tab ── */
 function UploadAnnouncementBanner({ message, onDismiss }) {
@@ -6110,12 +6973,18 @@ const parseTokenJson = (text) => {
 
 function TokenModal({ modal, onClose, onSave, activeTokens }) {
   const isEdit = modal.mode === 'edit';
-  const [name, setName] = useState(isEdit ? modal.token.name : '');
+  // A blank token opened from a ramp folder starts on that ramp's name, so adding a step
+  // to Primary does not mean retyping `color.primary.` every time.
+  const [name, setName] = useState(isEdit ? modal.token.name : (modal.defaultName || ''));
   const [value, setValue] = useState(isEdit ? modal.token.value : '');
-  const [type, setType] = useState(isEdit ? modal.token.type : getDefaultTypeForCategory(modal.category));
+  // A folder that stands for one property says so, and its + opens on that property
+  // rather than on the category's default — which for Typography was always fontFamily.
+  const [type, setType] = useState(
+    isEdit ? modal.token.type : (modal.defaultType || getDefaultTypeForCategory(modal.category))
+  );
   const [layer, setLayer] = useState(isEdit ? (modal.token.layer || 'Brand') : (modal.defaultLayer || 'Brand'));
 
-  const layerColor = layer === 'Brand' ? '#F59E0B' : layer === 'Semantic' ? '#3B82F6' : '#10B981';
+  const layerColor = layerColorFor(layer);
 
   // Code view: `codeDraft` holds what the user is typing; null means "show the fields".
   const [codeFormat, setCodeFormat] = useState('json');
@@ -6663,174 +7532,17 @@ const resolveTokenName = (activeTokens, name) => {
   return value || '';
 };
 
-// Whether a CSS property takes a colour — those get a swatch and the picker,
-// everything else keeps a plain list of names and values.
-const isColorProp = (cssProp) => getCategoryForType(cssProp) === 'Color';
+// The inspector's controls accept a literal as readily as a token name, so a resolver used
+// with them has to hand back an unrecognised value unchanged — returning an empty string
+// would make a perfectly good `12px` read as unresolved.
+const resolveTokenOrLiteral = (activeTokens, value) =>
+  resolveTokenName(activeTokens, value) || (value ? String(value).trim() : '');
 
-// A value is only drawable as a swatch if it actually looks like a colour.
-const asSwatch = (value) =>
-  /^(#|rgb|hsl|oklch|color\()/i.test(String(value || '').trim()) ? value : null;
 
-const humanizeCssProp = (prop) => prop
-  .split('-')
-  .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-  .join(' ');
+
 
 // Detected regions from an uploaded screenshot are saved as image components.
 const UPLOAD_TYPE = TEMPLATE_TO_TYPE.image;
-
-/* ── Colour token picker ── */
-// Designers pick a colour by eye rather than by reading names, so a colour
-// property shows its swatch and opens a grid of every colour token in the
-// project. Non-colour properties keep a plain select (see the editor rows).
-function TokenSwatchPicker({ value, options, activeTokens, onChange, emptyLabel }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const btnRef = useRef(null);
-
-  // Rendered in a portal-ish fixed layer because the modal body scrolls, which
-  // would otherwise clip the popover.
-  const openAt = () => {
-    const r = btnRef.current.getBoundingClientRect();
-    setPos({ top: r.bottom + 6, left: r.left });
-    setOpen(true);
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e) => { if (!btnRef.current?.contains(e.target)) setOpen(false); };
-    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', esc, true);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc, true); };
-  }, [open]);
-
-  const resolved = resolveTokenName(activeTokens, value);
-  const swatch = asSwatch(resolved);
-
-  return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => (open ? setOpen(false) : openAt())}
-        title={value ? `${value} — ${resolved || 'unresolved'}` : 'Pick a colour token'}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', minWidth: 0,
-          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '7px',
-          padding: '0.3rem 0.45rem', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-        }}
-      >
-        <span style={{
-          width: '18px', height: '18px', borderRadius: '5px', flexShrink: 0,
-          backgroundColor: swatch || 'transparent',
-          border: swatch ? '1px solid rgba(255,255,255,0.18)' : '1px dashed var(--border)',
-          // A checker hint reads as "nothing set" rather than as a black swatch.
-          backgroundImage: swatch ? undefined
-            : 'linear-gradient(45deg, var(--border) 25%, transparent 25%, transparent 75%, var(--border) 75%)',
-          backgroundSize: swatch ? undefined : '6px 6px',
-        }} />
-        <span style={{ minWidth: 0, flex: 1 }}>
-          <span style={{
-            display: 'block', fontSize: '0.74rem', color: value ? 'var(--text-primary)' : 'var(--text-tertiary)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {value || (options.length ? 'Not mapped' : emptyLabel)}
-          </span>
-          {value && (
-            <span style={{ display: 'block', fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-              {resolved || 'unresolved'}
-            </span>
-          )}
-        </span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-          style={{ flexShrink: 0, color: 'var(--text-tertiary)' }}>
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-
-      {open && pos && (
-        <div style={{
-          position: 'fixed', top: pos.top, left: pos.left, zIndex: 2200,
-          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-          borderRadius: '10px', boxShadow: '0 12px 28px rgba(0,0,0,0.5)',
-          padding: '0.6rem', width: '250px', maxHeight: '260px', overflowY: 'auto',
-        }}>
-          {options.length === 0 ? (
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', padding: '0.3rem' }}>{emptyLabel}</div>
-          ) : (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.35rem' }}>
-                {options.map(name => {
-                  const v = resolveTokenName(activeTokens, name);
-                  const sw = asSwatch(v);
-                  const active = name === value;
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => { onChange(name); setOpen(false); }}
-                      title={`${name} — ${v || 'unresolved'}`}
-                      style={{
-                        width: '100%', aspectRatio: '1', borderRadius: '6px', cursor: 'pointer', padding: 0,
-                        background: sw || 'var(--bg-tertiary)',
-                        border: active ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.15)',
-                      }}
-                    />
-                  );
-                })}
-              </div>
-              <div style={{ borderTop: '1px solid var(--border)', margin: '0.55rem 0 0.4rem' }} />
-              {/* The grid is for picking by eye; this list is for picking by name. */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                <button
-                  type="button"
-                  onClick={() => { onChange(''); setOpen(false); }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.45rem', width: '100%', textAlign: 'left',
-                    background: 'none', border: 'none', borderRadius: '5px', cursor: 'pointer',
-                    padding: '0.25rem 0.3rem', fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'inherit',
-                  }}
-                >
-                  Clear mapping
-                </button>
-                {options.map(name => {
-                  const v = resolveTokenName(activeTokens, name);
-                  const sw = asSwatch(v);
-                  return (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => { onChange(name); setOpen(false); }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '0.45rem', width: '100%', textAlign: 'left',
-                        background: name === value ? 'var(--bg-tertiary)' : 'none',
-                        border: 'none', borderRadius: '5px', cursor: 'pointer',
-                        padding: '0.25rem 0.3rem', fontFamily: 'inherit',
-                      }}
-                    >
-                      <span style={{
-                        width: '12px', height: '12px', borderRadius: '3px', flexShrink: 0,
-                        background: sw || 'var(--bg-tertiary)', border: '1px solid rgba(255,255,255,0.15)',
-                      }} />
-                      <span style={{
-                        flex: 1, minWidth: 0, fontSize: '0.72rem', color: 'var(--text-primary)',
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>{name}</span>
-                      <span style={{ fontSize: '0.63rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
-                        {v}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
 
 /* ── Component code view ── */
 // Custom-property names must match what the project exports (getCSSVariablesText),
@@ -6853,10 +7565,17 @@ const TEMPLATE_ELEMENT = {
   chart: 'figure', breadcrumb: 'nav', pagination: 'nav', navbar: 'nav',
 };
 
-const componentToCssText = (name, rows) => {
-  const decls = (rows || [])
-    .filter(r => r.value)
-    .map(r => `  ${cssPropForTokenKey(r.key)}: var(${tokenToCssVar(r.value)});`);
+// `inheritedRows` are declarations the component gets from its parent. They are included
+// because the preview includes them — a rule that omitted them would not reproduce what
+// is on screen — and marked so it is clear where they came from.
+const componentToCssText = (name, rows, inheritedRows = [], parentName = '') => {
+  const decl = (r) => `  ${cssPropForTokenKey(r.key)}: var(${tokenToCssVar(r.value)});`;
+  const own = new Set((rows || []).filter(r => r.value).map(r => cssPropForTokenKey(r.key)));
+  const note = parentName ? ` /* inherited from ${parentName} */` : ' /* inherited */';
+  const decls = [
+    ...(inheritedRows || []).filter(r => r.value && !own.has(cssPropForTokenKey(r.key))).map(r => decl(r) + note),
+    ...(rows || []).filter(r => r.value).map(decl),
+  ];
   const body = decls.length ? decls.join('\n') : '  /* no tokens mapped yet */';
   return `.${componentClassName(name)} {\n${body}\n}`;
 };
@@ -6871,12 +7590,18 @@ const componentToJsxText = (name, template) => {
     : `export function ${comp}({ children, ...props }) {\n  return (\n    <${el} className="${cls}" {...props}>\n      {children}\n    </${el}>\n  );\n}`;
 };
 
-const componentToJsonText = (name, type, template, description, rows) => {
+const componentToJsonText = (name, type, template, description, rows, extra = {}) => {
   const tokens = {};
   for (const r of rows || []) {
     if (r.value) tokens[cssPropForTokenKey(r.key)] = r.value;
   }
-  return JSON.stringify({ name: name || '', type: type || '', template: template || '', description: description || '', tokens }, null, 2);
+  return JSON.stringify({
+    name: name || '', type: type || '', template: template || '',
+    description: description || '', tokens,
+    // present only when they mean something, so an ordinary component's spec is unchanged
+    ...(extra.extends ? { extends: extra.extends } : {}),
+    ...(extra.children && extra.children.length ? { children: extra.children } : {}),
+  }, null, 2);
 };
 
 /** Every token name defined in the project, for matching a var() back to a real token. */
@@ -6971,12 +7696,35 @@ const parseComponentJson = (text) => {
 // via TYPE_TO_TEMPLATE from the taxonomy — so it renders as the thing the folder says
 // it is instead of defaulting to a button.
 
-function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existingNames, initialCategory, initialType }) {
+function ComponentModal({
+  onClose, onSave, activeTokens, componentToEdit, existingNames, initialCategory, initialType,
+  allComponents = [], parentOptions = [],
+  // The same set the properties rail is given, passed in rather than reimplemented.
+  tokensForProperty, presetsForProperty, onCreateToken, existingTokenNames, resolve,
+}) {
   const isEdit = !!componentToEdit;
 
   // Code view state. Declared at the top of this component on purpose: anything below
   // an early return, or accidentally anchored into ProjectDetail, becomes a conditional
   // hook and crashes the page with "Rendered more hooks than during the previous render".
+  // The two relationship toggles from the reference dialog. Both off gives exactly the
+  // previous behaviour.
+  const [asFragment, setAsFragment] = useState(isEdit ? componentToEdit.template === 'fragment' : false);
+  const [extendsId, setExtendsId] = useState(isEdit ? (componentToEdit.extends || '') : '');
+
+  // What this component inherits. Driven by the dialog's own Extends picker rather than the
+  // saved value, so choosing a parent shows the inherited mappings straight away and the
+  // emitted CSS matches the toggle. Resolved through the whole chain, and normalised the
+  // same way as own mappings so an inherited legacy key lines up with the row overriding it.
+  const parentComp = extendsId ? allComponents.find(c => c.id === extendsId) : null;
+  const parentName = parentComp ? parentComp.name : '';
+  const inheritedTokens = {};
+  if (parentComp) {
+    for (const [k, v] of Object.entries(effectiveTokens(parentComp, indexById(allComponents)))) {
+      if (v) inheritedTokens[cssPropForTokenKey(k)] = v;
+    }
+  }
+  const inheritedRows = Object.entries(inheritedTokens).map(([key, value]) => ({ key, value }));
   const [editorTab, setEditorTab] = useState('properties');
   const [codeFormat, setCodeFormat] = useState('css');
   const [codeDraft, setCodeDraft] = useState(null);
@@ -7175,12 +7923,6 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
   // Any CSS property can be mapped, so the Value options come from whichever
   // token category that property belongs to (e.g. padding-top → Spacing),
   // rather than from a hardcoded per-property token type.
-  const getTokensForProperty = (cssProp) => {
-    const category = getCategoryForType(cssProp);
-    const list = activeTokens?.[category];
-    return Array.isArray(list) ? list.map(t => t.name).filter(Boolean) : [];
-  };
-
   // Editing resolves through the taxonomy, which already handles every legacy category
   // name (including the old Atom/Molecule/Organism values) via LEGACY_CATEGORY_ALIAS.
   const getInitialCategory = () => {
@@ -7201,69 +7943,57 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
   // Preview ground, so a designer can check the component on both.
   const [previewLight, setPreviewLight] = useState(false);
 
-  // What the mapped rows currently add up to, so the preview beside the form
+  // What the mappings currently add up to, so the preview beside the form
   // shows the component as it will actually look — no save-and-reopen loop.
   const previewStyle = () => {
     const out = {};
-    for (const row of tokenRows) {
-      if (!row.value) continue;
-      const resolved = resolveTokenName(activeTokens, row.value);
-      if (!resolved) continue;
-      out[cssPropToStyleKey(cssPropForTokenKey(row.key))] = resolved;
+    for (const [prop, token] of Object.entries(tokens)) {
+      const resolved = resolveTokenOrLiteral(activeTokens, token);
+      if (resolved) out[cssPropToStyleKey(prop)] = resolved;
     }
     return out;
   };
 
-  // Token mappings — one row per mapped CSS property. A row's `key` is either
-  // a legacy storage key or a raw CSS property name; `cssPropForTokenKey`
-  // resolves either to the property shown in the table. Edit mode lists every
-  // property already saved on the component (so free-form ones round-trip),
-  // while add mode starts from the familiar six.
-  const [tokenRows, setTokenRows] = useState(() => {
-    if (isEdit) {
-      return Object.entries(componentToEdit.tokens || {})
-        .filter(([, value]) => value)
-        .map(([key, value]) => ({ key, value }));
+  // Token mappings, keyed by CSS property. Legacy storage keys (`bg`, `borderRadius`, …)
+  // are normalised on read through cssPropForTokenKey — the same thing the properties rail
+  // does — so a component saved before the rename shows its mappings instead of an empty
+  // panel, and saving migrates the keys.
+  //
+  // Add mode starts empty on purpose. Every property is listed under its section whether
+  // mapped or not, so there is nothing to pre-seed, and an empty string stored against a
+  // property would mean nothing while still shadowing an inherited value.
+  const [tokens, setTokens] = useState(() => {
+    const out = {};
+    for (const [key, value] of Object.entries((isEdit && componentToEdit.tokens) || {})) {
+      if (value) out[cssPropForTokenKey(key)] = value;
     }
-    return DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({ key, value: '' }));
+    return out;
   });
-  // Only rows that resolve to a real value count as mapped — a row pointing at
-  // a token the project no longer defines is not styling anything.
-  const mappedCount = tokenRows.filter(
-    r => r.value && resolveTokenName(activeTokens, r.value)
-  ).length;
-  const [checkedRowKeys, setCheckedRowKeys] = useState(() => new Set());
+  // Sections to open beyond the defaults — set when a preset or a pasted rule fills some in.
+  const [revealSections, setRevealSections] = useState([]);
 
-  const updateRowValue = (key, value) => setTokenRows(rows => rows.map(r => (r.key === key ? { ...r, value } : r)));
-  const addRow = (key) => setTokenRows(rows => [...rows, { key, value: '' }]);
-
-  // Repointing a row at a different CSS property: the row's storage key
-  // becomes that property name, and the mapped token is cleared unless it's
-  // still valid for the new property's token category.
-  const changeRowProperty = (oldKey, newCssProp) => setTokenRows(rows => {
-    if (rows.some(r => r.key !== oldKey && cssPropForTokenKey(r.key) === newCssProp)) return rows;
-    return rows.map(r => {
-      if (r.key !== oldKey) return r;
-      const stillValid = getTokensForProperty(newCssProp).includes(r.value);
-      return { key: newCssProp, value: stillValid ? r.value : '' };
-    });
-  });
-  const removeRow = (key) => {
-    setTokenRows(rows => rows.filter(r => r.key !== key));
-    setCheckedRowKeys(prev => { const next = new Set(prev); next.delete(key); return next; });
-  };
-  const toggleRowChecked = (key) => setCheckedRowKeys(prev => {
-    const next = new Set(prev);
-    if (next.has(key)) next.delete(key); else next.add(key);
+  // Same patch shape the rail commits with, so PropertySections needs no adapter.
+  const patchTokens = (changes) => setTokens(prev => {
+    const next = { ...prev };
+    for (const [k, v] of Object.entries(changes)) {
+      if (v) next[k] = v; else delete next[k];
+    }
     return next;
   });
-  const allRowsChecked = tokenRows.length > 0 && tokenRows.every(r => checkedRowKeys.has(r.key));
-  const toggleAllRowsChecked = () => setCheckedRowKeys(allRowsChecked ? new Set() : new Set(tokenRows.map(r => r.key)));
+
+  // Only mappings that resolve to a real value count — a property pointing at a token the
+  // project no longer defines is not styling anything.
+  const mappedCount = Object.values(tokens).filter(
+    v => v && resolveTokenOrLiteral(activeTokens, v)
+  ).length;
+  // The code generators speak rows; the form stores an object. Derived here rather than
+  // stored, so there is only ever one copy of what is mapped.
+  const tokenRows = Object.entries(tokens).map(([key, value]) => ({ key, value }));
   // Generated from the fields, so the code always reflects what is mapped right now.
   const generatedComponentCode =
-    codeFormat === 'css' ? componentToCssText(name, tokenRows)
+    codeFormat === 'css' ? componentToCssText(name, tokenRows, inheritedRows, parentName)
     : codeFormat === 'jsx' ? componentToJsxText(name, template)
-    : componentToJsonText(name, TEMPLATE_TO_TYPE[template] || '', template, description, tokenRows);
+    : componentToJsonText(name, TEMPLATE_TO_TYPE[template] || '', template, description, tokenRows, { extends: extendsId || undefined, children: componentToEdit?.children });
   const componentCodeText = codeDraft === null ? generatedComponentCode : codeDraft;
 
   // Applies a parsed result to the form. Anything that failed to parse never reaches
@@ -7271,7 +8001,12 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
   const applyParsedCode = (parsed) => {
     if (parsed.error) { setCodeError(parsed.error); return; }
     setCodeError('');
-    if (parsed.rows) setTokenRows(parsed.rows);
+    if (parsed.rows) {
+      const next = {};
+      for (const r of parsed.rows) if (r.value) next[cssPropForTokenKey(r.key)] = r.value;
+      setTokens(next);
+      setRevealSections(sectionIdsForProperties(Object.keys(next)));
+    }
     if (parsed.name !== undefined) setName(parsed.name);
     if (parsed.description !== undefined) setDescription(parsed.description);
     if (parsed.template && TEMPLATE_TO_TYPE[parsed.template]) {
@@ -7282,11 +8017,6 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
     setCodeNote(skipped.length
       ? skipped.length + ' declaration' + (skipped.length === 1 ? '' : 's') + ' skipped — no matching token: ' + skipped.slice(0, 4).join(', ')
       : '');
-  };
-
-  const removeCheckedRows = () => {
-    setTokenRows(rows => rows.filter(r => !checkedRowKeys.has(r.key)));
-    setCheckedRowKeys(new Set());
   };
 
   const handlePresetChange = (presetId) => {
@@ -7300,15 +8030,19 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
       const blank = preset.id === 'custom';
       setCategory(blank && initialCategory ? initialCategory : preset.category);
       setTemplate(blank && initialType ? (TYPE_TO_TEMPLATE[initialType] || preset.template) : preset.template);
-      if (preset.id === 'custom') {
-        setTokenRows(DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({ key, value: '' })));
-      } else {
-        setTokenRows(DEFAULT_COMPONENT_PROPERTY_KEYS.map(key => ({
-          key,
-          value: findToken(getDefaultTypeForCategory(getCategoryForType(cssPropForTokenKey(key))), preset.tokens[key] || []),
-        })));
+      // A preset's mappings are keyed by CSS property like everything else, and the
+      // sections holding them are opened, so what the preset did is visible rather than
+      // hidden behind a collapsed header.
+      const next = {};
+      if (preset.id !== 'custom') {
+        for (const key of DEFAULT_COMPONENT_PROPERTY_KEYS) {
+          const prop = cssPropForTokenKey(key);
+          const value = findToken(getDefaultTypeForCategory(getCategoryForType(prop)), preset.tokens[key] || []);
+          if (value) next[prop] = value;
+        }
       }
-      setCheckedRowKeys(new Set());
+      setTokens(next);
+      setRevealSections(sectionIdsForProperties(Object.keys(next)));
     }
   };
 
@@ -7318,16 +8052,15 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
       alert('Please enter a component name');
       return;
     }
-    const tokens = {};
-    tokenRows.forEach(r => { tokens[r.key] = r.value; });
     onSave({
       name: name.trim(),
       description: description.trim() || 'Custom component',
       category,
       // Stored for readability only — the tree derives the type from `template`,
       // so a component can never be filed somewhere it cannot be drawn.
-      type: TEMPLATE_TO_TYPE[template] || undefined,
-      template,
+      type: asFragment ? 'Fragments' : (TEMPLATE_TO_TYPE[template] || undefined),
+      template: asFragment ? 'fragment' : template,
+      ...(extendsId ? { extends: extendsId } : {}),
       tokens,
     });
   };
@@ -7495,7 +8228,7 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
               >
                 {/* Opened from a folder, only that folder's presets are offered (Custom
                     always is, so a blank component can be started anywhere). */}
-                {PRESET_COMPONENTS
+                {(asFragment ? [] : PRESET_COMPONENTS)
                   .filter(p => p.id === 'custom'
                     || (initialType ? p.type === initialType
                       : !initialCategory || p.category === initialCategory))
@@ -7543,6 +8276,105 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
               </select>
             </div>
           </div>
+
+          {/* What kind of component this is. Fragment and Extends are mutually exclusive
+              — a fragment composes other components, an extending component inherits its
+              mappings from one, and a component doing neither is the ordinary case. That
+              makes it one choice of three rather than two switches that could both be on. */}
+          {(() => {
+            const canFragment = !isEdit || componentToEdit.template === 'fragment';
+            const canExtend = parentOptions.length > 0;
+            // Nothing to choose between, so no group at all — as before.
+            if (!canFragment && !canExtend) return null;
+
+            const kind = asFragment ? 'fragment' : (extendsId ? 'extends' : 'standalone');
+            const choose = (next) => {
+              setAsFragment(next === 'fragment');
+              setExtendsId(next === 'extends' ? (parentOptions[0]?.id || '') : '');
+            };
+
+            const options = [
+              {
+                id: 'standalone',
+                title: 'Standalone',
+                desc: 'A component in its own right, styled by the mappings you set below.',
+                show: true,
+              },
+              {
+                id: 'fragment',
+                title: 'Fragment',
+                desc: 'A container that groups related components together.',
+                show: canFragment,
+              },
+              {
+                id: 'extends',
+                title: 'Extends a component',
+                desc: 'This component inherits mappings from an existing component.',
+                show: canExtend,
+              },
+            ].filter(o => o.show);
+
+            return (
+              <div
+                role="radiogroup"
+                aria-label="Component kind"
+                style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
+              >
+                {options.map(o => {
+                  const on = kind === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => choose(o.id)}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: '0.75rem', width: '100%',
+                        textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
+                        background: 'var(--bg-tertiary)',
+                        border: '1px solid ' + (on ? 'var(--accent)' : 'var(--border)'),
+                        borderRadius: '10px', padding: '0.8rem 0.9rem',
+                      }}
+                    >
+                      {/* Spans rather than divs: this is a button, and a button may not
+                          contain block-level content. */}
+                      <span style={{
+                        width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                        marginTop: '0.12rem', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: '1px solid ' + (on ? 'var(--accent)' : 'var(--text-tertiary)'),
+                      }}>
+                        {on && (
+                          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent)' }} />
+                        )}
+                      </span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {o.title}
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.15rem', lineHeight: 1.5 }}>
+                          {o.desc}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {/* Keyed off the stored link rather than the chosen kind, so a component
+                    saved with both — which the two independent switches used to allow —
+                    still shows its parent instead of hiding it. */}
+                {Boolean(extendsId) && (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Inherits from</label>
+                    <select className="form-input" value={extendsId} onChange={(e) => setExtendsId(e.target.value)} style={{ cursor: 'pointer' }}>
+                      {/* itself and its descendants are absent, so a loop cannot be chosen */}
+                      {parentOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label" style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Description</label>
@@ -7663,149 +8495,31 @@ function ComponentModal({ onClose, onSave, activeTokens, componentToEdit, existi
               </div>
             )}
 
-            {editorTab === 'properties' && (<>
-            {tokenRows.length === 0 && (
-              <div style={{
-                padding: '1rem 0.85rem', fontSize: '0.78rem', color: 'var(--text-tertiary)',
-                border: '1px solid var(--border)', borderRadius: '10px',
-              }}>
-                No properties mapped yet — add one below.
+            {editorTab === 'properties' && (
+              <div
+                className="pd-modal-sections"
+                style={{
+                  border: '1px solid var(--border)', borderRadius: '10px',
+                  // Deliberately unbounded. The dialog shell already scrolls at 90vh and the
+                  // preview beside it is sticky, so it stays in view while the sections are
+                  // read — giving the sections their own scrollbar as well would nest one
+                  // inside the other for no gain.
+                }}
+              >
+                <PropertySections
+                  tokens={tokens}
+                  onPatch={patchTokens}
+                  tokensForProperty={tokensForProperty}
+                  presetsForProperty={presetsForProperty}
+                  onCreateToken={onCreateToken}
+                  existingTokenNames={existingTokenNames}
+                  inheritedTokens={inheritedTokens}
+                  inheritedFrom={parentName}
+                  resolve={resolve}
+                  reveal={revealSections}
+                />
               </div>
             )}
-
-            {/* Rows are grouped the way the token sidebar is, so a designer scans
-                "the colours" and "the spacing" rather than one flat list. */}
-            {CSS_PROPERTY_GROUPS.map(group => {
-              const rows = tokenRows.filter(r => group.properties.includes(cssPropForTokenKey(r.key)));
-              if (!rows.length) return null;
-              return (
-                <div key={group.display} style={{ marginBottom: '0.9rem' }}>
-                  <div style={{
-                    fontSize: '0.63rem', textTransform: 'uppercase', letterSpacing: '0.06em',
-                    color: 'var(--text-tertiary)', marginBottom: '0.35rem',
-                  }}>
-                    {group.display}
-                  </div>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'visible' }}>
-                    {rows.map((row, i) => {
-                      const cssProp = cssPropForTokenKey(row.key);
-                      const tokenOptions = getTokensForProperty(cssProp);
-                      const usedProps = tokenRows.map(r => cssPropForTokenKey(r.key));
-                      const resolved = resolveTokenName(activeTokens, row.value);
-                      const emptyLabel = `No ${getCategoryForType(cssProp)} tokens yet`;
-                      return (
-                        <div
-                          key={row.key}
-                          style={{
-                            display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.25fr) 24px',
-                            gap: '0.6rem', alignItems: 'center', padding: '0.5rem 0.7rem',
-                            borderBottom: i < rows.length - 1 ? '1px solid var(--border)' : 'none',
-                          }}
-                        >
-                          {/* The human name leads; the raw CSS property is the detail
-                              underneath, and is still the control that changes it. */}
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{
-                              fontSize: '0.78rem', color: 'var(--text-primary)', fontWeight: 500,
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>
-                              {humanizeCssProp(cssProp)}
-                            </div>
-                            <select
-                              value={cssProp}
-                              onChange={(e) => changeRowProperty(row.key, e.target.value)}
-                              title="CSS property this row maps"
-                              style={{
-                                fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--text-tertiary)',
-                                background: 'none', border: 'none', borderRadius: '4px',
-                                padding: 0, maxWidth: '100%', cursor: 'pointer', marginTop: '0.1rem',
-                              }}
-                            >
-                              {CSS_PROPERTY_GROUPS.map(g => (
-                                <optgroup key={g.display} label={g.display}>
-                                  {g.properties.map(p => (
-                                    <option key={p} value={p} disabled={p !== cssProp && usedProps.includes(p)}>{p}</option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                            </select>
-                          </div>
-
-                          {isColorProp(cssProp) ? (
-                            <TokenSwatchPicker
-                              value={row.value}
-                              options={tokenOptions}
-                              activeTokens={activeTokens}
-                              emptyLabel={emptyLabel}
-                              onChange={(v) => updateRowValue(row.key, v)}
-                            />
-                          ) : (
-                            <div style={{ minWidth: 0 }}>
-                              <select
-                                className="form-input"
-                                value={row.value}
-                                onChange={(e) => updateRowValue(row.key, e.target.value)}
-                                title={tokenOptions.length ? undefined : emptyLabel}
-                                style={{ fontSize: '0.74rem', padding: '0.3rem 0.4rem', width: '100%' }}
-                              >
-                                <option value="">{tokenOptions.length ? 'Not mapped' : emptyLabel}</option>
-                                {tokenOptions.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
-                              {/* The value the token actually resolves to — the thing the
-                                  old "Value" column claimed to show but never did. */}
-                              <div style={{
-                                fontSize: '0.65rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)',
-                                marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                              }}>
-                                {row.value ? (resolved || 'unresolved') : ' '}
-                              </div>
-                            </div>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => removeRow(row.key)}
-                            title={'Remove ' + humanizeCssProp(cssProp)}
-                            style={{
-                              background: 'none', border: 'none', color: 'rgba(239, 68, 68, 0.6)', cursor: 'pointer',
-                              padding: '0.2rem', display: 'flex', alignItems: 'center', justifySelf: 'end',
-                            }}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                            </svg>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-
-            {(() => {
-              const usedProps = new Set(tokenRows.map(r => cssPropForTokenKey(r.key)));
-              const groups = CSS_PROPERTY_GROUPS
-                .map(g => ({ ...g, properties: g.properties.filter(p => !usedProps.has(p)) }))
-                .filter(g => g.properties.length > 0);
-              if (!groups.length) return null;
-              return (
-                <select
-                  value=""
-                  onChange={(e) => { if (e.target.value) addRow(e.target.value); }}
-                  className="form-input"
-                  style={{ marginTop: '0.25rem', fontSize: '0.78rem', maxWidth: '260px', cursor: 'pointer' }}
-                >
-                  <option value="">+ Add token property…</option>
-                  {groups.map(g => (
-                    <optgroup key={g.display} label={g.display}>
-                      {g.properties.map(p => <option key={p} value={p}>{humanizeCssProp(p)}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-              );
-            })()}
-            </>)}
           </div>
             </div>
 

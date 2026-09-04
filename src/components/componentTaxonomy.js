@@ -34,6 +34,8 @@ export const COMPONENT_TAXONOMY = [
       { type: 'Cards', template: 'card', desc: 'Visual blocks enclosing structured content and media actions.' },
       { type: 'Tabs', template: 'tabs', desc: 'Tabbed navigation panels separating view content.' },
       { type: 'Modals & Dialogs', template: 'modal', desc: 'Overlay windows requiring immediate attention.' },
+      // Not a kind of UI but a way of composing it: a fragment holds other components.
+      { type: 'Fragments', template: 'fragment', desc: 'A container that groups related components together.' },
     ],
   },
   {
