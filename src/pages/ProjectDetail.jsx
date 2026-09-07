@@ -30,6 +30,7 @@ import { styleOf } from '../data/textStyles';
 import { normalizeTypeKey } from '../data/tokenTypes';
 import RampModal from '../components/RampModal';
 import ScaleModal from '../components/ScaleModal';
+import ComponentThumb from '../components/ComponentThumb';
 import {
   TOKEN_LAYERS, TOKEN_LAYER_LABELS, layerColorFor,
   groupsFor, rowLabelFor,
@@ -1066,6 +1067,24 @@ This document serves as our living source of truth.`
       children: isFragment(comp) && depth < 6
         ? childrenOf(comp, componentsById).map(kid => (
             <React.Fragment key={kid.id}>{renderLivePreview(kid, depth + 1)}</React.Fragment>
+          ))
+        : undefined,
+    });
+
+  /**
+   * The same preview, for a row's thumbnail rather than the rail.
+   *
+   * Two differences, both because this now runs once per visible row instead of once for
+   * the selected component: no click handler (a tile that popped an alert would be absurd,
+   * and the tile is pointer-events:none anyway), and a much shallower fragment recursion —
+   * two levels reads fine at 120x64 and six would not.
+   */
+  const renderThumbPreview = (comp, depth = 0) =>
+    renderComponentPreview(comp, resolveMappedStyle(comp), {
+      onButtonClick: () => {},
+      children: isFragment(comp) && depth < 2
+        ? childrenOf(comp, componentsById).map(kid => (
+            <React.Fragment key={kid.id}>{renderThumbPreview(kid, depth + 1)}</React.Fragment>
           ))
         : undefined,
     });
@@ -3971,6 +3990,12 @@ This document serves as our living source of truth.`
             // No checkbox column any more — selecting is an action in the row menu.
             const LIST_TABLE_COLS = 'minmax(0, 1fr) 104px';
 
+            // The tiles are a browsing aid. Once a component is open in the rail there is a
+            // full-size preview a few hundred pixels away, so twenty-two small copies of it
+            // are noise — they collapse, the rows go back to their compact height, and the
+            // tree is scannable again next to the 380px rail.
+            const showThumbs = !previewComponentId;
+
             // Same treatment as the header's Export button, so the panel's
             // controls sit in the app's dark palette.
             const toolbarBtn = {
@@ -4233,28 +4258,48 @@ This document serves as our living source of truth.`
                             className={'pd-component-list-row' + (isChecked ? ' pd-component-list-row-selected' : '')}
                             style={{
                               display: 'grid', gridTemplateColumns: LIST_TABLE_COLS, gap: '0.75rem',
-                              alignItems: 'center', padding: '0.8rem 1rem',
+                              alignItems: 'center', padding: showThumbs ? '0.5rem 1rem' : '0.8rem 1rem',
                               borderBottom: i < typeComps.length - 1 ? '1px solid var(--border)' : 'none',
                               cursor: 'pointer',
                             }}
                             onClick={() => setPreviewComponentId(comp.id)}
                             title={'View ' + comp.name}
                           >
-                            <button
+                            {/* The indent lives on this span rather than the name button, because
+                                the tile cannot sit inside it: a button template renders a real
+                                <button>, and nesting one inside another is invalid HTML. The name
+                                stays a real button, so it keeps its focus ring and Enter. */}
+                            <span
                               className="pd-tree-name-cell"
+                              style={{
+                                display: 'flex', alignItems: 'center', minWidth: 0,
+                                gap: showThumbs ? '0.7rem' : '0.4rem',
+                              }}
+                            >
+                              {showThumbs && (
+                                <ComponentThumb className="pd-component-thumb">
+                                  {renderThumbPreview(comp)}
+                                </ComponentThumb>
+                              )}
+                            <button
                               onClick={() => setPreviewComponentId(comp.id)}
                               title={'View ' + comp.name}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0,
-                                // Indented past where its type folder's label starts, so a name
-                                // reads as sitting under its folder. Only this cell moves, so the
-                                // Action column stays aligned with the header row.
-                                background: 'none', border: 'none', cursor: 'pointer',
+                                background: 'none', border: 'none', cursor: 'pointer', padding: 0,
                                 color: 'var(--text-primary)', fontSize: '0.85rem', fontWeight: 500,
                                 fontFamily: 'inherit', textAlign: 'left',
                               }}
                             >
-                              <span style={{ display: 'flex', color: 'var(--accent)' }}>{componentIcon(12)}</span>
+                              {/* The icon and the tile take turns: the tile says what the
+                                  component looks like while you browse, and the icon marks the
+                                  row as a component once the tile is away. The row is never
+                                  left with no marker at all. */}
+                              {!showThumbs && (
+                                <span style={{ display: 'flex', color: 'var(--accent)', flexShrink: 0 }}>
+                                  {componentIcon(12)}
+                                </span>
+                              )}
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.name}</span>
                               {preset && (
                                 <span style={{
@@ -4267,6 +4312,7 @@ This document serves as our living source of truth.`
                                 <polyline points="9 18 15 12 9 6"/>
                               </svg>
                             </button>
+                            </span>
 
 
                             <div
@@ -4357,16 +4403,22 @@ This document serves as our living source of truth.`
                                     className="pd-component-list-row pd-tree-child-row"
                                     style={{
                                       display: 'grid', gridTemplateColumns: LIST_TABLE_COLS, gap: '0.75rem',
-                                      alignItems: 'center', padding: '0.55rem 1rem',
+                                      alignItems: 'center', padding: showThumbs ? '0.5rem 1rem' : '0.55rem 1rem',
                                       borderBottom: '1px solid var(--border)', cursor: 'pointer',
                                     }}
                                     onClick={() => setPreviewComponentId(kid.id)}
                                     title={kid.name + ' — used by ' + comp.name}
                                   >
                                     <span className="pd-tree-name-cell pd-tree-child-name" style={{
-                                      display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0,
+                                      display: 'flex', alignItems: 'center', minWidth: 0,
+                                      gap: showThumbs ? '0.7rem' : '0.4rem',
                                       color: 'var(--text-secondary)', fontSize: '0.82rem',
                                     }}>
+                                      {showThumbs && (
+                                        <ComponentThumb className="pd-component-thumb">
+                                          {renderThumbPreview(kid)}
+                                        </ComponentThumb>
+                                      )}
                                       <span style={{ display: 'flex', color: 'var(--text-tertiary)', flexShrink: 0 }}>
                                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                                           <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
@@ -6286,6 +6338,8 @@ export default function RootLayout({ children }) {
           /* The desktop indent costs a phone too much of the name column, so the tiers
              tighten here — still stepped, just less far. */
           .pd-tree-name-cell { padding-left: 4rem !important; }
+          /* 4rem of indent plus a 120px tile plus the name overflows 390px. */
+          .pd-component-thumb { width: 84px !important; height: 48px !important; }
           .pd-tree-child-name { padding-left: 5.2rem !important; }
           .pd-tree-type-row { padding-left: 1.8rem !important; }
           /* touch has no hover, so the row and folder actions are always shown */
