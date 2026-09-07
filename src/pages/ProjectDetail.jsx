@@ -1498,10 +1498,9 @@ This document serves as our living source of truth.`
   };
 
   const applyChange = (acceptedImpacts) => {
-    const oldBrand = JSON.parse(JSON.stringify(brandData));
-    const oldTokens = JSON.parse(JSON.stringify(activeTokens));
-    const oldComponents = JSON.parse(JSON.stringify(components));
-    setUndoState({ brand: oldBrand, tokens: oldTokens, components: oldComponents });
+    // No separate snapshot here any more: commitDesign below pushes the pre-change state
+    // onto the shared history, and the toast's Undo runs that same stack. Capturing a
+    // second copy is what left this function calling a setter that no longer exists.
     setShowUndoToast(true);
     setTimeout(() => setShowUndoToast(false), 30000);
 
