@@ -86,6 +86,22 @@ export function ProjectProvider({ children }) {
     } catch (e) {
       // storage unavailable (private mode) — just skip the demo
     }
+
+    // The demo was seeded with no team before it shipped one. Backfilling it here is what
+    // lets an existing install see the Collaboration page populated, rather than only
+    // whoever installs next. Scoped to the demo and to an empty list, so a real project is
+    // never touched — the trade is that emptying the demo's team refills it on next load.
+    try {
+      const demoIndex = saved.findIndex(p => String(p.id) === DEMO_PROJECT_ID);
+      if (demoIndex !== -1 && !(saved[demoIndex].members || []).length) {
+        const withTeam = saved.slice();
+        withTeam[demoIndex] = { ...withTeam[demoIndex], members: buildDemoProject().members };
+        return withTeam;
+      }
+    } catch {
+      // a malformed demo entry is not worth failing the whole app over
+    }
+
     return saved;
   });
 

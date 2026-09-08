@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useProjects } from '../context/ProjectContext';
 import { useTabs } from '../context/TabsContext';
 import branchIcon from '../assets/branch-icon.svg';
-import { resolveMyRole, can, canViewTab, ROLES, describeRole, roleSummary } from '../utils/permissions';
+import { resolveMyRole, can, canViewTab, ROLES, describeRole, roleSummary, LOCAL_OWNER_EMAIL } from '../utils/permissions';
 import { getBrandCompleteness, emptyBrandContext } from '../utils/projectCompleteness';
 import BrandContextEngine from '../components/BrandContextEngine';
+import StartChoice from '../components/StartChoice';
 import ScratchWizard from '../components/newProject/ScratchWizard';
 import ComponentInspector from '../components/inspector/ComponentInspector';
 import PropertySections, { sectionIdsForProperties } from '../components/inspector/PropertySections';
@@ -309,6 +310,7 @@ export default function ProjectDetail() {
 function ProjectDetailInner() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const { projects, isLoaded, updateProject, addProject, deleteProject } = useProjects();
   const { openTab, markOpened, sectionFor, setSection, sidebarCollapsed, setSidebarCollapsed, hydrated } = useTabs();
@@ -672,6 +674,22 @@ export const ThemeProvider = ({ children }) => {
     // current design state, and a stale closure would undo to the wrong snapshot.
     // Rebinding one listener per render costs less than that bug.
   });
+
+  // Arriving from the create flow with a path already chosen. The create page makes the
+  // project and hands the choice over in route state, so the wizard is running by the time
+  // the project opens rather than waiting behind Get Started.
+  //
+  // Up here on purpose: this file's early return is below, and a hook after it has crashed
+  // the page twice. It works out because the setters it needs are declared above too, so it
+  // never has to reach for openBrandEngine, which is defined further down.
+  React.useEffect(() => {
+    const setup = location.state && location.state.setup;
+    if (!setup) return;
+    if (setup === 'engine') setEngine({ step: 1, source: null });
+    else if (setup === 'scratch') setScratchWizard(true);
+    // Consumed. Without this, a reload or a Back would reopen a wizard already dismissed.
+    navigate(location.pathname, { replace: true });
+  }, [location.state, location.pathname, navigate]);
 
   // Registering the tab on mount covers every way into a project — the list, a freshly created
   // one, a pasted deep link, the branch switcher — rather than scattering openTab across callers.
@@ -5154,10 +5172,20 @@ export default function RootLayout({ children }) {
               updateProject(id, { members: members.filter(m => m.id !== memberId) });
             };
 
-            // If no team has been set up yet, show "you" as the implicit fallback Owner.
+            // A stored member row can stand for whoever is using this device rather than a
+            // named person — the demo ships one, because it is seeded before anyone logs in.
+            // It is filled in here with the real identity so the list never shows a marker.
+            const asPerson = (m) => (m.email === LOCAL_OWNER_EMAIL
+              ? { ...m, name: user?.name, email: user?.email, initials: user?.initials }
+              : m);
+
+            // If no team has been set up yet, show "you" as the implicit Owner.
             const displayMembers = members.length
-              ? members
+              ? members.map(asPerson)
               : [{ id: 'me', name: user?.name, email: user?.email, initials: user?.initials, role: 'Owner', joinedAt: null }];
+
+            // Everyone who is not the owner — what "invited" means on this page.
+            const invitedCount = displayMembers.filter(m => m.role !== 'Owner').length;
 
             return (
               <div style={{ maxWidth: '640px' }}>
@@ -5200,6 +5228,13 @@ export default function RootLayout({ children }) {
                                 {m.email}
                               </div>
                             )}
+                            {/* joinedAt is only set once someone has actually come in, so an
+                                invitation still outstanding says so rather than looking joined. */}
+                            {!m.joinedAt && m.role !== 'Owner' && (
+                              <div style={{ fontSize: '0.68rem', color: '#F59E0B', marginTop: '0.1rem' }}>
+                                Invite pending
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
@@ -5232,9 +5267,9 @@ export default function RootLayout({ children }) {
                     );
                   })}
                 </div>
-                {members.length === 0 && (
+                {invitedCount === 0 && (
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginTop: '0.75rem' }}>
-                    It's just you right now. Invite teammates to collaborate on this design system.
+                    Nobody has been invited to this project yet.
                   </p>
                 )}
 
@@ -6395,73 +6430,14 @@ export default function RootLayout({ children }) {
               boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  How do you want to start?
-                </h3>
-                <p style={{ margin: '0.4rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Either way you can change everything afterwards.
-                </p>
-              </div>
-              <button
-                onClick={() => setStartChoice(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1 }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '1rem', marginTop: '1.5rem',
-            }}>
-              {[
-                {
-                  key: 'scratch',
-                  title: 'Start from scratch',
-                  desc: 'Answer two questions and we will suggest a palette and type pairing to build on.',
-                  accent: true,
-                  icon: (
-                    <><path d="M12 2v20M2 12h20" /></>
-                  ),
-                  go: () => { setStartChoice(false); setScratchWizard(true); },
-                },
-                {
-                  key: 'import',
-                  title: 'Import what you have',
-                  desc: 'Point us at a Figma file, a live site, or a tokens.json and refine it from there.',
-                  accent: false,
-                  icon: (
-                    <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>
-                  ),
-                  go: () => { setStartChoice(false); openBrandEngine(); },
-                },
-              ].map(opt => (
-                <button
-                  key={opt.key}
-                  onClick={opt.go}
-                  style={{
-                    textAlign: 'left', padding: '1.4rem', cursor: 'pointer', fontFamily: 'inherit',
-                    background: opt.accent ? 'var(--accent-glow)' : 'var(--bg-tertiary)',
-                    border: '1px solid ' + (opt.accent ? 'var(--accent)' : 'var(--border)'),
-                    borderRadius: '12px',
-                  }}
-                >
-                  <span style={{ display: 'flex', color: opt.accent ? 'var(--accent)' : 'var(--text-secondary)', marginBottom: '0.85rem' }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      {opt.icon}
-                    </svg>
-                  </span>
-                  <span style={{ display: 'block', fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
-                    {opt.title}
-                  </span>
-                  <span style={{ display: 'block', fontSize: '0.82rem', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                    {opt.desc}
-                  </span>
-                </button>
-              ))}
-            </div>
+            <StartChoice
+              onClose={() => setStartChoice(false)}
+              onPick={(key) => {
+                setStartChoice(false);
+                if (key === 'scratch') setScratchWizard(true);
+                else openBrandEngine();
+              }}
+            />
           </div>
         </div>
       )}

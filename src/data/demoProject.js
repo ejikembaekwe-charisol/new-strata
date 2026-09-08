@@ -8,6 +8,7 @@
 // checks that, and the tests call it so a typo here cannot ship silently.
 
 import { MOCK_TOKENS } from './designSystemSeed.js';
+import { LOCAL_OWNER_EMAIL } from '../utils/permissions';
 
 // Component property keys are the legacy short names the editor still stores:
 // bg → background-color, textColor → color, and so on.
@@ -128,7 +129,16 @@ export const buildDemoProject = () => {
       ...c,
       isPreset: false,
     })),
-    members: [],
+    // A worked example of a team, so the Collaboration page shows what it is for rather
+     // than an empty panel. The owner row carries LOCAL_OWNER_EMAIL because this project is
+     // seeded before anyone logs in — see resolveMyRole.
+    members: [
+      { id: 'demo-owner', name: '', email: LOCAL_OWNER_EMAIL, initials: '', role: 'Owner', joinedAt: null },
+      { id: 'demo-m1', name: 'Amara Okafor', email: 'amara.okafor@charisol.io', initials: 'AO', role: 'Designer', joinedAt: '2026-07-14T09:20:00.000Z' },
+      { id: 'demo-m2', name: 'Tom Bennett', email: 'tom.bennett@charisol.io', initials: 'TB', role: 'Developer', joinedAt: '2026-07-16T14:05:00.000Z' },
+      { id: 'demo-m3', name: 'Priya Nair', email: 'priya.nair@charisol.io', initials: 'PN', role: 'Brand Editor', joinedAt: '2026-08-02T11:40:00.000Z' },
+      { id: 'demo-m4', name: '', email: 'sam.oyelaran@charisol.io', initials: 'SO', role: 'Viewer', joinedAt: null },
+    ],
   };
 };
 

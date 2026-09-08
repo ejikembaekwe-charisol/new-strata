@@ -87,6 +87,17 @@ export function isOwner(role) {
   return role === 'Owner';
 }
 
+/**
+ * A member entry whose email is this marker stands for whoever is using this device,
+ * rather than a named person.
+ *
+ * The demo project ships with one. It is seeded at app boot, before anyone has logged in,
+ * so there is no real identity to write down — and without this its teammate list would
+ * make the person opening it a stranger to their own worked example, resolving to Viewer
+ * and locking them out of editing it.
+ */
+export const LOCAL_OWNER_EMAIL = '__local__';
+
 // Resolve the current user's role for a given project. Falls back to Owner
 // when no team has been set up yet (members: []) so every existing/new
 // project remains fully usable by its creator with zero migration.
@@ -97,6 +108,10 @@ export function resolveMyRole(project, user) {
     (m) => m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase()
   );
   if (match) return match.role;
+  // Only projects carrying the marker are affected; a real invited project still resolves
+  // to Viewer for someone who is not on its list.
+  const localOwner = members.find((m) => m.email === LOCAL_OWNER_EMAIL);
+  if (localOwner) return localOwner.role;
   if (members.length === 0) return 'Owner';
   return 'Viewer';
 }
