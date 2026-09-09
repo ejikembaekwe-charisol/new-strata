@@ -69,7 +69,6 @@ export default function ComponentInspector({
 
   // Bumping this remounts the stage, which is what restarts the CSS animation.
   const [playCount, setPlayCount] = useState(0);
-  const [entrance, setEntrance] = useState('rise');
 
   const tokens = component.tokens || {};
   const fragment = component.template === 'fragment';
@@ -91,12 +90,14 @@ export default function ComponentInspector({
   });
 
   const motion = motionFor(tokens, resolve);
-  // A mapped animation-name is the component's own entrance, so it wins over the
-  // picker. The picker then only previews an entrance the component has not adopted.
+  // A mapped animation-name is the component's own entrance and is what Play shows.
+  // Without one there is nothing to read off the component, so the preview falls back to
+  // the first entrance — and the label to the right stays silent about it rather than
+  // naming an entrance this component does not actually have.
   const mappedEntrance = tokens['animation-name']
     ? entranceByAnimation[String(resolve(tokens['animation-name'])).trim()]
     : null;
-  const activeEntrance = mappedEntrance || ENTRANCES.find(e => e.id === entrance) || ENTRANCES[0];
+  const activeEntrance = mappedEntrance || ENTRANCES[0];
 
   const patch = (changes) => {
     const next = { ...tokens };
@@ -165,21 +166,6 @@ export default function ComponentInspector({
             </svg>
             Play
           </button>
-
-          <select
-            value={activeEntrance.id}
-            onChange={(e) => { setEntrance(e.target.value); setPlayCount(n => n + 1); }}
-            title={mappedEntrance
-              ? "This component's own entrance (" + tokens['animation-name'] + ')'
-              : 'Previewing an entrance this component has not adopted — map animation-name to keep it'}
-            style={{
-              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-              borderRadius: '6px', padding: '0.22rem 0.3rem', color: 'var(--text-secondary)',
-              fontSize: '0.66rem', fontFamily: 'inherit', cursor: 'pointer',
-            }}
-          >
-            {ENTRANCES.map(e => <option key={e.id} value={e.id}>{e.label}</option>)}
-          </select>
 
           <div style={{ flex: 1 }} />
           {/* Where the timing came from — a mapped token, or the stated fallback. */}
