@@ -7,13 +7,14 @@
 // `resolveTokenValue` in ProjectDetail already falls through to the literal, so both
 // render correctly with no special casing here.
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ColorSwatchButton, hexToRgb, rgbToHex } from '../ColorPicker';
 import { groupColorNames } from '../../data/tokenGroups';
 import {
   SEGMENTED_OPTIONS, KEYWORD_OPTIONS, SLIDER_RANGES, SIDE_GROUPS,
   controlKind, isLiteralOnly, helpFor,
 } from './inspectorSections';
+import HelpTip, { InfoIcon } from './HelpTip';
 
 /* ── shared bits ── */
 
@@ -21,7 +22,11 @@ import {
 const nl2 = String.fromCharCode(10, 10);
 
 const S = {
-  row: { display: 'grid', gridTemplateColumns: '104px minmax(0, 1fr)', gap: '0.5rem', alignItems: 'center', minHeight: '30px' },
+  // 122px, not the 104px it was: the help icon and its gap take about 17px, and the label
+  // cell is already down to roughly 33px of text in the worst case (an override, the {} 
+  // toggle and a marker all at once). Taking the icon out of the label rather than out of
+  // the grid would make that truncation materially worse.
+  row: { display: 'grid', gridTemplateColumns: '122px minmax(0, 1fr)', gap: '0.5rem', alignItems: 'center', minHeight: '30px' },
   label: { fontSize: '0.72rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   field: {
     width: '100%', minWidth: 0, background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
@@ -59,15 +64,6 @@ const Icon = ({ name }) => (
 // A starting name for a token created from a row: the property's own words, so `gap`
 // suggests gap.custom and `background-color` suggests background-color.custom.
 const suggestedTokenName = (prop) => prop + '.custom';
-
-const tooltipFor = (label, prop, reason) => {
-  const head = label + '  ·  ' + prop;
-  // A reason and the help sentence say overlapping things — several help sentences already
-  // state the dependency in prose ("Only visible once a border width and style are set").
-  // Whichever is more useful right now, on its own, rather than both.
-  const tail = reason || helpFor(prop);
-  return tail ? head + nl2 + tail : head;
-};
 
 /* ── individual controls ── */
 
@@ -564,7 +560,7 @@ export const SidesControl = ({ prop, tokens, onChangeMany, inherited = '' }) => 
                 value={tokens[side] || ''}
                 onChange={(e) => onChangeMany({ [side]: e.target.value })}
                 placeholder="—"
-                title={side}
+                title={side + (helpFor(side) ? nl2 + helpFor(side) : '')}
                 style={{ ...S.field, textAlign: 'center', padding: '0.28rem 0.15rem' }}
               />
             ))}
@@ -627,6 +623,126 @@ export function InspectorRow({
   // by the time that one does.
   useEffect(() => { busy.current.creating = creating; }, [creating]);
 
+  // The row's explanation. Two things open it: hovering the icon, and focus landing on the
+  // row's own control. The icon is deliberately not a tab stop — seventy-three more of them
+  // would double the stops needed to cross the panel — so a keyboard user gets the sentence
+  // on a stop they were visiting anyway.
+  const [tipOpen, setTipOpen] = useState(false);
+  const iconRef = useRef(null);
+  const tipTimer = useRef(null);
+  // A short delay, so dragging the pointer down a section does not strobe nine tooltips.
+  // No delay on the way out.
+  const openTip = () => {
+    clearTimeout(tipTimer.current);
+    // 240ms: the hot zone is the whole name, not a 12px glyph, so the pointer crosses many
+    // of them on the way down a section and a shorter delay strobes the column.
+    tipTimer.current = setTimeout(() => setTipOpen(true), 240);
+  };
+  // No hover on a phone, and the icon is deliberately not focusable, so a tap is the only
+  // way in there. HelpTip closes itself on the next pointerdown elsewhere.
+  const toggleTip = () => { clearTimeout(tipTimer.current); setTipOpen(o => !o); };
+
+  // Which device is driving, because the two paths conflict. A tap synthesises the whole
+  // mouse sequence — pointerenter, click, then mouseleave as the finger lifts — so hover
+  // handlers that are not filtered would open the tip on the click and shut it again a
+  // moment later. That is exactly what happened before this guard: the tooltip was
+  // unreachable on a phone, which is where the rail is full-width and most needs it.
+  const pointerKind = useRef('mouse');
+  // Whether the focus about to arrive was caused by a pointer. A click always fires
+  // pointerdown before focus; tabbing fires focus with no pointerdown at all, so this
+  // separates the two reliably.
+  //
+  // :focus-visible cannot do this job, which is worth writing down because it looks like it
+  // should: browsers match it on a <select> or a text input even when it was clicked, since
+  // those are keyboard-operable once focused. Tested — it reported a plain mouse click on
+  // the Display dropdown as a keyboard arrival.
+  const pointerFocus = useRef(false);
+  const closeTip = useCallback(() => {
+    clearTimeout(tipTimer.current);
+    setTipOpen(false);
+  }, []);
+  useEffect(() => () => clearTimeout(tipTimer.current), []);
+
+  // The whole label cluster, built once for all four returns — they differed only in the
+  // label's colour, a top padding and which trailing marks they carry.
+  //
+  // The hover target is the icon AND the name, not the 12px glyph alone: the truncated name
+  // is what a reader actually reaches for, and the panel's first line exists to show it. The
+  // trailing marks stay outside that zone, so their own native titles cannot double up with
+  // the panel on one hover.
+  //
+  // `cursor: help` rather than `pointer`: there is nothing to click on a desktop, and the
+  // icon is not focusable, so it must not read as a button.
+  const rowLabel = (tone, pad, marks = null) => (
+    <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, ...pad }}>
+      <span
+        className="pd-help-hot"
+        onPointerEnter={(e) => {
+          pointerKind.current = e.pointerType || 'mouse';
+          if (pointerKind.current === 'mouse') openTip();
+        }}
+        onPointerLeave={(e) => { if ((e.pointerType || 'mouse') === 'mouse') closeTip(); }}
+        onPointerDown={(e) => { pointerKind.current = e.pointerType || 'mouse'; }}
+        // A mouse click is not a request: the pointer is already hovering, and toggling
+        // would shut the panel the hover is holding open.
+        onClick={() => { if (pointerKind.current !== 'mouse') toggleTip(); }}
+        style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, cursor: 'help' }}
+      >
+        <span
+          ref={iconRef}
+          aria-hidden="true"
+          style={{
+            display: 'flex', flexShrink: 0,
+            color: tipOpen ? 'var(--accent)' : 'var(--text-tertiary)',
+            transition: 'color 0.15s',
+          }}
+        >
+          <InfoIcon />
+        </span>
+        <span className="pd-inspector-label" style={{ ...S.label, color: tone }} data-prop={prop}>
+          {label}
+        </span>
+      </span>
+      {marks}
+      {/* Gated the way the row's own marks are gated. previewGaps returns a note for every
+          property on an image with a file uploaded, so passing the raw note would put "an
+          uploaded image is drawn as-is" on all seventy-three tips — including the empty rows
+          that deliberately show no preview mark at all. */}
+      {tipOpen && <HelpTip
+        anchorRef={iconRef}
+        label={label}
+        prop={prop}
+        help={helpFor(prop)}
+        reason={inactive ? inactive.reason : (previewGap ? previewGap.reason : '')}
+        reasonKind={inactive ? 'inactive' : (previewGap ? 'preview' : '')}
+        onClose={closeTip}
+      />}
+    </span>
+  );
+
+  // Focus anywhere in the row's control opens the tip; leaving it closes it. This is the
+  // keyboard path, and the normal row already had these two handlers for the wake guard.
+  const focusOpens = {
+    onPointerDownCapture: () => { pointerFocus.current = true; },
+    onFocusCapture: () => {
+      busy.current.focused = true;
+      const viaPointer = pointerFocus.current;
+      pointerFocus.current = false;
+      // Keyboard arrivals only. Clicking into a field is not a request for the explanation,
+      // and a 260px panel appearing on every click would make the panel unusable to edit in.
+      // Opened with no delay: that exists for pointer travel and has no purpose here.
+      if (!viaPointer) {
+        clearTimeout(tipTimer.current);
+        setTipOpen(true);
+      }
+    },
+    onBlurCapture: () => {
+      busy.current.focused = false;
+      pointerFocus.current = false;
+      closeTip();
+    },
+  };
+
   // Moving to another component must not leave a row woken from the last one.
   const reasonKey = inactive ? inactive.reason : '';
   useEffect(() => {
@@ -638,8 +754,9 @@ export function InspectorRow({
     // reason honestly anyway: it swallows four side properties and has one place to put a
     // sentence. If a rule ever targets them, all five must share one answer.
     return (
-      <div style={{ ...S.row, alignItems: 'start' }}>
-        <span className="pd-inspector-label" style={{ ...S.label, paddingTop: '0.35rem' }} title={tooltipFor(label, prop)} data-prop={prop}>{label}</span>
+      <div style={{ ...S.row, alignItems: 'start' }} {...focusOpens}>
+        {/* The only row whose label was the grid cell itself, with no cluster around it. */}
+        {rowLabel('var(--text-secondary)', { paddingTop: '0.35rem' })}
         <SidesControl prop={prop} tokens={tokens} onChangeMany={onChangeMany} inherited={inherited} />
       </div>
     );
@@ -738,7 +855,6 @@ export function InspectorRow({
   const naMark = (
     <span
       aria-hidden="true"
-      title={inactive ? inactive.reason : undefined}
       style={{
         flexShrink: 0, fontSize: '0.58rem', fontFamily: 'var(--font-mono)',
         lineHeight: 1, color: 'var(--text-tertiary)',
@@ -750,7 +866,6 @@ export function InspectorRow({
 
   const previewMark = (
     <span
-      title={previewGap ? previewGap.reason : undefined}
       style={{ flexShrink: 0, fontSize: '0.58rem', lineHeight: 1, color: 'var(--text-tertiary)' }}
     >
       preview
@@ -758,23 +873,12 @@ export function InspectorRow({
   );
 
   if (asleep && !woken) {
-    const title = tooltipFor(label, prop, inactive.reason);
     // No aria-disabled on the row: it holds the wake control, and marking the row disabled
     // makes that control read as disabled too — which would hide the one escape hatch from
     // exactly the people who most need it announced. Its own aria-label carries the state.
     return (
-      <div style={S.row} data-inactive={prop}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
-          <span
-            className="pd-inspector-label"
-            style={{ ...S.label, color: 'var(--text-tertiary)' }}
-            title={title}
-            data-prop={prop}
-          >
-            {label}
-          </span>
-          {naMark}
-        </span>
+      <div style={S.row} data-inactive={prop} {...focusOpens}>
+        {rowLabel('var(--text-tertiary)', null, naMark)}
         {/* The hover target is this wrapper, which is a live element. A `title` on a
             disabled control never appears — a disabled element fires no hover events — so
             the reason would be invisible, which is the whole point of the feature. `inert`
@@ -845,19 +949,8 @@ export function InspectorRow({
 
   if (isInherited) {
     return (
-      <div style={rowStyle}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, ...labelPad }}>
-          <span
-            className="pd-inspector-label"
-            style={{ ...S.label, color: 'var(--text-tertiary)' }}
-            title={tooltipFor(label, prop)}
-            data-prop={prop}
-          >
-            {label}
-          </span>
-          {inactive && naMark}
-          {previewGap && previewMark}
-        </span>
+      <div style={rowStyle} {...focusOpens}>
+        {rowLabel('var(--text-tertiary)', labelPad, <>{inactive && naMark}{previewGap && previewMark}</>)}
         {/* Shown but not editable in place: typing here would silently create an override,
             so the row asks first. Never inerted, even when the value cannot take effect —
             this button is the only way to take the property over. */}
@@ -892,50 +985,42 @@ export function InspectorRow({
   }
 
   return (
-    <div
-      style={rowStyle}
-      onFocusCapture={() => { busy.current.focused = true; }}
-      onBlurCapture={() => { busy.current.focused = false; }}
-    >
-      <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, ...labelPad }}>
-        <span
-          className="pd-inspector-label"
-          style={{ ...S.label, color: holdingLiteral ? 'var(--accent)' : 'var(--text-secondary)' }}
-          title={tooltipFor(label, prop)}
-          data-prop={prop}
-        >
-          {label}
-        </span>
-        {isOverride && (
-          <button
-            type="button"
-            onClick={() => onChange('')}
-            title={'Overriding' + (inheritedFrom ? ' ' + inheritedFrom : '') + ' — reset to the inherited value'}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
-              color: 'var(--accent)', fontSize: '0.62rem', lineHeight: 1, fontFamily: 'inherit',
-            }}
-          >
-            ↺
-          </button>
-        )}
-        {!literalOnly && (
-          <button
-            type="button"
-            onClick={() => setMode(m => (m === 'token' ? 'raw' : 'token'))}
-            title={mode === 'token' ? 'Enter a literal value instead' : 'Pick a token instead'}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
-              color: mode === 'token' ? 'var(--text-tertiary)' : 'var(--accent)',
-              fontSize: '0.58rem', fontFamily: 'var(--font-mono)', lineHeight: 1,
-            }}
-          >
-            {mode === 'token' ? '{}' : 'ab'}
-          </button>
-        )}
-        {inactive && naMark}
-        {previewGap && previewMark}
-      </span>
+    <div style={rowStyle} {...focusOpens}>
+      {rowLabel(
+        holdingLiteral ? 'var(--accent)' : 'var(--text-secondary)',
+        labelPad,
+        <>
+          {isOverride && (
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              title={'Overriding' + (inheritedFrom ? ' ' + inheritedFrom : '') + ' — reset to the inherited value'}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
+                color: 'var(--accent)', fontSize: '0.62rem', lineHeight: 1, fontFamily: 'inherit',
+              }}
+            >
+              ↺
+            </button>
+          )}
+          {!literalOnly && (
+            <button
+              type="button"
+              onClick={() => setMode(m => (m === 'token' ? 'raw' : 'token'))}
+              title={mode === 'token' ? 'Enter a literal value instead' : 'Pick a token instead'}
+              style={{
+                background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
+                color: mode === 'token' ? 'var(--text-tertiary)' : 'var(--accent)',
+                fontSize: '0.58rem', fontFamily: 'var(--font-mono)', lineHeight: 1,
+              }}
+            >
+              {mode === 'token' ? '{}' : 'ab'}
+            </button>
+          )}
+          {inactive && naMark}
+          {previewGap && previewMark}
+        </>,
+      )}
       {cell(control())}
     </div>
   );

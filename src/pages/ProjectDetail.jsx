@@ -5856,19 +5856,27 @@ export default function RootLayout({ children }) {
            fling the component around. */
         @media (prefers-reduced-motion: reduce) {
           .pd-preview-stage { animation-duration: 1ms !important; }
+          .pd-help-tip { animation: none !important; }
         }
 
-        /* Eight of the property names are wider than the label column (Grid Template
-           Columns, Text Decoration Color and friends). Hovering lifts the label out of
-           its cell to show the whole name, using a ring of the panel colour so it reads
-           over whatever sits beside it — no reflow, unlike widening the column. */
-        .pd-inspector-label:hover {
-          overflow: visible !important;
-          position: relative;
-          z-index: 3;
-          background: var(--bg-secondary);
-          box-shadow: 0 0 0 4px var(--bg-secondary);
-          border-radius: 3px;
+        /* The label lift-out that used to live here is gone. It existed so that hovering
+           one of the eight over-wide property names showed the whole thing; the help panel's
+           first line is now that name, on the same hover and on keyboard focus too. Keeping
+           both would render the name twice, 4px apart — and its 4px ring, against a 4.8px
+           cluster gap, painted over the help icon once the display was scaled past 100%. */
+
+        /* The glyph is 12px because that is what the widened column paid for. The target is
+           not: this reaches a comfortable size without costing any layout. */
+        .pd-help-hot { position: relative; }
+        .pd-help-hot::after { content: ''; position: absolute; inset: -6px -4px; }
+
+        /* A tooltip should arrive, not perform. 3px and 90ms — panelIn rises 10-16px and
+           scales, which on a 260px panel reads as a lurch, and it is declared twice in
+           App.css so which of the two applies is a cascade accident. */
+        .pd-help-tip { animation: pdHelpTipIn 90ms ease-out; }
+        @keyframes pdHelpTipIn {
+          from { opacity: 0; transform: translateY(3px); }
+          to   { opacity: 1; transform: none; }
         }
         .pd-main.has-inspector { padding-right: calc(380px + 2rem) !important; }
 
