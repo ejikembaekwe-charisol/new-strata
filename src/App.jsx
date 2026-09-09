@@ -14,6 +14,7 @@ import Designers from './pages/Designers';
 import DesignTeams from './pages/DesignTeams';
 import Explore from './pages/Explore';
 import Docs from './pages/Docs';
+import Learn from './pages/Learn';
 import Pricing from './pages/Pricing';
 import VibeCoders from './pages/VibeCoders';
 import Login from './pages/Login';
@@ -54,6 +55,7 @@ function AppInner() {
         <Route path="/design-teams" element={<DesignTeams />} />
         <Route path="/explore" element={<Explore />} />
         <Route path="/explore/:id" element={<SharedProject />} />
+        <Route path="/learn" element={<Learn />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/vibe-coders" element={<VibeCoders />} />
