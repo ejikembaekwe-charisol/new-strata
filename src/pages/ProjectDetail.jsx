@@ -12,9 +12,10 @@ import ScratchWizard from '../components/newProject/ScratchWizard';
 import ComponentInspector from '../components/inspector/ComponentInspector';
 import PropertySections, { sectionIdsForProperties } from '../components/inspector/PropertySections';
 import {
-  indexById, effectiveTokens, tokenOrigin, isFragment, childrenOf,
+  indexById, effectiveTokens, tokenOrigin, isFragment, childrenOf, containerOf,
   eligibleParents, eligibleChildren, removeComponents,
 } from '../components/inspector/inheritance';
+import { propertyNotes } from '../components/inspector/applicability';
 
 import {
   COMPONENT_TAXONOMY, CATEGORY_LIST, TYPES_FOR_CATEGORY, TYPE_TO_TEMPLATE,
@@ -5453,6 +5454,7 @@ export default function RootLayout({ children }) {
               onSetParent={(parentId) => handleEditComponent(
                 parentId ? { ...comp, extends: parentId } : (() => { const n = { ...comp }; delete n.extends; return n; })()
               )}
+              container={containerOf(comp, componentsById)}
               childComponents={childrenOf(comp, componentsById)}
               childOptions={eligibleChildren(comp, components)}
               onSetChildren={(ids) => handleEditComponent({ ...comp, children: ids })}
@@ -7758,6 +7760,20 @@ function ComponentModal({
     return next;
   });
 
+  // Which properties cannot take effect on what this dialog is currently describing.
+  //
+  // Read from the dialog's own state, not from the saved component: the template is
+  // unsaved here and the Fragment toggle overrides it, so flipping either re-evaluates
+  // live — turning a card into a fragment lights up the whole flex family straight away.
+  // A component being created is nobody's child yet, so it has no container.
+  const notes = propertyNotes({
+    template: asFragment ? 'fragment' : template,
+    tokens,
+    inherited: inheritedTokens,
+    container: isEdit ? containerOf(componentToEdit, indexById(allComponents)) : null,
+    hasImage: Boolean(isEdit && componentToEdit.imageUrl),
+  });
+
   // Only mappings that resolve to a real value count — a property pointing at a token the
   // project no longer defines is not styling anything.
   const mappedCount = Object.values(tokens).filter(
@@ -8286,6 +8302,7 @@ function ComponentModal({
                 <PropertySections
                   tokens={tokens}
                   onPatch={patchTokens}
+                  notes={notes}
                   tokensForProperty={tokensForProperty}
                   presetsForProperty={presetsForProperty}
                   onCreateToken={onCreateToken}

@@ -60,10 +60,13 @@ const Icon = ({ name }) => (
 // suggests gap.custom and `background-color` suggests background-color.custom.
 const suggestedTokenName = (prop) => prop + '.custom';
 
-const tooltipFor = (label, prop) => {
-  const help = helpFor(prop);
+const tooltipFor = (label, prop, reason) => {
   const head = label + '  ·  ' + prop;
-  return help ? head + nl2 + help : head;
+  // A reason and the help sentence say overlapping things — several help sentences already
+  // state the dependency in prose ("Only visible once a border width and style are set").
+  // Whichever is more useful right now, on its own, rather than both.
+  const tail = reason || helpFor(prop);
+  return tail ? head + nl2 + tail : head;
 };
 
 /* ── individual controls ── */
@@ -587,6 +590,10 @@ export const SidesControl = ({ prop, tokens, onChangeMany, inherited = '' }) => 
 export function InspectorRow({
   prop, label, tokens, tokenOptions, presets = [], resolve, onChange, onChangeMany,
   onCreateToken, existingTokenNames = [], inherited = '', inheritedFrom = '',
+  // Why this property cannot take effect here, or why the preview cannot show it:
+  // `{ kind: 'inactive' | 'preview', reason, held }` — see applicability.js. Absent on
+  // most rows, and an absent note renders exactly as this row always did.
+  note = null,
 }) {
   const kind = controlKind(prop);
   const value = tokens[prop] || '';
@@ -595,13 +602,41 @@ export function InspectorRow({
   const [mode, setMode] = useState(literalOnly ? 'raw' : (isToken || !value ? 'token' : 'raw'));
   const [creating, setCreating] = useState(false);
 
-  // Choosing a preset creates the token and maps it in one action.
-  const adopt = (token) => {
-    const name = onCreateToken ? onCreateToken(prop, token) : token.name;
-    onChange(name);
-  };
+  // A property that cannot take effect dims its row — but only while the row is empty.
+  // A row holding a value is never dimmed and never made inert, because greying it would
+  // trap a mapping with no way left to clear it. That single rule is why there is no
+  // precedence puzzle here: the accent label a literal earns always survives, and the
+  // trapped-data case cannot arise.
+  const inactive = note && note.kind === 'inactive' ? note : null;
+  // A different claim, and deliberately quieter: the property does apply and is exported,
+  // but this template's preview cannot show it. Only worth saying once something is
+  // actually mapped — an empty row has nothing for the preview to fail to draw.
+  const previewGap = note && note.kind === 'preview' && (value || inherited) ? note : null;
+  const asleep = Boolean(inactive) && !value && !inherited;
+
+  // One click wakes a dimmed row. These rules read Strata's template and mappings, not the
+  // user's real component, so a wrong answer has to cost a click rather than block the
+  // edit — the same bargain the inherited row below already strikes.
+  const [woken, setWoken] = useState(false);
+  // A ref rather than state so the effect needs no dependency on it: the row must not
+  // re-arm while a NumberField holds an uncommitted draft or a colour popover is open,
+  // because `inert` would swallow both.
+  const busy = useRef({ focused: false, creating: false });
+  // Mirrored in an effect rather than written during render, so the un-waking effect below
+  // can read it without taking a dependency on it. Declared first, so it has already run
+  // by the time that one does.
+  useEffect(() => { busy.current.creating = creating; }, [creating]);
+
+  // Moving to another component must not leave a row woken from the last one.
+  const reasonKey = inactive ? inactive.reason : '';
+  useEffect(() => {
+    if (!busy.current.focused && !busy.current.creating) setWoken(false);
+  }, [reasonKey]);
 
   if (kind === 'sides') {
+    // No rule gates padding or margin, so this row is never dimmed. It could not show a
+    // reason honestly anyway: it swallows four side properties and has one place to put a
+    // sentence. If a rule ever targets them, all five must share one answer.
     return (
       <div style={{ ...S.row, alignItems: 'start' }}>
         <span className="pd-inspector-label" style={{ ...S.label, paddingTop: '0.35rem' }} title={tooltipFor(label, prop)} data-prop={prop}>{label}</span>
@@ -609,6 +644,12 @@ export function InspectorRow({
       </div>
     );
   }
+
+  // Choosing a preset creates the token and maps it in one action.
+  const adopt = (token) => {
+    const name = onCreateToken ? onCreateToken(prop, token) : token.name;
+    onChange(name);
+  };
 
   const control = () => {
     if (creating) {
@@ -692,10 +733,120 @@ export function InspectorRow({
   const isInherited = !value && Boolean(inherited);
   const isOverride = Boolean(value) && Boolean(inherited);
 
+  // Takes the slot the {} / ab toggle vacates, so the label column loses no width. Mono,
+  // because the toggle it stands in for was mono.
+  const naMark = (
+    <span
+      aria-hidden="true"
+      title={inactive ? inactive.reason : undefined}
+      style={{
+        flexShrink: 0, fontSize: '0.58rem', fontFamily: 'var(--font-mono)',
+        lineHeight: 1, color: 'var(--text-tertiary)',
+      }}
+    >
+      n/a
+    </span>
+  );
+
+  const previewMark = (
+    <span
+      title={previewGap ? previewGap.reason : undefined}
+      style={{ flexShrink: 0, fontSize: '0.58rem', lineHeight: 1, color: 'var(--text-tertiary)' }}
+    >
+      preview
+    </span>
+  );
+
+  if (asleep && !woken) {
+    const title = tooltipFor(label, prop, inactive.reason);
+    // No aria-disabled on the row: it holds the wake control, and marking the row disabled
+    // makes that control read as disabled too — which would hide the one escape hatch from
+    // exactly the people who most need it announced. Its own aria-label carries the state.
+    return (
+      <div style={S.row} data-inactive={prop}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
+          <span
+            className="pd-inspector-label"
+            style={{ ...S.label, color: 'var(--text-tertiary)' }}
+            title={title}
+            data-prop={prop}
+          >
+            {label}
+          </span>
+          {naMark}
+        </span>
+        {/* The hover target is this wrapper, which is a live element. A `title` on a
+            disabled control never appears — a disabled element fires no hover events — so
+            the reason would be invisible, which is the whole point of the feature. `inert`
+            on the inside takes the real control out of pointer, tab and screen-reader
+            reach without the `disabled` attribute being involved at all. */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setWoken(true)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setWoken(true); } }}
+          title={inactive.reason + nl2 + 'Click to set it anyway.'}
+          aria-label={label + ' does not apply to this component. ' + inactive.reason + ' Activate to set it anyway.'}
+          style={{ minWidth: 0, cursor: 'pointer', borderRadius: '6px' }}
+        >
+          {/* 0.55, not lower: the light theme is the binding constraint, and a keyword
+              select faded past this stops being readable, which reads as broken rather
+              than as unavailable. */}
+          <div inert={true} style={{ opacity: 0.55, minWidth: 0 }}>
+            {control()}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Said out loud rather than left to a tooltip. This is the one actionable state — a
+  // mapping that is real, is still in the exported CSS, and does nothing — and it can sit
+  // inside a collapsed section where a hover would never happen.
+  const card = inactive && !asleep ? (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: '0.4rem', minWidth: 0,
+      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+      borderRadius: '7px', padding: '0.32rem 0.4rem',
+    }}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: '0.62rem', lineHeight: 1.4, color: 'var(--text-secondary)' }}>
+        {inactive.reason}{' '}
+        <span style={{ color: 'var(--text-tertiary)' }}>
+          {value
+            ? 'Still mapped, and still in the exported CSS.'
+            : 'Inherited from ' + (inheritedFrom || 'the parent') + ' — clear it there.'}
+        </span>
+      </span>
+      {/* Only where clearing would do something. On an inherited value the mapping lives
+          on the ancestor, so this button would delete nothing and is not offered. */}
+      {Boolean(value) && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          title={'Remove the ' + prop + ' mapping from this component'}
+          style={{
+            background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
+            color: 'var(--accent)', fontSize: '0.62rem', fontFamily: 'inherit', lineHeight: 1.4,
+          }}
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  ) : null;
+
+  // Wrapped only when there is something to wrap, so a row with no note renders the
+  // markup it always did.
+  const cell = (inner) => (card
+    ? <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', minWidth: 0 }}>{inner}{card}</div>
+    : inner);
+  const rowStyle = card ? { ...S.row, alignItems: 'start' } : S.row;
+  const labelPad = card ? { paddingTop: '0.35rem' } : null;
+
   if (isInherited) {
     return (
-      <div style={S.row}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
+      <div style={rowStyle}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, ...labelPad }}>
           <span
             className="pd-inspector-label"
             style={{ ...S.label, color: 'var(--text-tertiary)' }}
@@ -704,40 +855,49 @@ export function InspectorRow({
           >
             {label}
           </span>
+          {inactive && naMark}
+          {previewGap && previewMark}
         </span>
         {/* Shown but not editable in place: typing here would silently create an override,
-            so the row asks first. */}
-        <button
-          type="button"
-          className="pd-inspector-inherited"
-          onClick={() => onChange(inherited)}
-          title={'Inherited' + (inheritedFrom ? ' from ' + inheritedFrom : '') + ' — click to override on this component'}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '0.35rem', width: '100%', minWidth: 0,
-            background: 'none', border: '1px dashed var(--border)', borderRadius: '6px',
-            padding: '0.26rem 0.4rem', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-          }}
-        >
-          {kind === 'color' && (
+            so the row asks first. Never inerted, even when the value cannot take effect —
+            this button is the only way to take the property over. */}
+        {cell(
+          <button
+            type="button"
+            className="pd-inspector-inherited"
+            onClick={() => onChange(inherited)}
+            title={'Inherited' + (inheritedFrom ? ' from ' + inheritedFrom : '') + ' — click to override on this component'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.35rem', width: '100%', minWidth: 0,
+              background: 'none', border: '1px dashed var(--border)', borderRadius: '6px',
+              padding: '0.26rem 0.4rem', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+            }}
+          >
+            {kind === 'color' && (
+              <span style={{
+                width: 15, height: 15, borderRadius: '4px', flexShrink: 0,
+                background: resolve(inherited) || 'transparent',
+                border: '1px solid rgba(255,255,255,0.18)', opacity: 0.75,
+              }} />
+            )}
             <span style={{
-              width: 15, height: 15, borderRadius: '4px', flexShrink: 0,
-              background: resolve(inherited) || 'transparent',
-              border: '1px solid rgba(255,255,255,0.18)', opacity: 0.75,
-            }} />
-          )}
-          <span style={{
-            flex: 1, minWidth: 0, fontSize: '0.7rem', color: 'var(--text-tertiary)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>{inherited}</span>
-          <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>inherited</span>
-        </button>
+              flex: 1, minWidth: 0, fontSize: '0.7rem', color: 'var(--text-tertiary)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>{inherited}</span>
+            <span style={{ fontSize: '0.58rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>inherited</span>
+          </button>
+        )}
       </div>
     );
   }
 
   return (
-    <div style={S.row}>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
+    <div
+      style={rowStyle}
+      onFocusCapture={() => { busy.current.focused = true; }}
+      onBlurCapture={() => { busy.current.focused = false; }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0, ...labelPad }}>
         <span
           className="pd-inspector-label"
           style={{ ...S.label, color: holdingLiteral ? 'var(--accent)' : 'var(--text-secondary)' }}
@@ -773,8 +933,10 @@ export function InspectorRow({
             {mode === 'token' ? '{}' : 'ab'}
           </button>
         )}
+        {inactive && naMark}
+        {previewGap && previewMark}
       </span>
-      {control()}
+      {cell(control())}
     </div>
   );
 }

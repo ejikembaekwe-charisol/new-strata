@@ -191,32 +191,20 @@ export const isLiteralOnly = (prop) =>
 /** The individual side properties, so the sides control can hide them as their own rows. */
 export const isSideProperty = (prop) => ALL_SIDES.has(prop);
 
-/** Every property the inspector can reach, for the coverage check in the tests. */
-export const INSPECTOR_PROPERTIES = INSPECTOR_SECTIONS.flatMap(s => s.properties);
-
 /**
- * Sections for a component, with the rows already resolved. `sides` rows swallow their
- * four side properties so they are not also listed individually.
+ * Every property the inspector can reach. Used by applicability.js, both to mark every
+ * property of a filled image as one the preview cannot show, and as the list a rule's
+ * property names have to be drawn from.
  */
-export const sectionsFor = (tokens = {}) => {
-  const set = (p) => Boolean(tokens[p]);
-  return INSPECTOR_SECTIONS.map(section => {
-    const rows = section.properties.filter(p => !isSideProperty(p));
-    return {
-      ...section,
-      rows,
-      // How many of this section's properties actually carry a value, side ones included
-      setCount: section.properties.filter(set).length,
-    };
-  });
-};
+export const INSPECTOR_PROPERTIES = INSPECTOR_SECTIONS.flatMap(s => s.properties);
 
 /**
  * What each property actually does, shown on hover in the inspector.
  *
  * One plain sentence each, describing the CSS behaviour rather than restating the
  * property name — "Fill behind the element" is useful, "Sets the background colour"
- * is not. A missing entry is a bug, and the tests assert every property has one.
+ * is not. A missing entry is a bug: helpFor falls back to '' and the row loses the
+ * explanation half of its tooltip.
  */
 export const PROPERTY_HELP = {
   // colour

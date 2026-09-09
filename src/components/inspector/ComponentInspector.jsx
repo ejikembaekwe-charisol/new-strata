@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import PropertySections from './PropertySections';
 import { ENTRANCE_KEYFRAMES, entranceByAnimation } from '../../data/motionKeyframes';
+import { propertyNotes } from './applicability';
 
 // Entrances come from the shared definition, so the picker, the app's stylesheet and
 // every CSS export are describing the same four animations.
@@ -65,6 +66,9 @@ export default function ComponentInspector({
   onClose,
   renderPreview,
   canEdit = true,
+  // The fragment holding this component, if any. Only containment makes the flex-item
+  // properties mean anything, and only the page can look it up.
+  container = null,
 }) {
 
   // Bumping this remounts the stage, which is what restarts the CSS animation.
@@ -87,6 +91,19 @@ export default function ComponentInspector({
     cursor: disabled ? 'default' : 'pointer', fontSize: '0.72rem', lineHeight: 1,
     color: disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)',
     opacity: disabled ? 0.35 : 1, fontFamily: 'inherit',
+  });
+
+  // Which properties cannot take effect here, and which the preview cannot show. Computed
+  // here rather than inside PropertySections so that file goes on knowing nothing about
+  // components. Not memoised: inheritedTokens is a fresh object on every render at both
+  // call sites, so a dependency on it would be theatre, and this is a dozen predicates
+  // over eighty strings.
+  const notes = propertyNotes({
+    template: component.template,
+    tokens,
+    inherited: inheritedTokens,
+    container,
+    hasImage: Boolean(component.imageUrl),
   });
 
   const motion = motionFor(tokens, resolve);
@@ -318,6 +335,7 @@ export default function ComponentInspector({
           inheritedTokens={inheritedTokens}
           inheritedFrom={parent ? parent.name : ''}
           resolve={resolve}
+          notes={notes}
         />
       </div>
     </div>

@@ -115,6 +115,18 @@ export const tokenOrigin = (comp, prop, byId) => {
 
 export const isFragment = (comp) => comp?.template === 'fragment';
 
+/**
+ * The fragment holding this component, or null. Containment, not inheritance.
+ *
+ * A component can sit in more than one fragment — children are references, and
+ * eligibleChildren only stops the same fragment adding it twice — so this returns the
+ * first and callers say "a fragment" rather than naming one.
+ */
+export const containerOf = (comp, byId) =>
+  Object.values(byId || {}).find(
+    c => isFragment(c) && (c.children || []).includes(comp?.id)
+  ) || null;
+
 /** A fragment's children, in order, skipping ids that no longer resolve. */
 export const childrenOf = (comp, byId) =>
   (comp?.children || []).map(id => byId[id]).filter(Boolean);
