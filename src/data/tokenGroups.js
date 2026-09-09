@@ -53,6 +53,31 @@ const stepRank = (step) => {
   return i === -1 ? RAMP_STEPS.length : i;
 };
 
+// Words a designer writes in capitals. Title-casing them blindly gives "Ui" and "Lg",
+// which reads as a typo rather than an abbreviation.
+const KEEP_UPPER = new Set(['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', 'ui', 'bg',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+
+/**
+ * How a token reads in the table: `space.tight` becomes "Space Tight".
+ *
+ * The stored name is untouched — it is what the CSS and DTCG exports are built from, and
+ * what a developer types. This is only the label, the same way a ramp step already reads
+ * "400" while the token underneath is `color.primary.400`. The full name stays on the row's
+ * hover title and in its menu.
+ *
+ * The whole name is humanised rather than trimmed to the part the folder does not already
+ * say: `brand.font.heading` and `text.heading` share a folder, and trimming would make both
+ * of them "Heading".
+ */
+export const humanizeTokenName = (name) => String(name || '')
+  .split(/[.\-_]/)
+  .filter(Boolean)
+  .map(w => (KEEP_UPPER.has(w.toLowerCase())
+    ? w.toUpperCase()
+    : w.charAt(0).toUpperCase() + w.slice(1)))
+  .join(' ');
+
 const titleCase = (slug) => String(slug)
   .split('-')
   .filter(Boolean)
@@ -78,6 +103,19 @@ const FEEDBACK_PATTERNS = [
 ];
 
 const isFeedback = (name) => FEEDBACK_PATTERNS.some(re => re.test(String(name || '')));
+
+/**
+ * The folder a plain colour token belongs to: `color.charts.series-1` -> `charts`.
+ *
+ * Only consulted after the ramp, Neutral and Feedback passes have taken theirs, because
+ * `color.text.primary` and `color.feedback.success` are this shape too and belong to those
+ * groups rather than to folders called Text and Feedback.
+ */
+const plainFolderOf = (name) => {
+  const parts = String(name || '').split('.');
+  if (parts.length < 3 || parts[0] !== 'color') return null;
+  return parts[1] ? parts[1].toLowerCase() : null;
+};
 
 // A role's own base token from before ramps existed. It survives as an alias of the ramp's
 // Main step, so it belongs in that role's folder — under its full name, since it is not a
@@ -116,7 +154,7 @@ const LAYER_GROUPING = {
     // A token added from this folder should land in this tier.
     defaults: { layer },
   })),
-  rowLabel: (token) => token.name,
+  rowLabel: (token) => humanizeTokenName(token.name),
 };
 
 const COLOR_GROUPING = {
@@ -198,6 +236,32 @@ const COLOR_GROUPING = {
       defaults: { layer: 'Semantic', namePrefix: 'color.feedback.' },
     });
 
+    // Sets of related colours that are not a ramp — chart series, illustration swatches,
+    // a partner's palette. A ramp is one colour generated outward; these are a named set
+    // you fill yourself, so there is no base step and no generated scale.
+    const folderNames = new Set();
+    for (const t of list) {
+      if (claimed.has(t.name)) continue;
+      const f = plainFolderOf(t.name);
+      if (f) folderNames.add(f);
+    }
+    for (const folder of [...folderNames].sort()) {
+      const members = list.filter(t => !claimed.has(t.name) && plainFolderOf(t.name) === folder);
+      members.forEach(t => claimed.add(t.name));
+      groups.push({
+        key: 'folder:' + folder,
+        label: titleCase(folder),
+        // No swatch: that marker is a ramp's base colour and doubles as its recolour
+        // control. A folder has no base, and showing one would promise a control that is
+        // not there.
+        dot: null,
+        always: false,
+        // No step order to respect, so alphabetical.
+        tokens: members.slice().sort((a, b) => a.name.localeCompare(b.name)),
+        defaults: { layer: 'Brand', namePrefix: 'color.' + folder + '.' },
+      });
+    }
+
     // Nothing may fall out of the tree for failing to match the taxonomy — the same rule
     // componentFoldersFor follows. In practice this holds the semantic and scoped aliases
     // (color.action, button.bg), whose tier dot already says what they are.
@@ -218,7 +282,7 @@ const COLOR_GROUPING = {
   // `color.primary.*` would be noise. The step alone is the useful part.
   rowLabel: (token) => {
     const m = rampMemberOf(token.name);
-    return m ? stepLabel(m.step) : token.name;
+    return m ? stepLabel(m.step) : humanizeTokenName(token.name);
   },
 };
 
@@ -337,14 +401,33 @@ const TYPOGRAPHY_GROUPING = {
   rowLabel: (token) => {
     // Inside a style the folder already says H1, so the row is just the part it carries.
     const st = styleOf(token.name);
-    if (st) return st.part;
-    if (normalizeTypeKey(token.type) !== 'font-size') return token.name;
+    if (st) return titleCase(st.part);
+    if (normalizeTypeKey(token.type) !== 'font-size') return humanizeTokenName(token.name);
     const step = scaleStepOf(token.name);
-    return step ? scaleStepLabel(step) : token.name;
+    return step ? scaleStepLabel(step) : humanizeTokenName(token.name);
   },
 };
 
 const GROUPINGS = { Color: COLOR_GROUPING, Typography: TYPOGRAPHY_GROUPING };
+
+/**
+ * Every colour group name already in use — ramp roles and plain folders both — so a new
+ * folder can be refused rather than quietly merging into one that exists.
+ */
+export const colorGroupSlugsIn = (colorTokens) => {
+  const out = new Set();
+  for (const t of colorTokens || []) {
+    const m = rampMemberOf(t.name);
+    if (m) { out.add(m.role); continue; }
+    const legacy = legacyRoleOfToken(t);
+    if (legacy) { out.add(legacy); continue; }
+    if (isNeutral(t.name) || isFeedback(t.name)) continue;
+    const f = plainFolderOf(t.name);
+    if (f) out.add(f);
+  }
+  for (const r of DEFAULT_RAMP_ROLES) out.add(r);
+  return out;
+};
 
 /** The rule for a category. Every category has one; Color's is the only special case. */
 export const groupingFor = (categoryId) => GROUPINGS[categoryId] || LAYER_GROUPING;

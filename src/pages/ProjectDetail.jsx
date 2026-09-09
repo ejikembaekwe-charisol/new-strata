@@ -25,16 +25,16 @@ import {
 import { renderComponentPreview } from '../components/componentPreviews';
 import { ColorSwatchButton } from '../components/ColorPicker';
 import { deriveTokens } from '../data/derivedTokens';
-import { buildUsageIndex, usageOf, referrersOf, isDeadToken } from '../data/tokenUsage';
 import { renameRamp, recolorRamp, slugifyRole } from '../data/tokenRefactor';
 import { styleOf } from '../data/textStyles';
 import { normalizeTypeKey } from '../data/tokenTypes';
 import RampModal from '../components/RampModal';
 import ScaleModal from '../components/ScaleModal';
+import FolderModal from '../components/FolderModal';
 import ComponentThumb from '../components/ComponentThumb';
 import {
   TOKEN_LAYERS, TOKEN_LAYER_LABELS, layerColorFor,
-  groupsFor, rowLabelFor,
+  groupsFor, rowLabelFor, colorGroupSlugsIn, humanizeTokenName,
 } from '../data/tokenGroups';
 import { MOCK_TOKENS } from '../data/designSystemSeed';
 import { entranceKeyframesCss, ENTRANCE_KEYFRAMES, entranceByAnimation } from '../data/motionKeyframes';
@@ -375,18 +375,17 @@ function ProjectDetailInner() {
   const [previewComponentId, setPreviewComponentId] = useState(null);
   // Which token's dependents are showing. Shares the rail with previewComponentId, so
   // opening either closes the other rather than stacking two panels over the table.
-  const [usageTokenName, setUsageTokenName] = useState(null);
   // Which ramp folder is being renamed, and what has been typed so far.
   const [renamingRamp, setRenamingRamp] = useState(null);
   // What the last refactor did, or why it was refused. Shown under the toolbar.
   const [refactorNote, setRefactorNote] = useState(null);
-  const [expandedUsage, setExpandedUsage] = useState(() => new Set());
   const [previewOnLight, setPreviewOnLight] = useState(false);
   const previewDrawerRef = useRef(null);
 
   // Handoff state variables
   const [rampModalOpen, setRampModalOpen] = useState(false);
   const [scaleModalOpen, setScaleModalOpen] = useState(false);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -981,11 +980,6 @@ This document serves as our living source of truth.`
   // derivation, not a hook, so it sits safely below the loading guards above.
   const componentsById = indexById(components);
 
-  // Deliberately not a useMemo. ProjectDetail has an early return below and has crashed
-  // twice on a hook placed after it; componentsById above is a plain const for the same
-  // reason. One pass over ~170 tokens is not worth the risk.
-  const tokenUsage = buildUsageIndex(activeTokens, components);
-
   // The two rails take turns. Opening one closes the other, so the table is never behind
   // two panels, and the expansion state resets rather than carrying over to another token.
   // A rename changes tokens *and* components, and they must land together — two writes
@@ -1009,8 +1003,6 @@ This document serves as our living source of truth.`
       return;
     }
     commitRefactor(result, 'Rename ramp to ' + result.role);
-    // The rail may be showing a name that no longer exists.
-    setUsageTokenName(null);
     setRefactorNote({
       kind: 'ok',
       text: 'Renamed ' + result.renamed + ' tokens'
@@ -1035,12 +1027,6 @@ This document serves as our living source of truth.`
           : '')
         + '.',
     });
-  };
-
-  const openUsage = (name) => {
-    setPreviewComponentId(null);
-    setExpandedUsage(new Set());
-    setUsageTokenName(prev => (prev === name ? null : name));
   };
 
   // Turns a component's whole `tokens` map into a resolved React style object,
@@ -1738,8 +1724,12 @@ This document serves as our living source of truth.`
 
   // The tree shows every type and layer at once, so search is the only filter left.
   const tokenTableSearchLower = tokenTableSearch.trim().toLowerCase();
+  // The label is searched alongside the stored name. Non-colour rows read "Space Tight"
+  // while the token is `space.tight`, and a designer typing what they can see should find
+  // it — otherwise the friendlier naming makes the table harder to use, not easier.
   const matchesTokenSearch = (t) => !tokenTableSearchLower
-    || [t.name, t.value, t.type].some(v => String(v).toLowerCase().includes(tokenTableSearchLower));
+    || [t.name, t.value, t.type, humanizeTokenName(t.name)]
+      .some(v => String(v).toLowerCase().includes(tokenTableSearchLower));
   const visibleTokens = Object.fromEntries(
     TOKEN_TYPES.map(({ id }) => [id, (activeTokens[id] || []).filter(matchesTokenSearch)])
   );
@@ -1976,13 +1966,7 @@ This document serves as our living source of truth.`
                       gap: '0.75rem', alignItems: 'center',
                       padding: '0.55rem 1rem',
                       borderBottom: isLast ? 'none' : '1px solid var(--border)',
-                      transition: 'background 0.15s', cursor: 'pointer',
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openUsage(token.name)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openUsage(token.name); }
+                      transition: 'background 0.15s', cursor: 'default',
                     }}
                   >
                     <span
@@ -2009,25 +1993,9 @@ This document serves as our living source of truth.`
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}
                       >{rowLabelFor(rowType, token)}</span>
-                      {/* Only where being unreferenced is a defect: a semantic or scoped
-                          token exists to be referenced. Generated palette and scale members
-                          are exempt — see isDeadToken. */}
-                      {isDeadToken(token, tokenUsage) && (
-                        <span
-                          title={'Nothing references ' + token.name + ' yet'}
-                          style={{
-                            flexShrink: 0, fontSize: '0.58rem', textTransform: 'uppercase',
-                            letterSpacing: '0.04em', color: '#F59E0B',
-                            border: '1px solid rgba(245,158,11,0.35)', borderRadius: '100px',
-                            padding: '0.05rem 0.3rem',
-                          }}
-                        >
-                          unused
-                        </span>
-                      )}
                     </span>
                     <div
-                      className={!isAlias && COLOR_VALUE_TYPES.has(token.type) ? 'pd-token-row-value-duplicate' : undefined}
+                      className={COLOR_VALUE_TYPES.has(token.type) ? 'pd-token-row-value-duplicate' : undefined}
                       style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                     >
                       {editingTokenName === token.name ? (
@@ -2036,7 +2004,6 @@ This document serves as our living source of truth.`
                           type="text"
                           value={editingTokenValue}
                           onChange={(e) => setEditingTokenValue(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
                           onBlur={() => {
                             handleEditToken(rowType, token.name, { ...token, value: editingTokenValue });
                             setEditingTokenName(null);
@@ -2061,41 +2028,24 @@ This document serves as our living source of truth.`
                             outline: 'none',
                           }}
                         />
-                      ) : isAlias ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                          <span
-                            onClick={(e) => e.stopPropagation()}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTokenName(token.name);
-                              setEditingTokenValue(token.value);
-                            }}
-                            title={`Inheritance Path: ${chain.join(' ➔ ')}\nDouble click to edit alias`}
-                            style={{
-                              fontFamily: 'var(--font-mono)',
-                              fontSize: '0.8rem',
-                              color: 'var(--accent)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                            }}
-                          >
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ opacity: 0.8 }}><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-                            {token.value}
-                          </span>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
-                            Resolves to: <strong style={{ color: 'var(--text-secondary)' }}>{resolvedPreviewValue}</strong>
-                          </span>
-                        </div>
                       ) : (
+                      /* Every row shows one thing: the value the token ends up as. An alias used
+                         to show the name it points at in accent pink with a link glyph, and its
+                         resolved value underneath on a second line — two values in one cell,
+                         and the colour read as a status rather than as a reference.
+
+                         The link is quieter, not lost: the tooltip names it and the whole
+                         inheritance path, and a double click still opens the alias rather than
+                         the resolved value, so editing a linked token cannot silently break
+                         the link. */
                         <span
                           onDoubleClick={() => {
                             setEditingTokenName(token.name);
                             setEditingTokenValue(token.value);
                           }}
-                          onClick={(e) => e.stopPropagation()}
-                          title="Double click to edit value"
+                          title={isAlias
+                            ? `Alias: ${token.value}\nInheritance Path: ${chain.join(' ➔ ')}\nDouble click to edit alias`
+                            : 'Double click to edit value'}
                           style={{
                             fontFamily: 'var(--font-mono)',
                             fontSize: '0.8rem',
@@ -2107,7 +2057,7 @@ This document serves as our living source of truth.`
                           onMouseEnter={e => e.currentTarget.style.borderBottom = '1px dashed var(--text-tertiary)'}
                           onMouseLeave={e => e.currentTarget.style.borderBottom = '1px dashed transparent'}
                         >
-                          {token.value}
+                          {isAlias ? resolvedPreviewValue : token.value}
                         </span>
                       )}
                     </div>
@@ -2173,15 +2123,6 @@ This document serves as our living source of truth.`
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 161,
                                 display: 'flex', flexDirection: 'column', gap: '0.1rem',
                               }}>
-                                <button
-                                  onClick={() => {
-                                    openUsage(token.name);
-                                    setActiveDropdown(null);
-                                  }}
-                                  style={menuItemStyle}
-                                >
-                                  Usages
-                                </button>
                                 <button
                                   onClick={() => {
                                     setTokenModal({ mode: 'edit', token, category: rowType });
@@ -2812,7 +2753,7 @@ This document serves as our living source of truth.`
 
         {/* ── Main Content ── */}
         <main
-          className={'pd-main' + (previewComponentId || usageTokenName ? ' has-inspector' : '')}
+          className={'pd-main' + (previewComponentId ? ' has-inspector' : '')}
           style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}
         >
 
@@ -3679,37 +3620,49 @@ This document serves as our living source of truth.`
                             own action rather than that many trips through the single-token
                             dialog. Only the two categories that fold into scales have one. */}
                         {can(myRole, 'tokens', 'create') && (() => {
+                          // Colour can make two things — a ramp is one colour generated
+                          // outward, a folder is a named set you fill yourself.
                           const bulk = typeId === 'Color'
-                            ? {
-                              label: 'Ramp', open: setRampModalOpen, aria: 'Add a colour ramp',
-                              title: 'Add a colour ramp — one colour becomes a 50-950 scale',
-                            }
+                            ? [
+                              {
+                                label: 'Ramp', open: setRampModalOpen, aria: 'Add a colour ramp',
+                                title: 'Add a colour ramp — one colour becomes a 50-950 scale',
+                              },
+                              {
+                                label: 'Folder', open: setFolderModalOpen, aria: 'Add a colour folder',
+                                title: 'Add a colour folder — a named set with no light-to-dark scale',
+                              },
+                            ]
                             : typeId === 'Typography'
-                              ? {
+                              ? [{
                                 label: 'Scale', open: setScaleModalOpen, aria: 'Add a type scale',
                                 title: 'Add a type scale — one size and a ratio become eight steps',
-                              }
+                              }]
                               : null;
                           if (!bulk) return null;
                           return (
-                            <button
-                              className="pd-tree-folder-add"
-                              onClick={(e) => { e.stopPropagation(); bulk.open(true); }}
-                              title={bulk.title}
-                              aria-label={bulk.aria}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: '0.25rem',
-                                marginLeft: 'auto', flexShrink: 0,
-                                background: 'none', border: '1px solid var(--border)', borderRadius: '6px',
-                                color: 'var(--text-secondary)', cursor: 'pointer',
-                                padding: '0.15rem 0.4rem', fontSize: '0.68rem', fontFamily: 'inherit',
-                              }}
-                            >
-                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                              </svg>
-                              {bulk.label}
-                            </button>
+                            <span style={{ display: 'flex', gap: '0.3rem', marginLeft: 'auto', flexShrink: 0 }}>
+                              {bulk.map(b => (
+                                <button
+                                  key={b.label}
+                                  className="pd-tree-folder-add"
+                                  onClick={(e) => { e.stopPropagation(); b.open(true); }}
+                                  title={b.title}
+                                  aria-label={b.aria}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0,
+                                    background: 'none', border: '1px solid var(--border)', borderRadius: '6px',
+                                    color: 'var(--text-secondary)', cursor: 'pointer',
+                                    padding: '0.15rem 0.4rem', fontSize: '0.68rem', fontFamily: 'inherit',
+                                  }}
+                                >
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                                  </svg>
+                                  {b.label}
+                                </button>
+                              ))}
+                            </span>
                           );
                         })()}
                       </div>
@@ -5439,6 +5392,15 @@ export default function RootLayout({ children }) {
         />
       )}
 
+      {folderModalOpen && (
+        <FolderModal
+          existingSlugs={colorGroupSlugsIn(activeTokens.Color || [])}
+          background={activeTokens.Color?.find(t => t.name === 'brand.color.background')?.value || '#0D0D12'}
+          onClose={() => setFolderModalOpen(false)}
+          onCreate={(tokens) => { handleAddTokens(tokens); setFolderModalOpen(false); }}
+        />
+      )}
+
       {rampModalOpen && (
         <RampModal
           existingColorTokens={activeTokens.Color || []}
@@ -5447,220 +5409,6 @@ export default function RootLayout({ children }) {
           onCreate={(tokens) => { handleAddTokens(tokens); setRampModalOpen(false); }}
         />
       )}
-
-      {/* ── Token usages ── */}
-      {/* What depends on a token. The other direction was always visible — the row prints
-          "Resolves to" and the value cell's tooltip carries the chain — but dependents were
-          only ever computable as a side effect of editing, through the impact panel. */}
-      {usageTokenName && (() => {
-        const token = tokenUsage.byName.get(usageTokenName);
-        if (!token) return null;
-        const u = usageOf(usageTokenName, tokenUsage);
-        const resolved = resolveTokenValue(token.value);
-        const chain = getTokenInheritanceChain(token.value);
-        const isAlias = String(token.value || '').trim().startsWith('{');
-
-        const toggle = (key) => setExpandedUsage(prev => {
-          const next = new Set(prev);
-          if (next.has(key)) next.delete(key); else next.add(key);
-          return next;
-        });
-
-        const componentLink = (c) => (
-          <button
-            type="button"
-            onClick={() => {
-              setUsageTokenName(null);
-              setActiveTab('components');
-              setPreviewComponentId(c.id);
-            }}
-            title={'Open ' + c.name}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem', width: '100%',
-              textAlign: 'left', background: 'none', border: 'none', padding: '0.16rem 0',
-              cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            <span style={{ display: 'flex', color: 'var(--accent)', flexShrink: 0 }}>{componentIcon(11)}</span>
-            <span style={{
-              minWidth: 0, fontSize: '0.7rem', color: 'var(--text-primary)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>{c.name}</span>
-            <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
-              {c.prop}
-            </span>
-          </button>
-        );
-
-        // Depth-capped for the same reason the walk is: a hand-written alias loop must not
-        // recurse forever just because someone opened the panel on it.
-        const renderReferrer = (name, path, depth) => {
-          const key = path + '/' + name;
-          const own = referrersOf(name, tokenUsage);
-          const kids = own.tokens.length + own.components.length;
-          const open = expandedUsage.has(key);
-          const cap = depth >= 8;
-          return (
-            <div key={key} style={{ paddingLeft: depth ? '0.85rem' : 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.16rem 0' }}>
-                {kids > 0 && !cap ? (
-                  <button
-                    type="button"
-                    onClick={() => toggle(key)}
-                    title={open ? 'Collapse' : 'Expand'}
-                    style={{
-                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                      color: 'var(--text-tertiary)', display: 'flex', flexShrink: 0,
-                    }}
-                  >
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                      style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </button>
-                ) : (
-                  <span style={{ width: '9px', flexShrink: 0 }} />
-                )}
-                <button
-                  type="button"
-                  onClick={() => openUsage(name)}
-                  title={'Open ' + name}
-                  style={{
-                    flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none',
-                    padding: 0, cursor: 'pointer', fontFamily: 'var(--font-mono)',
-                    fontSize: '0.7rem', color: 'var(--text-primary)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}
-                >
-                  {name}
-                </button>
-                {kids > 0 && (
-                  <span style={{ fontSize: '0.6rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{kids}</span>
-                )}
-              </div>
-              {open && !cap && (
-                <>
-                  {own.tokens.map(n => renderReferrer(n, key, depth + 1))}
-                  {own.components.map(c => (
-                    <div key={key + '/c/' + c.id + c.prop} style={{ paddingLeft: '1.7rem' }}>
-                      {componentLink(c)}
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          );
-        };
-
-        const sectionLabel = {
-          fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.06em',
-          color: 'var(--text-tertiary)', marginBottom: '0.3rem',
-        };
-
-        return (
-          <div className="pd-preview-drawer" style={{
-            position: 'fixed', right: 0, bottom: 0, width: '380px',
-            background: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)',
-            boxShadow: '-12px 0 32px rgba(0,0,0,0.4)', zIndex: 400,
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
-              padding: '0.9rem 1rem 0.7rem', borderBottom: '1px solid var(--border)', flexShrink: 0,
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--text-primary)',
-                  overflowWrap: 'anywhere',
-                }}>
-                  {token.name}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.3rem' }}>
-                  <span style={{
-                    width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0,
-                    background: layerColorFor(token.layer),
-                  }} />
-                  <span style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
-                    {(TOKEN_LAYER_LABELS[token.layer] || token.layer || 'Scoped') + ' · ' + token.category}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUsageTokenName(null)}
-                title="Close"
-                style={{
-                  background: 'none', border: 'none', color: 'var(--text-tertiary)',
-                  cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0.1rem 0.2rem', flexShrink: 0,
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '0.9rem 1rem' }}>
-              {/* Downstream: what this token resolves through. Already computed for the
-                  row's tooltip, so the same chain rather than a second opinion. */}
-              <div style={{ marginBottom: '1.1rem' }}>
-                <div style={sectionLabel}>Resolves to</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  {renderTokenPreview({ ...token, value: resolved })}
-                </div>
-                {isAlias && chain.length > 1 && (
-                  <div style={{
-                    marginTop: '0.4rem', fontSize: '0.66rem', color: 'var(--text-tertiary)',
-                    fontFamily: 'var(--font-mono)', lineHeight: 1.6, overflowWrap: 'anywhere',
-                  }}>
-                    {chain.join(' ➔ ')}
-                  </div>
-                )}
-                {!isAlias && (
-                  <div style={{ marginTop: '0.3rem', fontSize: '0.66rem', color: 'var(--text-tertiary)' }}>
-                    a literal — nothing behind it
-                  </div>
-                )}
-              </div>
-
-              {/* Upstream. */}
-              <div style={sectionLabel}>
-                Used by
-                {!u.unused && (
-                  <span style={{ color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: 0 }}>
-                    {' · ' + (u.direct.tokens.length + u.direct.components.length) + ' direct, '
-                      + (u.totalTokens + u.totalComponents) + ' in all'}
-                  </span>
-                )}
-              </div>
-
-              {u.unused ? (
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                  Nothing references this yet.
-                  {isDeadToken(token, tokenUsage)
-                    ? ' A ' + (TOKEN_LAYER_LABELS[token.layer] || token.layer).toLowerCase()
-                      + ' token exists to be referenced, so this one is not doing anything.'
-                    : ' That is normal for a palette or scale entry — they are generated as a set for you to pick from.'}
-                </div>
-              ) : (
-                <>
-                  {u.direct.tokens.length > 0 && (
-                    <div style={{ marginBottom: '0.7rem' }}>
-                      {u.direct.tokens.map(n => renderReferrer(n, 'root', 0))}
-                    </div>
-                  )}
-                  {u.direct.components.length > 0 && (
-                    <div>
-                      <div style={{ ...sectionLabel, marginTop: '0.5rem' }}>Components</div>
-                      {u.direct.components.map(c => (
-                        <div key={'c/' + c.id + c.prop}>{componentLink(c)}</div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ── Properties inspector ── */}
       {/* Selecting a component fills this rail. It used to be a read-only preview
