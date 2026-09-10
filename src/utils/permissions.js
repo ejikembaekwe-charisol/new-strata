@@ -13,6 +13,8 @@ export const ROLES = ['Owner', 'Admin', 'Designer', 'Developer', 'Brand Editor',
 //   components        -> Components tab
 //   collaboration     -> Collaboration tab
 //   projectManagement -> Settings tab
+//   releases          -> Branch & Publish tab, plus the visibility controls in
+//                        Handoff > Publish & Sync and in Settings
 const PERMISSIONS = {
   Owner: {
     brandBible: ['view', 'create', 'edit', 'delete'],
@@ -21,6 +23,7 @@ const PERMISSIONS = {
     components: ['view', 'create', 'edit', 'delete'],
     collaboration: ['manageMembers', 'inviteMembers', 'removeMembers', 'assignRoles', 'assignOwner'],
     projectManagement: ['updateSettings', 'deleteProject', 'transferOwnership'],
+    releases: ['publish', 'restore', 'setLive', 'branch', 'merge', 'deleteBranch', 'setVisibility'],
   },
   Admin: {
     brandBible: ['view', 'create', 'edit', 'delete'],
@@ -29,6 +32,7 @@ const PERMISSIONS = {
     components: ['view', 'create', 'edit', 'delete'],
     collaboration: ['inviteMembers', 'removeMembers', 'assignRoles'],
     projectManagement: ['updateSettings'],
+    releases: ['publish', 'restore', 'setLive', 'branch', 'merge', 'deleteBranch', 'setVisibility'],
   },
   Designer: {
     brandBible: ['view', 'edit'],
@@ -37,6 +41,7 @@ const PERMISSIONS = {
     components: ['view', 'create', 'edit', 'delete'],
     collaboration: [],
     projectManagement: [],
+    releases: ['publish', 'restore', 'setLive', 'branch', 'merge'],
   },
   Developer: {
     brandBible: ['view'],
@@ -45,6 +50,7 @@ const PERMISSIONS = {
     components: ['view', 'inspect'],
     collaboration: [],
     projectManagement: [],
+    releases: [],
   },
   'Brand Editor': {
     brandBible: ['view', 'create', 'edit', 'delete'],
@@ -53,6 +59,7 @@ const PERMISSIONS = {
     components: ['view'],
     collaboration: [],
     projectManagement: [],
+    releases: [],
   },
   Viewer: {
     brandBible: ['view'],
@@ -61,6 +68,7 @@ const PERMISSIONS = {
     components: ['view'],
     collaboration: [],
     projectManagement: [],
+    releases: [],
   },
 };
 
@@ -128,6 +136,7 @@ export const PERMISSION_AREAS = [
   { key: 'components', label: 'Components' },
   { key: 'collaboration', label: 'Team' },
   { key: 'projectManagement', label: 'Project settings' },
+  { key: 'releases', label: 'Releases & branches' },
 ];
 
 /** Collapses one area's action list into a single word for display. */
@@ -143,6 +152,12 @@ export function accessLevel(role, area) {
   if (area === 'projectManagement') {
     if (perms.includes('deleteProject')) return 'Full control';
     if (perms.includes('updateSettings')) return 'Edit settings';
+    return 'No access';
+  }
+  if (area === 'releases') {
+    if (perms.includes('setVisibility')) return 'Full control';
+    if (perms.includes('merge')) return 'Publish & branch';
+    if (perms.includes('publish')) return 'Publish';
     return 'No access';
   }
   if (perms.includes('delete')) return 'Full edit';

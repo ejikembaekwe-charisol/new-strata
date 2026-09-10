@@ -6,6 +6,7 @@ import { renderComponentPreview } from '../components/componentPreviews';
 import { entranceKeyframesCss } from '../data/motionKeyframes';
 import { indexById, effectiveTokens, isFragment, childrenOf } from '../components/inspector/inheritance';
 import { deriveTokens } from '../data/derivedTokens';
+import { liveReleaseOf, releasesOf, formatStamp } from '../data/releases';
 
 const TYPE_COLORS = {
   color: '#FC0694',
@@ -361,9 +362,35 @@ const SharedProject = () => {
   // Find project in context, or fallback to one of the demo systems. Null when
   // the id matches neither — rendered as a not-found view below. Every value
   // derived from it is null-safe so the hooks below still run unconditionally.
-  const project = projects.find(p => String(p.id) === String(id)) || getMockProject(id);
+  const stored = projects.find(p => String(p.id) === String(id)) || getMockProject(id);
+
+  // What a reader gets is the release that was published, not whatever its owner happens
+  // to be editing right now. Before this, every keystroke in the editor was live to anyone
+  // holding the link, and "publish" changed nothing at all.
+  //
+  // Swapped in once, here, so the thirty-odd reads below are untouched and cannot disagree
+  // about which version they are showing.
+  const live = liveReleaseOf(stored);
+  const project = live
+    ? { ...stored, tokens: live.payload.tokens, components: live.payload.components, brand: live.payload.brandData }
+    : stored;
+  // Nothing published yet: the draft is shown, and the page says so rather than passing it
+  // off as a release.
+  const showingDraft = Boolean(stored) && !live;
 
   const brand = project?.brand || {};
+  // Only for a project of the reader's own that has never been published — the demo
+  // systems carry their own versions and are not drafts.
+  const draftNotice = showingDraft && !stored?.isMock ? (
+    <div style={{
+      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+      borderRadius: '10px', padding: '0.6rem 0.85rem', marginBottom: '1rem',
+      fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5,
+    }}>
+      This design system has not been published yet. You are seeing it as it stands right
+      now, which will change as its owner works on it.
+    </div>
+  ) : null;
   // The same ramps the editor derives, from the same stored data, so a shared system
   // lists Primary 50-950 rather than the one flat colour it was saved with. Idempotent,
   // so a project already holding its ramps is untouched.
@@ -385,14 +412,16 @@ const SharedProject = () => {
     { label: 'Accent', value: brand.accentColor },
   ].filter(c => c.value);
 
-  const versionsList = project?.versions || [
-    {
-      version: '1.2.0',
-      date: project?.updated || 'Just now',
-      description: 'Current release containing baseline tokens.',
-      tokens: project?.tokens || {}
-    }
-  ];
+  // Real releases first. The demo systems still carry their own hand-written `versions`
+  // array, so those keep working untouched.
+  const realReleases = releasesOf(stored).map(r => ({
+    version: String(r.number),
+    date: r.publishedAt,
+    description: r.name + (r.notes ? ' — ' + r.notes : ''),
+  }));
+  // No invented '1.2.0' fallback. A project that has never been published has no version,
+  // and saying so is better than making one up.
+  const versionsList = realReleases.length ? realReleases : (stored?.versions || []);
 
   // Placed after every hook: bailing out earlier would change the hook count
   // between a found and a not-found project and break React's hook order.
@@ -1140,13 +1169,22 @@ const SharedProject = () => {
         <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Latest Version</h3>
         <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>What shipped most recently across every connected surface.</p>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem 1.25rem' }}>
-        <div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>v{latestVersion?.version}</div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{latestVersion?.description}</div>
+      {latestVersion ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '1rem 1.25rem' }}>
+          <div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>v{latestVersion.version}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{latestVersion.description}</div>
+          </div>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{formatStamp(latestVersion.date) || latestVersion.date}</span>
         </div>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{latestVersion?.date}</span>
-      </div>
+      ) : (
+        /* Nothing has been published. Inventing a "v1.2.0" here, which is what this card
+           used to do, told every reader something that was not true. */
+        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          Nothing has been published yet, so this page is showing the system as it stands
+          today. It will change whenever its owner changes it.
+        </p>
+      )}
     </div>
   );
 
@@ -1307,6 +1345,8 @@ const SharedProject = () => {
         
         {/* Left Side Content panel */}
         <div style={{ minWidth: 0 }}>
+          {/* Above everything, because it changes what the whole page means. */}
+          {draftNotice}
           
           {/* OVERVIEW TAB — content curated per activeAudience, see overviewCards above */}
           {activeTab === 'overview' && (
@@ -1830,7 +1870,7 @@ const SharedProject = () => {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Current Version</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>v{versionsList[0]?.version || '1.2.0'}</span>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: latestVersion ? 'var(--text-primary)' : 'var(--text-tertiary)', fontFamily: latestVersion ? 'var(--font-mono)' : 'inherit' }}>{latestVersion ? 'v' + latestVersion.version : 'Unpublished'}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>License</span>

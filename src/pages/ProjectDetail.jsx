@@ -16,6 +16,16 @@ import {
   eligibleParents, eligibleChildren, removeComponents,
 } from '../components/inspector/inheritance';
 import { propertyNotes } from '../components/inspector/applicability';
+import BranchPublishPanel from '../components/branch/BranchPublishPanel';
+import PublishModal from '../components/branch/PublishModal';
+import DiffList from '../components/branch/DiffList';
+import BranchModal from '../components/branch/BranchModal';
+import MergeModal from '../components/branch/MergeModal';
+import { diffDesigns, applyDiffEntries } from '../data/designDiff';
+import {
+  buildRelease, nextReleaseNumber, pruneReleases, releasesOf, liveReleaseOf,
+  releaseAuthor, snapshotOf, storageUsage,
+} from '../data/releases';
 
 import {
   COMPONENT_TAXONOMY, CATEGORY_LIST, TYPES_FOR_CATEGORY, TYPE_TO_TEMPLATE,
@@ -313,7 +323,7 @@ function ProjectDetailInner() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { projects, isLoaded, updateProject, addProject, deleteProject } = useProjects();
+  const { projects, isLoaded, updateProject, updateProjectNow, addProject, deleteProject } = useProjects();
   const { openTab, markOpened, sectionFor, setSection, sidebarCollapsed, setSidebarCollapsed, hydrated } = useTabs();
 
   // Find project from list
@@ -397,6 +407,10 @@ function ProjectDetailInner() {
   const [syncToken, setSyncToken] = useState(project?.syncToken || 'pt_live_' + Math.random().toString(36).substring(2, 18) + Math.random().toString(36).substring(2, 18));
 
   const handleVisibilityChange = (visibility) => {
+    // Gated here rather than at each control: there are two of these, in Handoff and in
+    // Settings, and only the Settings one was ever behind a check — so a Viewer could open
+    // Handoff and make a project public.
+    if (!can(myRole, 'releases', 'setVisibility')) return;
     setProjectVisibility(visibility);
     updateProject(id, { visibility });
   };
@@ -419,6 +433,15 @@ function ProjectDetailInner() {
 
   // Asset model states
   const [uploadedAssets, setUploadedAssets] = useState([]);
+
+  // ── Branch & Publish ──────────────────────────────────────────────────
+  // Declared up here with the other design state: this component's early return sits a few
+  // hundred lines below and a hook placed after it crashes the page.
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState(null);
+  const [branchOpen, setBranchOpen] = useState(false);
+  const [mergeSourceId, setMergeSourceId] = useState(null);
+  const [openReleaseId, setOpenReleaseId] = useState(null);
 
   // Undo/redo over design content only — tokens, components, brand, assets. Project
   // settings (name, visibility, members) stay out: undoing "removed a teammate" with a
@@ -575,6 +598,28 @@ export const ThemeProvider = ({ children }) => {
     uploadedAssets,
   });
 
+  // What has been published, and what is being served right now.
+  const releases = releasesOf(project);
+  const liveRelease = liveReleaseOf(project);
+
+  /**
+   * Whether the working copy differs from what is live.
+   *
+   * Computed from the content rather than read from a flag. `brandBibleDirty` is a flag,
+   * and because undo never cleared it the Publish button kept its unpublished dot after
+   * you had undone your way back to a clean state. A comparison cannot drift like that.
+   *
+   * Only computed while it can be seen — a full store walk with alias resolution on every
+   * keystroke of the Brand Bible would be work nobody asked for.
+   */
+  const workingDiff = (activeTab === 'branch' || publishOpen)
+    ? diffDesigns(
+      liveRelease ? liveRelease.payload : { tokens: {}, components: [], brandData: {} },
+      { tokens: activeTokens, components, brandData },
+    )
+    : null;
+  const hasUnpublished = !liveRelease || (workingDiff ? workingDiff.rows.length > 0 : true);
+
   const applyDesignSnapshot = (snap) => {
     setActiveTokens(snap.tokens);
     setComponents(snap.components);
@@ -690,6 +735,120 @@ export const ThemeProvider = ({ children }) => {
     // Consumed. Without this, a reload or a Back would reopen a wizard already dismissed.
     navigate(location.pathname, { replace: true });
   }, [location.state, location.pathname, navigate]);
+
+  /**
+   * Cuts a release: the working copy, frozen, with a name on it.
+   *
+   * Written through updateProjectNow rather than updateProject so a browser out of room
+   * says so here, where the person just asked for something, instead of failing quietly in
+   * the background effect and losing the release.
+   */
+  const handlePublish = ({ name, notes }) => {
+    if (!can(myRole, 'releases', 'publish')) return;
+    const release = buildRelease({
+      snapshot: designSnapshot(),
+      name,
+      notes,
+      author: releaseAuthor(user),
+      branchName: projectBranchName,
+      number: nextReleaseNumber(releases),
+    });
+    const next = pruneReleases([release, ...releases], release.id);
+    const err = updateProjectNow(id, {
+      releases: next,
+      liveReleaseId: release.id,
+      brandBibleDirty: false,
+      updatedAt: new Date().toISOString(),
+    });
+    if (err) {
+      window.alert('Could not publish. ' + err.message);
+      return;
+    }
+    setBrandBibleDirty(false);
+    setPublishOpen(false);
+  };
+
+  /**
+   * Puts a release back into the working copy.
+   *
+   * Deliberately separate from what is live: this changes what you are editing, and leaves
+   * the public view where it was. Routed through commitDesign so Ctrl+Z undoes it like any
+   * other design change.
+   */
+  const handleRestoreRelease = (release) => {
+    if (!release || !release.payload) return;
+    if (!can(myRole, 'releases', 'restore')) return;
+    commitDesign('Restore v' + release.number, release.payload);
+    setRestoreTarget(null);
+  };
+
+  /**
+   * Forks the project into a branch with a name someone chose.
+   *
+   * Carries the team across. It did not before, and because resolveMyRole grants Owner
+   * when a project has no members, a Viewer who branched a shared project became Owner of
+   * a full copy of its design system. That was reachable from an ungated button.
+   */
+  const handleCreateBranch = ({ name, description }) => {
+    if (!can(myRole, 'releases', 'branch')) return;
+    const snap = designSnapshot();
+    const branched = addProject({
+      title: project.name + ' · ' + name,
+      description: description || project.description,
+      color: project.color,
+      websiteUrl: project.websiteUrl,
+      figmaUrl: project.figmaUrl,
+      brand: snap.brandData,
+      tokens: snap.tokens,
+      components: snap.components,
+      members: project.members,
+      branchOf: branchRootId,
+      branchName: name,
+      branchedAt: new Date().toISOString(),
+      branchAuthor: releaseAuthor(user),
+    });
+    setBranchOpen(false);
+    navigate('/projects/' + branched.id);
+  };
+
+  /**
+   * Takes the ticked differences from another branch into what is open here.
+   *
+   * Always writes into the open project, never into a different one — which is what keeps
+   * a merge on the undo stack, and why merging a branch into main means opening main
+   * first. A cross-project write would have been silent and unundoable.
+   */
+  const handleApplyMerge = (entries) => {
+    if (!can(myRole, 'releases', 'merge')) return;
+    const merged = applyDiffEntries(
+      { tokens: activeTokens, components, brandData },
+      entries,
+    );
+    commitDesign('Merge from ' + (mergeSource ? mergeSource.branchName || 'branch' : 'branch'), {
+      tokens: merged.tokens,
+      components: merged.components,
+      brandData: merged.brandData,
+    });
+    setMergeSourceId(null);
+  };
+
+  const handleDeleteBranch = (sib) => {
+    if (!can(myRole, 'releases', 'deleteBranch')) return;
+    const n = releasesOf(sib).length;
+    const msg = 'Delete the branch "' + (sib.branchName || 'branch') + '"?'
+      + ' Its whole design system goes with it'
+      + (n ? ', along with ' + n + ' release' + (n === 1 ? '' : 's') : '')
+      + '. This cannot be undone.';
+    if (!window.confirm(msg)) return;
+    deleteProject(sib.id);
+  };
+
+  /** Changes only what the public view serves. Does not touch the working copy. */
+  const handleMakeLive = (release) => {
+    if (!release || !release.payload) return;
+    if (!can(myRole, 'releases', 'setLive')) return;
+    updateProject(id, { liveReleaseId: release.id });
+  };
 
   // Registering the tab on mount covers every way into a project — the list, a freshly created
   // one, a pasted deep link, the branch switcher — rather than scattering openTab across callers.
@@ -1705,23 +1864,8 @@ This document serves as our living source of truth.`
   const projectBranchName = project?.branchName || 'main';
   const branchSiblings = projects.filter(p => p.branchOf === branchRootId && String(p.id) !== String(id));
   const branchRoot = project?.branchOf ? projects.find(p => String(p.id) === String(branchRootId)) : null;
+  const mergeSource = mergeSourceId ? projects.find(p => String(p.id) === String(mergeSourceId)) : null;
 
-  const handleBranchProject = () => {
-    if (!project) return;
-    const branched = addProject({
-      title: `${project.name} (Branch)`,
-      description: project.description,
-      color: project.color,
-      websiteUrl: project.websiteUrl,
-      figmaUrl: project.figmaUrl,
-      brand: brandData,
-      tokens: activeTokens,
-      components,
-      branchOf: branchRootId,
-      branchName: `branch-${String(Date.now()).slice(-4)}`,
-    });
-    navigate(`/projects/${branched.id}`);
-  };
 
   // The tree shows every type and layer at once, so search is the only filter left.
   const tokenTableSearchLower = tokenTableSearch.trim().toLowerCase();
@@ -2339,7 +2483,7 @@ This document serves as our living source of truth.`
                   </button>
                 )}
                 <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
-                <button onClick={() => { handleBranchProject(); setShowBranchMenu(false); }} style={menuItemStyle}>
+                <button onClick={() => { setBranchOpen(true); setShowBranchMenu(false); }} style={menuItemStyle}>
                   + New branch from here
                 </button>
               </div>
@@ -2410,8 +2554,15 @@ This document serves as our living source of truth.`
         {/* Publish — the primary action, so it closes the row */}
         <button
           className="pd-header-publish"
-          onClick={() => setActiveTab('branch')}
-          title={brandBibleDirty ? 'You have unpublished changes' : 'Publish this design system'}
+          onClick={() => {
+            setActiveTab('branch');
+            // Straight into the dialog when there is something to ship, and to the screen
+            // when there is not — where it says why.
+            if (can(myRole, 'releases', 'publish') && hasUnpublished) setPublishOpen(true);
+          }}
+          title={!can(myRole, 'releases', 'publish') ? 'Your role cannot publish this project.'
+            : hasUnpublished ? 'Publish the changes you have made'
+              : 'Everything is published'}
           style={{
             display: 'flex', alignItems: 'center', gap: '0.5rem',
             background: 'var(--accent)', border: '1px solid var(--accent)',
@@ -2517,7 +2668,7 @@ This document serves as our living source of truth.`
             <button
               className="pd-rail-btn pd-rail-btn-ghost"
               title="Branch this project"
-              onClick={handleBranchProject}
+              onClick={() => setBranchOpen(true)}
             >
               <img src={branchIcon} alt="" width="16" height="16" />
             </button>
@@ -2654,7 +2805,7 @@ This document serves as our living source of truth.`
                           </button>
                         )}
                         <div style={{ borderTop: '1px solid var(--border)', margin: '0.25rem 0' }} />
-                        <button onClick={() => { handleBranchProject(); setShowBranchMenu(false); }} style={menuItemStyle}>
+                        <button onClick={() => { setBranchOpen(true); setShowBranchMenu(false); }} style={menuItemStyle}>
                           + New branch from here
                         </button>
                       </div>
@@ -4668,6 +4819,9 @@ export default function RootLayout({ children }) {
                                 <button
                                   key={visibility}
                                   onClick={() => handleVisibilityChange(visibility)}
+                                  disabled={!can(myRole, 'releases', 'setVisibility')}
+                                  title={can(myRole, 'releases', 'setVisibility') ? undefined
+                                    : 'Only an Owner or Admin can change who can see this project.'}
                                   style={{
                                     padding: '0.4rem 1.25rem',
                                     borderRadius: '18px',
@@ -5330,8 +5484,133 @@ export default function RootLayout({ children }) {
               </div>
             );
           })()}
+
+          {activeTab === 'branch' && (() => {
+            // Each sibling's drift, computed against what is open here. Only while the tab
+            // is on screen — it is a full store comparison per branch.
+            const siblings = branchSiblings.map(sib => ({
+              ...sib,
+              differences: diffDesigns(
+                { tokens: activeTokens, components, brandData },
+                snapshotOf(sib),
+              ).rows.length,
+            }));
+            // What each release changed against the one published before it, so a row can
+            // answer "what was in this" without keeping a second copy of anything.
+            const withDiffs = releases.map((rel, i) => {
+              const prev = releases[i + 1];
+              return {
+                ...rel,
+                diff: rel.payload
+                  ? diffDesigns(prev && prev.payload ? prev.payload : { tokens: {}, components: [], brandData: {} }, rel.payload)
+                  : null,
+              };
+            });
+            return (
+              <BranchPublishPanel
+                projectBranchName={projectBranchName}
+                isBranch={Boolean(project.branchOf)}
+                liveRelease={liveRelease}
+                releases={withDiffs}
+                workingDiff={workingDiff}
+                hasUnpublished={hasUnpublished}
+                branchRoot={branchRoot}
+                branchSiblings={siblings}
+                storage={storageUsage(projects)}
+                canPublish={can(myRole, 'releases', 'publish')}
+                canRestore={can(myRole, 'releases', 'restore')}
+                canBranch={can(myRole, 'releases', 'branch')}
+                canMerge={can(myRole, 'releases', 'merge')}
+                canDelete={can(myRole, 'releases', 'deleteBranch')}
+                selectedReleaseId={openReleaseId}
+                onSelectRelease={setOpenReleaseId}
+                onPublish={() => setPublishOpen(true)}
+                onRestore={setRestoreTarget}
+                onMakeLive={handleMakeLive}
+                onNewBranch={() => setBranchOpen(true)}
+                onSwitchBranch={(pid) => navigate('/projects/' + pid)}
+                onCompare={(pid) => setMergeSourceId(pid)}
+                onMerge={(pid) => setMergeSourceId(pid)}
+                onDeleteBranch={handleDeleteBranch}
+              />
+            );
+          })()}
         </main>
       </div>
+
+      {branchOpen && (
+        <BranchModal
+          projectName={project.name}
+          existingNames={[projectBranchName, ...branchSiblings.map(b => b.branchName || '')]}
+          onClose={() => setBranchOpen(false)}
+          onCreate={handleCreateBranch}
+        />
+      )}
+
+      {mergeSource && (
+        <MergeModal
+          sourceName={mergeSource.branchName || mergeSource.name}
+          targetName={projectBranchName}
+          diff={diffDesigns(
+            { tokens: activeTokens, components, brandData },
+            snapshotOf(mergeSource),
+          )}
+          readOnly={!can(myRole, 'releases', 'merge')}
+          onClose={() => setMergeSourceId(null)}
+          onApply={handleApplyMerge}
+        />
+      )}
+
+      {restoreTarget && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div
+            className="modal-content"
+            style={{
+              maxWidth: 'min(640px, 94vw)', background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)', borderRadius: '18px', padding: '1.6rem',
+              maxHeight: '86vh', display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+              Restore v{restoreTarget.number}
+            </h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0.4rem 0 1rem', lineHeight: 1.55 }}>
+              This puts v{restoreTarget.number} back into what you are editing. It does not
+              change what is live, and it does not remove any release — publish again when you
+              are happy. Ctrl+Z undoes it.
+            </p>
+            <div style={{
+              border: '1px solid var(--border)', borderRadius: '10px',
+              overflowY: 'auto', minHeight: 0, marginBottom: '1rem',
+            }}>
+              <DiffList
+                diff={diffDesigns(
+                  { tokens: activeTokens, components, brandData },
+                  restoreTarget.payload,
+                )}
+                emptyText="Restoring this would change nothing — it matches what you are editing."
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
+              <button type="button" className="btn-secondary" onClick={() => setRestoreTarget(null)}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={() => handleRestoreRelease(restoreTarget)}>
+                Restore v{restoreTarget.number}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {publishOpen && (
+        <PublishModal
+          diff={workingDiff}
+          liveRelease={liveRelease}
+          nextNumber={nextReleaseNumber(releases)}
+          storage={storageUsage(projects)}
+          onClose={() => setPublishOpen(false)}
+          onPublish={handlePublish}
+        />
+      )}
 
       {/* ── Modals ── */}
       {tokenModal && (

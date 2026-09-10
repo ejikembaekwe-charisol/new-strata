@@ -65,6 +65,27 @@ const EMPTY_TOKENS = {
 // deleting the demo sticks — a user who removes it should not find it back next visit.
 const DEMO_SEEDED_KEY = 'strata_demo_seeded';
 
+/**
+ * Writes the project list, returning the error rather than throwing it.
+ *
+ * @returns {null | { full: boolean, message: string }} null when the write succeeded.
+ */
+const writeProjects = (list) => {
+  try {
+    localStorage.setItem('strata_projects', JSON.stringify(list));
+    return null;
+  } catch (e) {
+    const full = Boolean(e) && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+    return {
+      full,
+      message: full
+        ? 'There is no room left in this browser to save this. Deleting a project, or an older '
+          + 'release, will free some up.'
+        : 'This browser refused to save the change.',
+    };
+  }
+};
+
 export function ProjectProvider({ children }) {
   const [projects, setProjects] = useState(() => {
     let saved = [];
@@ -108,7 +129,16 @@ export function ProjectProvider({ children }) {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('strata_projects', JSON.stringify(projects));
+    // Every read in this file was already guarded; this write was not, so a browser out of
+    // room threw here and the save was lost with nothing said. It matters more now that
+    // publishing stores design snapshots, and a project whose components carry uploaded
+    // images as data URLs can be large against a few megabytes for everything.
+    //
+    // This is the background safety net and it only logs. A user doing something deliberate
+    // deserves to be told to their face instead, so `saveNow` below reports back and the
+    // publish path uses it.
+    const err = writeProjects(projects);
+    if (err) console.error('Failed to persist projects', err);
   }, [projects]);
 
   useEffect(() => {
@@ -138,6 +168,14 @@ export function ProjectProvider({ children }) {
       members: projectData.members || [],
       branchOf: projectData.branchOf,
       branchName: projectData.branchName,
+      // Who forked it and when, so a branch list can say. Absent on branches made before
+      // this existed, so every reader has to cope without them.
+      branchedAt: projectData.branchedAt,
+      branchAuthor: projectData.branchAuthor,
+      // Published releases, newest first. Empty until someone publishes — an unpublished
+      // project must never look as though it has shipped something.
+      releases: [],
+      liveReleaseId: null,
     };
     setProjects(prev => [newProject, ...prev]);
     return newProject;
@@ -151,8 +189,23 @@ export function ProjectProvider({ children }) {
     setProjects(prev => prev.filter(p => String(p.id) !== String(id)));
   };
 
+  /**
+   * Applies `updates` to a project and writes immediately, reporting whether it stuck.
+   *
+   * The effect above also persists, but it cannot tell anyone when it fails. Publishing is
+   * deliberate and irreversible-feeling, so it goes through here and gets an answer.
+   */
+  const updateProjectNow = (id, updates) => {
+    const next = projects.map(p => (String(p.id) === String(id) ? { ...p, ...updates } : p));
+    const err = writeProjects(next);
+    if (!err) setProjects(next);
+    return err;
+  };
+
   return (
-    <ProjectContext.Provider value={{ projects, isLoaded, addProject, updateProject, deleteProject }}>
+    <ProjectContext.Provider value={{
+      projects, isLoaded, addProject, updateProject, updateProjectNow, deleteProject,
+    }}>
       {children}
     </ProjectContext.Provider>
   );
