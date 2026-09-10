@@ -22,6 +22,7 @@ import DiffList from '../components/branch/DiffList';
 import BranchModal from '../components/branch/BranchModal';
 import MergeModal from '../components/branch/MergeModal';
 import { diffDesigns, applyDiffEntries } from '../data/designDiff';
+import { cssPropForTokenKey } from '../data/tokenKeys';
 import {
   buildRelease, nextReleaseNumber, pruneReleases, releasesOf, liveReleaseOf,
   releaseAuthor, snapshotOf, storageUsage,
@@ -6678,20 +6679,8 @@ const getGroupDisplayForType = (type) => {
 };
 
 // ── Component style-property mapping ──────────────────────────────────────
-// A component's `tokens` object maps a CSS property to a token name. The six
-// keys below predate the free-form property table, so they're still written
-// and read as-is (existing saved components keep working); any property added
-// since is stored under its real CSS property name.
-const LEGACY_TOKEN_KEY_TO_CSS = {
-  bg: 'background-color',
-  textColor: 'color',
-  padding: 'padding',
-  borderRadius: 'border-radius',
-  fontFamily: 'font-family',
-  fontSize: 'font-size',
-};
-
-const cssPropForTokenKey = (key) => LEGACY_TOKEN_KEY_TO_CSS[key] || key;
+// LEGACY_TOKEN_KEY_TO_CSS and cssPropForTokenKey now live in data/tokenKeys.js, so the
+// release diff can normalise a component's keys exactly the way this file does.
 
 // "padding-top" → "paddingTop", so it can be handed to a React style object.
 const cssPropToStyleKey = (prop) => prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());

@@ -5,6 +5,7 @@
 // were shown.
 
 import { useState } from 'react';
+import { humanizeTokenName } from '../../data/tokenGroups';
 
 const OP_LABEL = { add: 'added', remove: 'removed', change: 'changed' };
 const OP_COLOR = { add: '#10B981', remove: '#EF4444', change: 'var(--accent)' };
@@ -75,11 +76,14 @@ const Row = ({ row, checked, onToggle }) => {
       )}
 
       <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-        <span style={{
-          fontFamily: row.kind === 'token' ? 'var(--font-mono)' : 'inherit',
-          fontSize: '0.72rem', color: 'var(--text-primary)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{row.name}</span>
+        <span
+          title={row.kind === 'token' ? row.name : undefined}
+          style={{
+            fontFamily: row.kind === 'token' ? 'var(--font-mono)' : 'inherit',
+            fontSize: '0.72rem', color: 'var(--text-primary)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+        >{row.kind === 'token' ? humanizeTokenName(row.name) : row.name}</span>
         {detail && (
           <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', flexShrink: 0 }}>{detail}</span>
         )}
@@ -94,7 +98,7 @@ const Row = ({ row, checked, onToggle }) => {
         }}>
           {row.op !== 'change' ? (row.template || 'component')
             : propList.length
-              ? propList.map(pr => pr.prop).join(', ')
+              ? propList.map(pr => humanizeTokenName(pr.prop)).join(', ')
               : (row.renamed ? 'renamed from ' + (row.before && row.before.name) : 'changed')}
         </span>
       ) : (

@@ -12,6 +12,11 @@
 // against `{brand.color.primary}` is not a change if that is what it resolves to. Each side
 // resolves inside its own store, which is the only way an alias means anything.
 
+// Extension included so this module stays loadable by plain Node: the pure data modules
+// are worth being able to exercise outside a bundler, and that suite has already caught
+// real bugs in this file. Vite resolves it either way.
+import { cssPropForTokenKey } from './tokenKeys.js';
+
 /** Every token in a store, flattened to name → { token, category }. */
 const indexTokens = (store) => {
   const out = new Map();
@@ -159,10 +164,23 @@ const indexComponents = (list) => {
   return out;
 };
 
-/** Which mapped properties differ, by the value each one resolves to in its own store. */
+/**
+ * Which mapped properties differ, by the value each one resolves to in its own store.
+ *
+ * Keys are normalised first. Six legacy short keys are still written by older components —
+ * `textColor` for `color`, `bg` for `background-color` — so without this a component saved
+ * before the change and the same component saved after it would compare as one property
+ * removed and another added, when nothing about it moved.
+ */
+const normaliseProps = (tokens) => {
+  const out = {};
+  for (const [k, v] of Object.entries(tokens || {})) if (v) out[cssPropForTokenKey(k)] = v;
+  return out;
+};
+
 const propChanges = (before, after, beforeStore, afterStore) => {
-  const pa = (before && before.tokens) || {};
-  const pb = (after && after.tokens) || {};
+  const pa = normaliseProps(before && before.tokens);
+  const pb = normaliseProps(after && after.tokens);
   const props = new Set([...Object.keys(pa), ...Object.keys(pb)]);
   const out = [];
   for (const prop of props) {
