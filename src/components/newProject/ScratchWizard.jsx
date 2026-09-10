@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react';
 import {
   getSuggestion, paletteById, resolvePalette, resolvePairing,
-  industryLabel, tokensFromChoices, CUSTOM_ID,
+  industryLabel, tokensFromChoices, CUSTOM_ID, DEFAULT_SCALE, resolveScale,
 } from './designSystemData';
 import {
   BasicsStep, ColorsStep, TypographyStep, LogoStep, VoiceStep, ReviewStep,
@@ -67,15 +67,29 @@ const Stepper = ({ current }) => {
   );
 };
 
-export default function ScratchWizard({ projectName, onClose, onApply, onSaveContext }) {
+export default function ScratchWizard({ projectName, initialData, onClose, onApply, onSaveContext }) {
   const [stage, setStage] = useState('basics');
-  const [data, setData] = useState({
+  // A lazy initialiser, mount-only on purpose. Syncing `initialData` through an effect
+  // would wipe the user's edits every time the caller re-rendered with a fresh object.
+  //
+  // A template seed works here *because* of the two seeding effects below: they fill
+  // palette and pairing only while unset, so pre-filled values survive — a template is
+  // indistinguishable from a manual choice, which is exactly what those effects protect.
+  const [data, setData] = useState(() => ({
     industry: null, primaryVibe: null, customIndustry: '',
     paletteId: null, fontPairingId: null,
     customPalette: {}, customPairing: {},
     logoMode: 'generate', logoDataUrl: null,
     voiceTags: [],
-  });
+    // A real scale rather than none, which is what a from-scratch run had. The Typography
+    // step shows it and can change it; a template's own scale overrides it just below.
+    scale: DEFAULT_SCALE,
+    ...(initialData || {}),
+    // After the spread, always: the name belongs to the project, never to a template.
+    // Every specimen and the review row read this, and it was never set at all before —
+    // so they all said "Your brand" while the project had a name.
+    projectName: projectName || '',
+  }));
 
   // accepts a patch object or a function of the previous data, so callers that derive
   // from current values are not exposed to a stale closure
@@ -150,7 +164,7 @@ export default function ScratchWizard({ projectName, onClose, onApply, onSaveCon
         industry: industryLabel(data) || undefined,
         vibe: data.primaryVibe || undefined,
       },
-      tokens: tokensFromChoices(palette, pairing),
+      tokens: tokensFromChoices(palette, pairing, resolveScale(data)),
     });
   };
 

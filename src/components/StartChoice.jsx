@@ -9,10 +9,19 @@
 
 const START_OPTIONS = [
   {
+    key: 'template',
+    title: 'Start from a template',
+    desc: 'Browse ready-made systems by industry or style. Picking one fills in the steps below, so you can change anything.',
+    accent: true,
+    icon: (<><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></>),
+  },
+  {
     key: 'scratch',
     title: 'Start from scratch',
     desc: 'Answer two questions and we will suggest a palette and type pairing to build on.',
-    accent: true,
+    // The accent moved to the template card, which is now the lowest-effort path and
+    // lands in this same wizard. Two featured cards would be worse than one.
+    accent: false,
     icon: (<><path d="M12 2v20M2 12h20" /></>),
   },
   {
@@ -30,7 +39,7 @@ const START_OPTIONS = [
   },
 ];
 
-export default function StartChoice({ onPick, heading = 'How do you want to start?', sub = 'Either way you can change everything afterwards.', onClose }) {
+export default function StartChoice({ onPick, heading = 'How do you want to start?', sub = 'You can change everything afterwards, whichever you pick.', onClose }) {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
@@ -55,7 +64,9 @@ export default function StartChoice({ onPick, heading = 'How do you want to star
       </div>
 
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        // 190, not 240: three cards at 240 orphan the third in the 680px create column
+        // and in the min(680px) modal. At 190 all three sit in one row in both.
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
         gap: '1rem', marginTop: '1.5rem',
       }}>
         {START_OPTIONS.map(opt => (

@@ -2,44 +2,20 @@ import { useRef } from 'react';
 import {
   PALETTES, FONT_PAIRINGS, INDUSTRIES, VIBES, CUSTOM_ID, KNOWN_FAMILIES,
   getSuggestion, resolvePalette, resolvePairing, industryLabel,
+  BASE_SIZES, resolveScale, baseSizeLabel,
 } from './designSystemData';
+import { card, chip, grid, groupLabel } from './stepStyles';
+import { SCALE_RATIOS, buildScale } from '../../data/typeScale';
 import { ColorSwatchButton } from '../ColorPicker';
 
 // Steps for the from-scratch path. Hand-rolled inline styles on CSS vars, matching the
 // rest of the app rather than introducing a component kit only here.
-
-const card = (selected) => ({
-  position: 'relative',
-  background: 'var(--bg-secondary)',
-  border: '1px solid ' + (selected ? 'var(--accent)' : 'var(--border)'),
-  boxShadow: selected ? '0 0 0 1px var(--accent)' : 'none',
-  borderRadius: '16px',
-  padding: '1.1rem',
-  cursor: 'pointer',
-  textAlign: 'left',
-  fontFamily: 'inherit',
-  transition: 'border-color 0.15s, box-shadow 0.15s',
-});
-
-const chip = (on) => ({
-  padding: '0.45rem 0.95rem',
-  borderRadius: '999px',
-  border: '1px solid ' + (on ? 'var(--accent)' : 'var(--border)'),
-  background: on ? 'var(--accent)' : 'var(--bg-tertiary)',
-  color: on ? '#fff' : 'var(--text-secondary)',
-  fontSize: '0.82rem',
-  fontWeight: on ? 600 : 400,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-});
 
 const input = {
   width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
   borderRadius: '8px', padding: '0.55rem 0.7rem', color: 'var(--text-primary)',
   fontSize: '0.85rem', fontFamily: 'inherit',
 };
-
-const grid = (min) => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(${min}, 1fr))`, gap: '0.75rem' });
 
 const h = { fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 0.4rem', fontFamily: 'var(--font-heading)' };
 const sub = { fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 0 1.6rem', lineHeight: 1.6 };
@@ -109,7 +85,9 @@ export function ColorsStep({ data, set }) {
   const custom = data.customPalette || {};
   // Functional update: three pickers changed in quick succession would otherwise each
   // spread a `custom` captured before the previous change committed, undoing it.
-  const setCustom = (key, value) => setCustomPalette(prev => ({ ...prev, [key]: value }));
+  const setCustom = (key, value) => setCustomPalette(prev => ({
+    ...prev, name: 'Custom', [key]: value,
+  }));
   return (
     <>
       <h2 style={h}>Pick a palette</h2>
@@ -131,7 +109,9 @@ export function ColorsStep({ data, set }) {
         {/* Bring your own. Never carries the suggested badge — a custom palette is by
             definition not the one the lookup picked. */}
         <div style={{ ...card(data.paletteId === CUSTOM_ID), cursor: 'default' }}>
-          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.8rem' }}>Your own colours</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.8rem' }}>
+            {(data.customPalette || {}).name || 'Your own colours'}
+          </div>
           {[['primary', 'Primary'], ['secondary', 'Secondary'], ['accent', 'Accent']].map(([key, name]) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <ColorSwatchButton
@@ -152,6 +132,11 @@ export function ColorsStep({ data, set }) {
 
 export function TypographyStep({ data, set }) {
   const suggestion = getSuggestion(data.industry, data.primaryVibe);
+  const scale = resolveScale(data);
+  // The same function that writes the tokens, so the preview cannot drift from them.
+  const steps = buildScale(scale.base, scale.ratio);
+  const chosen = resolvePairing(data);
+  const previewFamily = chosen ? `'${chosen.body}', sans-serif` : 'inherit';
   return (
     <>
       <h2 style={h}>Choose your type</h2>
@@ -204,6 +189,64 @@ export function TypographyStep({ data, set }) {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* The size scale. Nothing set it before, so tokensFromChoices emitted no sizes and
+          the derivations that depend on them never ran. A template sets it, and this row
+          is what keeps that from being a silent passenger: it is visible, and it changes. */}
+      <div style={{ marginTop: '1.75rem' }}>
+        <div style={{ ...groupLabel, marginTop: 0 }}>Size scale</div>
+        <p style={{ ...sub, marginTop: 0, marginBottom: '0.8rem' }}>
+          Each step is the one before it multiplied by the ratio. This writes eight size
+          tokens; the line heights, weights and text styles are derived from them.
+        </p>
+
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          {SCALE_RATIOS.map(r => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => set({ scale: { ...scale, ratio: r.id } })}
+              style={chip(scale.ratio === r.id)}
+            >{r.label}</button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginRight: '0.15rem' }}>
+            Body size
+          </span>
+          {BASE_SIZES.map(bs => (
+            <button
+              key={bs.id}
+              type="button"
+              onClick={() => set({ scale: { ...scale, base: bs.id } })}
+              style={chip(scale.base === bs.id)}
+            >{bs.label}</button>
+          ))}
+        </div>
+
+        {/* The eight real steps at their real sizes, in the chosen body face. */}
+        <div style={{
+          marginTop: '1rem', padding: '1rem 1.1rem', background: 'var(--bg-secondary)',
+          border: '1px solid var(--border)', borderRadius: '12px',
+          display: 'flex', alignItems: 'flex-end', gap: '1.1rem', flexWrap: 'wrap',
+        }}>
+          {steps.map(t => (
+            <span key={t.name} style={{
+              textAlign: 'center', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: '0.35rem',
+            }}>
+              <span style={{
+                fontSize: t.value, lineHeight: 1,
+                fontFamily: previewFamily, color: 'var(--text-primary)',
+              }}>Aa</span>
+              <span style={{
+                fontSize: '0.65rem', color: 'var(--text-tertiary)', letterSpacing: '0.02em',
+              }}>{t.name.split('.').pop()}</span>
+            </span>
+          ))}
         </div>
       </div>
     </>
@@ -289,6 +332,7 @@ export function VoiceStep({ data, set }) {
 export function ReviewStep({ data }) {
   const palette = resolvePalette(data);
   const pairing = resolvePairing(data);
+  const scale = resolveScale(data);
   const row = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', padding: '0.8rem 0', borderBottom: '1px solid var(--border)' };
   const key = { fontSize: '0.8rem', color: 'var(--text-secondary)' };
   const val = { fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500, textAlign: 'right' };
@@ -310,6 +354,10 @@ export function ReviewStep({ data }) {
           </span>
         </div>
         <div style={row}><span style={key}>Typography</span><span style={val}>{pairing ? pairing.heading + ' + ' + pairing.body : '—'}</span></div>
+        <div style={row}>
+          <span style={key}>Size scale</span>
+          <span style={val}>{scale.ratio}× on {baseSizeLabel(scale.base)}</span>
+        </div>
         <div style={row}><span style={key}>Logo</span><span style={val}>{data.logoDataUrl ? 'Uploaded' : data.logoMode === 'generate' ? 'Generated wordmark' : 'Skipped'}</span></div>
         <div style={{ ...row, borderBottom: 'none' }}><span style={key}>Voice</span><span style={val}>{data.voiceTags.length ? data.voiceTags.join(', ') : '—'}</span></div>
       </div>

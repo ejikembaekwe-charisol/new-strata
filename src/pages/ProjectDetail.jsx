@@ -8,6 +8,8 @@ import { resolveMyRole, can, canViewTab, ROLES, describeRole, roleSummary, LOCAL
 import { getBrandCompleteness, emptyBrandContext } from '../utils/projectCompleteness';
 import BrandContextEngine from '../components/BrandContextEngine';
 import StartChoice from '../components/StartChoice';
+import TemplateGallery from '../components/newProject/TemplateGallery';
+import { seedFromTemplate } from '../components/newProject/templateData';
 import ScratchWizard from '../components/newProject/ScratchWizard';
 import ComponentInspector from '../components/inspector/ComponentInspector';
 import PropertySections, { sectionIdsForProperties } from '../components/inspector/PropertySections';
@@ -382,6 +384,7 @@ function ProjectDetailInner() {
   // import what you already have. The per-source checklist links still go straight to
   // the engine — those name one specific source, so a choice would be wrong there.
   const [startChoice, setStartChoice] = useState(false);
+  const [templateGallery, setTemplateGallery] = useState(false);
   const [scratchWizard, setScratchWizard] = useState(false);
   const [toggledTokenFolders, setToggledTokenFolders] = useState(() => new Set());
   const [previewComponentId, setPreviewComponentId] = useState(null);
@@ -729,10 +732,18 @@ export const ThemeProvider = ({ children }) => {
   // the page twice. It works out because the setters it needs are declared above too, so it
   // never has to reach for openBrandEngine, which is defined further down.
   React.useEffect(() => {
-    const setup = location.state && location.state.setup;
+    const st = location.state || {};
+    const setup = st.setup;
     if (!setup) return;
     if (setup === 'engine') setEngine({ step: 1, source: null });
-    else if (setup === 'scratch') setScratchWizard(true);
+    // Everything else lands in the from-scratch wizard, including any string a future
+    // caller invents. An unrecognised value used to fall through both branches silently
+    // and drop the user on a blank project with nothing running.
+    //
+    // A template seed rides in `st.template` and is held as the wizard's own state, the
+    // way `engine` holds { step, source }. Guarded as an object because a function handed
+    // to a setState would be taken for an updater rather than a value.
+    else setScratchWizard(st.template && typeof st.template === 'object' ? st.template : true);
     // Consumed. Without this, a reload or a Back would reopen a wizard already dismissed.
     navigate(location.pathname, { replace: true });
   }, [location.state, location.pathname, navigate]);
@@ -6472,8 +6483,12 @@ export default function RootLayout({ children }) {
               onClose={() => setStartChoice(false)}
               onPick={(key) => {
                 setStartChoice(false);
-                if (key === 'scratch') setScratchWizard(true);
-                else openBrandEngine();
+                // Three-way. This was `if scratch … else openBrandEngine()`, so any key
+                // other than 'scratch' opened the import engine — a template pick would
+                // have silently landed in five steps of extraction work.
+                if (key === 'template') setTemplateGallery(true);
+                else if (key === 'engine') openBrandEngine();
+                else setScratchWizard(true);
               }}
             />
           </div>
@@ -6483,9 +6498,19 @@ export default function RootLayout({ children }) {
       {scratchWizard && (
         <ScratchWizard
           projectName={project?.name}
+          // An object here is a template seed; `true` is a plain run.
+          initialData={typeof scratchWizard === 'object' ? scratchWizard : null}
           onClose={() => setScratchWizard(false)}
           onSaveContext={saveBrandContext}
           onApply={(payload) => { applyBrandContext(payload); setScratchWizard(false); }}
+        />
+      )}
+      {templateGallery && (
+        <TemplateGallery
+          projectName={project?.name}
+          onClose={() => setTemplateGallery(false)}
+          onUse={(t) => { setTemplateGallery(false); setScratchWizard(seedFromTemplate(t)); }}
+          onScratch={() => { setTemplateGallery(false); setScratchWizard(true); }}
         />
       )}
       {engine && (

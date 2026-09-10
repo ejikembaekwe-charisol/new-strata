@@ -4,6 +4,11 @@
 // vibe -> override merge, so the same answers always produce the same starting point.
 // That is what lets the UI label a card "Suggested for X · Y" honestly.
 
+// Extension included so this module and templateData stay loadable by plain Node: the
+// template invariants are worth asserting outside a bundler, and one of them — that no
+// pairing names an unloaded font family — is a claim a card makes to the user.
+import { buildScale } from '../../data/typeScale.js';
+
 export const PALETTES = [
   { id: 'violet', name: 'Violet', primary: '#8B5CF6', secondary: '#171122', accent: '#F472B6' },
   { id: 'sunrise', name: 'Sunrise', primary: '#F97316', secondary: '#1C1410', accent: '#FBBF24' },
@@ -18,6 +23,14 @@ export const FONT_PAIRINGS = [
   { id: 'playfair-source', heading: 'Playfair Display', body: 'Source Sans 3', note: 'Editorial and refined' },
   { id: 'manrope-inter', heading: 'Manrope', body: 'Inter', note: 'Neutral and modern' },
   { id: 'mono-inter', heading: 'JetBrains Mono', body: 'Inter', note: 'Utilitarian and precise' },
+  // Added for the template gallery. Every family below is in the index.html request — a
+  // pairing naming one that is not would render in a system fallback, and a gallery card
+  // showing a specimen would then be lying about the template's type.
+  { id: 'sora-plex', heading: 'Sora', body: 'IBM Plex Sans', note: 'Engineered and calm' },
+  { id: 'dmserif-plex', heading: 'DM Serif Display', body: 'IBM Plex Sans', note: 'Stately with a plain body' },
+  { id: 'fraunces-inter', heading: 'Fraunces', body: 'Inter', note: 'Characterful and warm' },
+  { id: 'outfit-inter', heading: 'Outfit', body: 'Inter', note: 'Rounded and approachable' },
+  { id: 'playfair-manrope', heading: 'Playfair Display', body: 'Manrope', note: 'Classic with a modern body' },
 ];
 
 export const INDUSTRIES = [
@@ -76,11 +89,31 @@ export const CUSTOM_ID = 'custom';
 export const KNOWN_FAMILIES = [
   'Inter', 'Outfit', 'Space Grotesk', 'Playfair Display', 'Source Sans 3',
   'Manrope', 'JetBrains Mono', 'Georgia',
+  'Sora', 'DM Serif Display', 'Fraunces', 'IBM Plex Sans',
 ];
 
 export const paletteById = (id) => PALETTES.find(p => p.id === id) || null;
 export const pairingById = (id) => FONT_PAIRINGS.find(f => f.id === id) || null;
 export const industryName = (id) => INDUSTRIES.find(i => i.id === id)?.name || '';
+
+// The base sizes offered as a choice, which is what they are. 16px is the browser
+// default and sits in the middle deliberately.
+export const BASE_SIZES = [
+  { id: '0.9375rem', label: '15px' },
+  { id: '1rem', label: '16px' },
+  { id: '1.0625rem', label: '17px' },
+];
+
+// A real default rather than nothing. With no scale, tokensFromChoices emitted no size
+// tokens, so addTypeScale bailed at fewer than two entries and addTextStyles never ran
+// either — a from-scratch run shipped two typefaces and no sizes at all.
+export const DEFAULT_SCALE = { base: '1rem', ratio: 1.25 };
+
+/** The scale in play, whether a template set it or the Typography step did. */
+export const resolveScale = (data) => ({ ...DEFAULT_SCALE, ...((data && data.scale) || {}) });
+
+export const baseSizeLabel = (base) =>
+  (BASE_SIZES.find(b => b.id === base) || {}).label || base;
 
 /** The palette in play, whether curated or hand-picked. */
 export const resolvePalette = (data) =>
@@ -103,7 +136,7 @@ export const industryLabel = (data) =>
   (data.industry === 'other' && data.customIndustry?.trim()) || industryName(data.industry);
 
 /** Brand-tier tokens for the chosen palette and pairing, in the app's token shape. */
-export function tokensFromChoices(palette, pairing) {
+export function tokensFromChoices(palette, pairing, scale) {
   const tokens = [];
   if (palette) {
     tokens.push({ name: 'brand.color.primary', value: palette.primary, type: 'color', layer: 'Brand', description: 'Chosen in setup' });
@@ -113,6 +146,16 @@ export function tokensFromChoices(palette, pairing) {
   if (pairing) {
     tokens.push({ name: 'brand.font.heading', value: pairing.heading, type: 'fontFamily', layer: 'Brand', description: 'Chosen in setup' });
     tokens.push({ name: 'brand.font.body', value: pairing.body, type: 'fontFamily', layer: 'Brand', description: 'Chosen in setup' });
+  }
+  // A scale is what turns typefaces into typography. Without it this path emitted font
+  // families and no sizes at all, which meant addTypeScale bailed for want of two
+  // font-size tokens and addTextStyles never fired either — so a system built from
+  // scratch had faces but no type scale and no text styles.
+  //
+  // buildScale is the same builder the Type Scale dialog uses, so a scale created here
+  // and one created there are identical.
+  if (scale && scale.base && scale.ratio) {
+    tokens.push(...buildScale(scale.base, scale.ratio));
   }
   return tokens;
 }

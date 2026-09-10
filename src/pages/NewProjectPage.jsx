@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import StartChoice from '../components/StartChoice';
+import TemplateGallery from '../components/newProject/TemplateGallery';
+import { seedFromTemplate } from '../components/newProject/templateData';
 
 // Creating a project is two steps: name it, then choose how the brand gets built.
 //
@@ -30,21 +32,27 @@ export default function NewProjectPage() {
   const { addProject } = useProjects();
   const [projectName, setProjectName] = useState('');
   const [step, setStep] = useState(1);
+  // Browsing templates is not yet picking a path, so it does not create the project —
+  // otherwise every abandoned browse would leave an orphan behind.
+  const [gallery, setGallery] = useState(false);
 
   const named = projectName.trim().length > 0;
 
   // No brand, no tokens: addProject already defaults to an empty token map, and a project
   // the user creates should start genuinely empty rather than pre-filled with guesses.
   // `setup` rides along in route state so the project opens with that wizard running.
-  const create = (setup) => {
+  const create = (setup, template) => {
     if (!named) return;
     const project = addProject({
       title: projectName.trim(),
       description: '',
-      color: '#FC0694',
+      // A template's primary, so the project's tile in the list already carries its
+      // colour. Falls back to the app accent, which is what every project used before.
+      color: (template && template.customPalette && template.customPalette.primary) || '#FC0694',
       brand: { toneKeywords: [] },
     });
-    navigate('/projects/' + project.id, setup ? { state: { setup } } : undefined);
+    navigate('/projects/' + project.id,
+      setup ? { state: { setup, template: template || undefined } } : undefined);
   };
 
   return (
@@ -141,7 +149,7 @@ export default function NewProjectPage() {
           <>
             <StartChoice
               heading={'How do you want to set up ' + projectName.trim() + '?'}
-              onPick={(key) => create(key)}
+              onPick={(key) => { if (key === 'template') setGallery(true); else create(key); }}
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1.75rem' }}>
@@ -171,6 +179,15 @@ export default function NewProjectPage() {
           </>
         )}
       </div>
+
+      {gallery && (
+        <TemplateGallery
+          projectName={projectName.trim()}
+          onClose={() => setGallery(false)}
+          onUse={(t) => create('scratch', seedFromTemplate(t))}
+          onScratch={() => create('scratch')}
+        />
+      )}
     </div>
   );
 }
