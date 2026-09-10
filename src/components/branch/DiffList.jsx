@@ -12,10 +12,16 @@ const OP_COLOR = { add: '#10B981', remove: '#EF4444', change: 'var(--accent)' };
 
 const looksLikeColour = (v) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(v || '').trim());
 
+const gridFor = (selectable) => (selectable
+  ? '18px minmax(0,1.5fr) minmax(0,1fr) 12px minmax(0,1fr) 74px'
+  : 'minmax(0,1.5fr) minmax(0,1fr) 12px minmax(0,1fr) 74px');
+
 const Value = ({ value, muted }) => {
-  if (!value) {
-    return <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>none</span>;
-  }
+  // Nothing, rather than the word "none". An added token has no previous value, and the
+  // badge at the end of the row already says ADDED — but worse, `none` is a real CSS value
+  // (border-style, text-decoration, list-style all take it), so printing it in a value
+  // column was ambiguous rather than merely redundant.
+  if (!value) return <span />;
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '0.3rem', minWidth: 0,
@@ -50,8 +56,7 @@ const Row = ({ row, checked, onToggle }) => {
       className="pd-diff-row"
       style={{
         display: 'grid',
-        gridTemplateColumns: onToggle ? '18px minmax(0,1.5fr) minmax(0,1fr) 12px minmax(0,1fr) 74px'
-          : 'minmax(0,1.5fr) minmax(0,1fr) 12px minmax(0,1fr) 74px',
+        gridTemplateColumns: gridFor(Boolean(onToggle)),
         gap: '0.5rem', alignItems: 'center',
         padding: '0.4rem 0.75rem',
         borderTop: '1px solid var(--border)',
@@ -92,8 +97,12 @@ const Row = ({ row, checked, onToggle }) => {
       {/* A component has no single value — it has the properties that moved. Listing them
           is the only honest thing to put in these columns. */}
       {isComponent ? (
+        /* Spans Was, the arrow and Now, because a component has no single before and
+           after. Italic so it cannot be misread as a value sitting under the Was
+           heading — it is the list of properties that moved. */
         <span style={{
           gridColumn: 'span 3', minWidth: 0, fontSize: '0.68rem', color: 'var(--text-tertiary)',
+          fontStyle: 'italic',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {row.op !== 'change' ? (row.template || 'component')
@@ -105,7 +114,7 @@ const Row = ({ row, checked, onToggle }) => {
         <>
           <Value value={row.beforeValue} muted />
           <span aria-hidden="true" style={{ color: 'var(--text-tertiary)', fontSize: '0.7rem' }}>
-            {row.op === 'change' ? '→' : ''}
+            {row.op === 'remove' ? '' : '→'}
           </span>
           <Value value={row.afterValue} />
         </>
@@ -144,6 +153,19 @@ export default function DiffList({ diff, selection, onToggle, emptyText = 'No ch
 
   return (
     <div>
+      <div style={{
+        display: 'grid', gridTemplateColumns: gridFor(Boolean(onToggle)),
+        gap: '0.5rem', alignItems: 'center', padding: '0.3rem 0.75rem',
+        fontSize: '0.58rem', textTransform: 'uppercase', letterSpacing: '0.05em',
+        color: 'var(--text-tertiary)',
+      }}>
+        {onToggle && <span />}
+        <span>Name</span>
+        <span>Was</span>
+        <span />
+        <span>Now</span>
+        <span style={{ justifySelf: 'end' }}>Change</span>
+      </div>
       {shown.map(row => (
         <Row
           key={row.id}
