@@ -32,9 +32,6 @@ export default function NewProjectPage() {
   const { addProject } = useProjects();
   const [projectName, setProjectName] = useState('');
   const [step, setStep] = useState(1);
-  // Browsing templates is not yet picking a path, so it does not create the project —
-  // otherwise every abandoned browse would leave an orphan behind.
-  const [gallery, setGallery] = useState(false);
 
   const named = projectName.trim().length > 0;
 
@@ -68,7 +65,12 @@ export default function NewProjectPage() {
         <Link to="/projects" style={{ textDecoration: 'none', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Projects</Link>
       </header>
 
-      <div style={{ width: '100%', maxWidth: '680px', margin: '0 auto', padding: '3.5rem 1.5rem 6rem' }}>
+      {/* Wider on step 2, which carries the template grid under the two cards. Step 1 is
+          one text input and stays in the narrow column it reads best in. */}
+      <div style={{
+        width: '100%', maxWidth: step === 2 ? '1000px' : '680px', margin: '0 auto',
+        padding: '3.5rem 1.5rem 6rem',
+      }}>
         <h1 style={{ fontSize: '1.9rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 0.5rem', fontFamily: 'var(--font-heading)' }}>
           New design system
         </h1>
@@ -149,7 +151,14 @@ export default function NewProjectPage() {
           <>
             <StartChoice
               heading={'How do you want to set up ' + projectName.trim() + '?'}
-              onPick={(key) => { if (key === 'template') setGallery(true); else create(key); }}
+              onPick={(key) => create(key)}
+            />
+
+            {/* Under the two cards, not behind a third one. Using a template creates the
+                project and opens the same wizard 'scratch' does, pre-filled. */}
+            <TemplateGallery
+              projectName={projectName.trim()}
+              onUse={(t) => create('scratch', seedFromTemplate(t))}
             />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1.75rem' }}>
@@ -180,14 +189,6 @@ export default function NewProjectPage() {
         )}
       </div>
 
-      {gallery && (
-        <TemplateGallery
-          projectName={projectName.trim()}
-          onClose={() => setGallery(false)}
-          onUse={(t) => create('scratch', seedFromTemplate(t))}
-          onScratch={() => create('scratch')}
-        />
-      )}
     </div>
   );
 }

@@ -1,8 +1,12 @@
 // The template gallery: ready-made design systems, searchable and filterable.
 //
-// An overlay rather than a step, in the same frame ScratchWizard and BrandContextEngine
-// use — it needs more width than the 680px create column, it behaves identically whether
-// it was opened from the create page or from inside a project, and it needs no route.
+// Rendered inline, directly under StartChoice's two cards, rather than behind a third
+// card of its own. Templates are the easiest way in, so they are visible without a click
+// — and a door that looked like the other two but opened a browser rather than starting
+// something was the wrong shape for them. Both callers widen their container to suit.
+//
+// Content only, no frame: the create page puts it on a page and the Brand Bible puts it
+// in a modal, exactly as they already do for StartChoice.
 //
 // Every card is drawn from what its template actually delivers: the three colours it
 // writes, on the canvas colour it writes, with real component previews and a real specimen
@@ -313,7 +317,7 @@ const Details = ({ t, projectName, onClose, onUse, onShowFree }) => {
   );
 };
 
-export default function TemplateGallery({ projectName, onClose, onUse, onScratch }) {
+export default function TemplateGallery({ projectName, onUse }) {
   const [query, setQuery] = useState('');
   const [tier, setTier] = useState('all');
   const [industry, setIndustry] = useState('all');
@@ -334,47 +338,25 @@ export default function TemplateGallery({ projectName, onClose, onUse, onScratch
   const allLocked = results.length > 0 && lockedShown === results.length && tier === 'all';
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 2000, background: 'var(--bg)',
-      display: 'flex', flexDirection: 'column', overflowY: 'auto',
-    }}>
+    <div>
+      {/* A rule and a heading, because this is a second offer under the first two rather
+          than more of the same thing. */}
       <div style={{
-        height: '56px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.6rem',
-        padding: '0 1.5rem', borderBottom: '1px solid var(--border)',
-        background: 'var(--bg-secondary)', position: 'sticky', top: 0, zIndex: 1,
+        borderTop: '1px solid var(--border)', marginTop: '2rem', paddingTop: '1.75rem',
       }}>
-        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, color: 'var(--text-primary)' }}>
-          Strata<span style={{ color: 'var(--accent)' }}>.</span>
-        </span>
-        <span style={{ color: 'var(--border)' }}>/</span>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Templates</span>
-        <div style={{ flex: 1 }} />
-        <button
-          type="button"
-          onClick={onClose}
-          title="Close"
-          style={{
-            background: 'none', border: 'none', color: 'var(--text-tertiary)',
-            cursor: 'pointer', fontSize: '1.4rem', lineHeight: 1,
-          }}
-        >×</button>
-      </div>
-
-      <div style={{ maxWidth: '1080px', width: '100%', margin: '0 auto', padding: '2.5rem 1.5rem 4rem' }}>
-        <h1 style={{
-          fontSize: '1.6rem', fontFamily: 'var(--font-heading)', color: 'var(--text-primary)',
-          margin: '0 0 0.5rem',
-        }}>Start from a template</h1>
+        <h3 style={{
+          margin: 0, fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)',
+        }}>Or start from a template</h3>
         {/* Said once, here, rather than repeated on every locked card. */}
         <p style={{
-          fontSize: '0.86rem', color: 'var(--text-secondary)', margin: '0 0 1.6rem',
+          fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.4rem 0 1.4rem',
           lineHeight: 1.6, maxWidth: '62ch',
         }}>
           {TEMPLATES.length} starting points, each built from a real palette and the type
           families Strata loads. <strong style={{ color: 'var(--text-primary)' }}>{FREE_COUNT} are
           free to use now.</strong> Pro templates are previewable in full — they unlock when
-          paid plans launch after beta. Whichever you pick fills in the setup steps, so you can
-          change anything before it is applied.
+          paid plans launch after beta. Picking one fills in the same steps as building from
+          scratch, so you can change anything before it is applied.
         </p>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
@@ -470,9 +452,8 @@ export default function TemplateGallery({ projectName, onClose, onUse, onScratch
                 ? 'Nothing matches “' + query.trim() + '” with those filters.'
                 : 'Nothing matches those filters.'}
             </p>
-            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center' }}>
               <button type="button" style={ghostBtn} onClick={clearAll}>Clear filters</button>
-              <button type="button" style={ghostBtn} onClick={onScratch}>Start from scratch instead</button>
             </div>
           </div>
         ) : (
@@ -506,17 +487,6 @@ export default function TemplateGallery({ projectName, onClose, onUse, onScratch
           </>
         )}
 
-        <div style={{ marginTop: '2rem', fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
-          None of these fit?{' '}
-          <button
-            type="button"
-            onClick={onScratch}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              color: 'var(--accent)', fontSize: '0.82rem', fontFamily: 'inherit',
-            }}
-          >Start from scratch instead →</button>
-        </div>
       </div>
 
       {details && (

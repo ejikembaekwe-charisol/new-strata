@@ -384,7 +384,6 @@ function ProjectDetailInner() {
   // import what you already have. The per-source checklist links still go straight to
   // the engine — those name one specific source, so a choice would be wrong there.
   const [startChoice, setStartChoice] = useState(false);
-  const [templateGallery, setTemplateGallery] = useState(false);
   const [scratchWizard, setScratchWizard] = useState(false);
   const [toggledTokenFolders, setToggledTokenFolders] = useState(() => new Set());
   const [previewComponentId, setPreviewComponentId] = useState(null);
@@ -6475,7 +6474,10 @@ export default function RootLayout({ children }) {
             onClick={(e) => e.stopPropagation()}
             style={{
               background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '16px', padding: '2rem', width: 'min(680px, 100%)',
+              borderRadius: '16px', padding: '2rem', width: 'min(1000px, 100%)',
+              // The template list lives in here now, so the panel scrolls rather than
+              // running off the top and bottom of the viewport.
+              maxHeight: '88vh', overflowY: 'auto',
               boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
             }}
           >
@@ -6483,12 +6485,21 @@ export default function RootLayout({ children }) {
               onClose={() => setStartChoice(false)}
               onPick={(key) => {
                 setStartChoice(false);
-                // Three-way. This was `if scratch … else openBrandEngine()`, so any key
-                // other than 'scratch' opened the import engine — a template pick would
-                // have silently landed in five steps of extraction work.
-                if (key === 'template') setTemplateGallery(true);
-                else if (key === 'engine') openBrandEngine();
+                // Two keys, and the default is the wizard. It used to be
+                // `if scratch … else openBrandEngine()`, so anything unrecognised
+                // opened five steps of extraction work instead.
+                if (key === 'engine') openBrandEngine();
                 else setScratchWizard(true);
+              }}
+            />
+
+            {/* Under the two cards. No navigation from here — the wizard opens over this
+                project, pre-filled, the way 'scratch' opens it empty. */}
+            <TemplateGallery
+              projectName={project?.name}
+              onUse={(t) => {
+                setStartChoice(false);
+                setScratchWizard(seedFromTemplate(t));
               }}
             />
           </div>
@@ -6503,14 +6514,6 @@ export default function RootLayout({ children }) {
           onClose={() => setScratchWizard(false)}
           onSaveContext={saveBrandContext}
           onApply={(payload) => { applyBrandContext(payload); setScratchWizard(false); }}
-        />
-      )}
-      {templateGallery && (
-        <TemplateGallery
-          projectName={project?.name}
-          onClose={() => setTemplateGallery(false)}
-          onUse={(t) => { setTemplateGallery(false); setScratchWizard(seedFromTemplate(t)); }}
-          onScratch={() => { setTemplateGallery(false); setScratchWizard(true); }}
         />
       )}
       {engine && (
