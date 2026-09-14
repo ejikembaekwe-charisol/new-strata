@@ -1,10 +1,14 @@
 // A design system, presented.
 //
-// One component renders both the published system at /explore/:id and a template's detail
-// view in the create flow, because they are the same thing seen at different moments — a
-// set of tokens, a palette, a type pairing, and whatever components exist. Anything that
-// differs between the two arrives as a prop: the buttons in the hero, the line of metadata
-// under the title, the closing call to action.
+// This is the template detail view in the create flow. It once rendered the community page
+// at /explore/:id as well, which is why it takes everything through props rather than
+// reading a project — that page has since gone back to its own earlier design, deliberately,
+// so the two now look like different things and only this caller remains.
+//
+// The prop shape is kept general anyway: it is what stops the view assuming a template, and
+// it is the reason a template's page can be built from a derived store as honestly as a
+// saved one. Anything caller-specific arrives as a prop — the buttons in the hero, the line
+// of metadata under the title, the closing call to action.
 //
 // It takes a token store and nothing else about where the store came from. A template's
 // store is derived at render time by systemFromTemplate and a project's was saved months

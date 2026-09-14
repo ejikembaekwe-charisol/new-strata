@@ -177,7 +177,10 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
   );
 };
 
-// A template's detail view — the same page a published system gets at /explore/:id.
+// A template's detail view, built from DesignSystemView.
+//
+// The community page at /explore/:id briefly shared this design and has since gone back
+// to its own — so this is now the only place the scrolling layout appears.
 //
 // It is an overlay rather than a route on purpose. Both callers render the gallery inline
 // (step 2 of /projects/new, and the Get Started modal inside a project), and navigating
