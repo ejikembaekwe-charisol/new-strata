@@ -6461,28 +6461,50 @@ export default function RootLayout({ children }) {
 
 
       {/* How do you want to start? — the step between Get Started and either path. */}
+      {/* Setting up the brand is a page, not a dialog. It carries two choices, twelve
+          templates and a detail view of any of them — far more than a centred panel with a
+          backdrop should hold, and it is the start of a task rather than a question to
+          dismiss.
+
+          The same frame ScratchWizard and BrandContextEngine use, which is what the two
+          paths out of here look like: fixed and full-bleed on --bg, a 56px sticky header
+          carrying the breadcrumb and the way out. Losing the backdrop also means the
+          template detail overlay no longer sits inside a backdrop-filter ancestor. */}
       {startChoice && (
-        <div
-          onClick={() => setStartChoice(false)}
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2000,
-            background: 'rgba(9, 9, 12, 0.85)', backdropFilter: 'blur(10px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem',
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '16px', padding: '2rem', width: 'min(1000px, 100%)',
-              // The template list lives in here now, so the panel scrolls rather than
-              // running off the top and bottom of the viewport.
-              maxHeight: '88vh', overflowY: 'auto',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-            }}
-          >
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2000,
+          background: 'var(--bg)', display: 'flex', flexDirection: 'column', overflowY: 'auto',
+        }}>
+          <header style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem', height: '56px', flexShrink: 0,
+            padding: '0 1.5rem', borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-secondary)', position: 'sticky', top: 0, zIndex: 1,
+          }}>
+            <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+              Strata<span style={{ color: 'var(--accent)' }}>.</span>
+            </span>
+            <span style={{ color: 'var(--border)', margin: '0 0.3rem' }}>/</span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              {project?.name || 'Project'}
+            </span>
+            <span style={{ color: 'var(--border)', margin: '0 0.3rem' }}>/</span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>Set up the brand</span>
+            <div style={{ flex: 1 }} />
+            <button
+              type="button"
+              onClick={() => setStartChoice(false)}
+              title="Close"
+              style={{
+                background: 'none', border: 'none', color: 'var(--text-tertiary)',
+                cursor: 'pointer', fontSize: '1.4rem', lineHeight: 1, padding: 0,
+              }}
+            >×</button>
+          </header>
+
+          <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto', padding: '3rem 1.5rem 5rem' }}>
+            {/* No onClose: the header carries the only way out, and passing it here would
+                put a second × inside the content. */}
             <StartChoice
-              onClose={() => setStartChoice(false)}
               onPick={(key) => {
                 setStartChoice(false);
                 // Two keys, and the default is the wizard. It used to be
