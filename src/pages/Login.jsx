@@ -1,11 +1,21 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import authVisual from '../assets/auth-visual.png';
 import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
+
+  // Where to land after signing in. A page that sent you here to log in can say where it
+  // wants you back — the public design-system page does, so that Remix finishes the job
+  // you asked for instead of stranding you on the project list with nothing copied.
+  //
+  // Only same-site paths are honoured: anything that is not a bare `/...` path could be an
+  // absolute URL to somewhere else, which would make this an open redirect.
+  const from = location.state && location.state.from;
+  const backTo = typeof from === 'string' && /^\/[^/]/.test(from) ? from : '/projects';
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--bg)' }}>
@@ -13,8 +23,11 @@ const Login = () => {
       <div style={{ 
         flex: '1', 
         position: 'relative', 
-        display: 'none', 
-        '@media (min-width: 1024px)': { display: 'block' } 
+        // No inline `display`. It used to say 'none' with a '@media (min-width: 1024px)'
+        // key beside it — React has no such thing, so it logged "Unsupported style
+        // property" on every render and the inline none beat the stylesheet at every
+        // width, meaning this panel never appeared at all. The <style> block below
+        // already hides it under 1024px, which is all that was wanted.
       }} className="auth-visual-side">
         <img 
           src={authVisual} 
@@ -70,7 +83,7 @@ const Login = () => {
           onSubmit={(e) => {
             e.preventDefault();
             login({ name: 'Abdul-Qayyum', email: 'user@example.com', initials: 'AQ' });
-            navigate('/projects');
+            navigate(backTo, { replace: true });
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

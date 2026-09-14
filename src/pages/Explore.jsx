@@ -55,7 +55,8 @@ const Explore = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' }}>
                   <div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Updated {sys.updated}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>8 formats: CSS, SCSS...</div>
+                    {/* "8 formats: CSS, SCSS..." used to sit here. It was a literal string on
+                        every card, and the system page offers three formats, not eight. */}
                   </div>
                   <Link to={`/explore/${sys.id}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: '600' }}>View →</Link>
                 </div>

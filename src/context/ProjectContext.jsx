@@ -164,7 +164,17 @@ export function ProjectProvider({ children }) {
       tokens: projectData.tokens || EMPTY_TOKENS,
       // A caller that brings its own components (the create wizard's engine path) wins;
       // otherwise the project opens with the demo set.
-      components: projectData.components?.length ? projectData.components : demoComponents(),
+      //
+      // Absent and empty are different answers. This used to test `?.length`, so a caller
+      // that deliberately passed `[]` — remixing a system that genuinely has no components
+      // — was handed the nineteen demo shells instead, and the copy claimed components its
+      // source never had. Only an absent key means "you decide".
+      components: Array.isArray(projectData.components)
+        ? projectData.components
+        : demoComponents(),
+      // Carried, because a copy that silently loses its imagery is not a copy. Dropping
+      // this key was why forking and branching both left their uploaded assets behind.
+      uploadedAssets: projectData.uploadedAssets || [],
       members: projectData.members || [],
       branchOf: projectData.branchOf,
       branchName: projectData.branchName,

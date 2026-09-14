@@ -31,8 +31,11 @@ const Signup = () => {
       <div style={{ 
         flex: '1', 
         position: 'relative', 
-        display: 'none', 
-        '@media (min-width: 1024px)': { display: 'block' } 
+        // No inline `display`. It used to say 'none' with a '@media (min-width: 1024px)'
+        // key beside it — React has no such thing, so it logged "Unsupported style
+        // property" on every render and the inline none beat the stylesheet at every
+        // width, meaning this panel never appeared at all. The <style> block below
+        // already hides it under 1024px, which is all that was wanted.
       }} className="auth-visual-side">
         <img 
           src={authVisual} 
