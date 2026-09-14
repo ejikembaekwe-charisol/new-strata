@@ -3,14 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import { useAuth } from '../context/AuthContext';
 import { renderComponentPreview } from '../components/componentPreviews';
-import { entranceKeyframesCss } from '../data/motionKeyframes';
 import { indexById, effectiveTokens, isFragment, childrenOf } from '../components/inspector/inheritance';
 import { deriveTokens } from '../data/derivedTokens';
-import { inkOn } from '../data/ink';
+import DesignSystemView from '../components/DesignSystemView';
 import { liveReleaseOf, releasesOf, formatStamp, storageUsage } from '../data/releases';
-import { groupsFor, rowLabelFor } from '../data/tokenGroups';
-import { statsFor, distinctFacts } from '../data/systemStats';
-import { categoryForComponent } from '../components/componentTaxonomy';
 
 // TYPE_COLORS keyed the per-type pill in the old token table, and siteStatusColor the
 // showcase-sites card. The swatch grid replaced the first; the second card is gone.
@@ -214,69 +210,6 @@ const getMockProject = (id) => {
   };
 };
 
-const renderTokenPreview = (token) => {
-  const { type, value } = token;
-  if (!value) return <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>-</span>;
-  let cleanValue = String(value).trim();
-
-  switch (type) {
-    case 'color':
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <div style={{
-            width: '20px', height: '20px', borderRadius: '4px',
-            background: cleanValue, border: '1px solid rgba(255,255,255,0.15)',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.1)', flexShrink: 0
-          }} />
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{cleanValue}</span>
-        </div>
-      );
-    case 'fontSize':
-      let sizeVal = cleanValue;
-      if (/^\d+$/.test(sizeVal)) sizeVal += 'px';
-      return <span style={{ fontSize: sizeVal, color: 'var(--text-primary)' }}>Aa</span>;
-    case 'fontFamily':
-      return <span style={{ fontFamily: cleanValue, fontSize: '0.85rem', color: 'var(--text-primary)' }}>Aa Bb</span>;
-    case 'spacing':
-      let spacingVal = cleanValue;
-      if (/^\d+$/.test(spacingVal)) spacingVal += 'px';
-      return <div style={{ height: '8px', width: spacingVal, maxWidth: '80px', minWidth: '4px', background: 'var(--accent)', borderRadius: '2px', opacity: 0.8 }} />;
-    case 'borderRadius':
-      let radiusVal = cleanValue;
-      if (/^\d+$/.test(radiusVal)) radiusVal += 'px';
-      return <div style={{ width: '28px', height: '28px', border: '2px solid var(--accent)', borderRadius: radiusVal, background: 'var(--accent-glow)' }} />;
-    case 'shadow':
-      return <div style={{ width: '28px', height: '28px', background: 'var(--bg-secondary)', borderRadius: '4px', boxShadow: cleanValue, border: '1px solid var(--border)' }} />;
-    case 'duration':
-    case 'easing':
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <div 
-            className="motion-preview-box"
-            style={{
-              width: '14px', height: '14px', borderRadius: '50%', background: 'var(--accent)',
-              transition: `transform 400ms cubic-bezier(0.4, 0, 0.2, 1)`,
-            }}
-            onMouseEnter={e => {
-              const animDuration = type === 'duration' ? cleanValue : '300ms';
-              const animEasing = type === 'easing' ? cleanValue : 'ease';
-              e.currentTarget.style.transition = `transform ${animDuration} ${animEasing}`;
-              e.currentTarget.style.transform = 'translateX(10px)';
-            }}
-            onMouseLeave={e => {
-              const animDuration = type === 'duration' ? cleanValue : '300ms';
-              const animEasing = type === 'easing' ? cleanValue : 'ease';
-              e.currentTarget.style.transition = `transform ${animDuration} ${animEasing}`;
-              e.currentTarget.style.transform = 'translateX(0)';
-            }}
-          />
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>Hover</span>
-        </div>
-      );
-    default:
-      return <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{value}</span>;
-  }
-};
 
 const getTokenTier = (token) => {
   if (token.tier) return token.tier;
@@ -317,12 +250,9 @@ const SharedProject = () => {
   const { projects, addProject } = useProjects();
   const [copiedToken, setCopiedToken] = useState(null);
   const [previewTheme, setPreviewTheme] = useState('dark');
-  const [tokenSearch, setTokenSearch] = useState('');
-  const [activeExportTab, setActiveExportTab] = useState('css');
-  // The Explore section's tab. It holds a token category id ('Color', 'Typography', ...)
-  // or one of the two non-token views, and is corrected below if this system has no
-  // tokens in whatever it currently names.
-  const [activeTab, setActiveTab] = useState('Color');
+  // Search, the Explore tab and the export format all live in DesignSystemView now.
+  // previewTheme stays because this page still draws the live component preview and hands
+  // it to the view; a template has no components to preview.
   const [forking, setForking] = useState(false);
 
   // Find project in context, or fallback to one of the demo systems. Null when
@@ -709,66 +639,11 @@ const SharedProject = () => {
     });
   };
 
-  const getCSSVariables = () => {
-    let css = `/* Auto-generated by Strata */\n:root {\n`;
-    for (const cat in tokensMap) {
-      if (Array.isArray(tokensMap[cat])) {
-        tokensMap[cat].forEach(t => {
-          const varName = `--${t.name.replace(/\./g, '-')}`;
-          css += `  ${varName}: ${t.value};\n`;
-        });
-      }
-    }
-    css += `}`;
-    // Same reason as the project export: a motion.enter.* token is a keyframes name,
-    // so the keyframes must travel with it.
-    css += String.fromCharCode(10, 10) + entranceKeyframesCss();
-    return css;
-  };
+  // The three export generators moved to data/tokenExport.js so a template offers the
+  // same formats from the same code.
 
-  const getTailwindTheme = () => {
-    const config = { theme: { extend: {} } };
-    for (const cat in tokensMap) {
-      if (Array.isArray(tokensMap[cat])) {
-        tokensMap[cat].forEach(t => {
-          const parts = t.name.split('.');
-          let current = config.theme.extend;
-          for (let i = 0; i < parts.length - 1; i++) {
-            const part = parts[i];
-            if (!current[part]) current[part] = {};
-            current = current[part];
-          }
-          current[parts[parts.length - 1]] = t.value;
-        });
-      }
-    }
-    return JSON.stringify(config, null, 2);
-  };
 
-  const getDTCGJson = () => {
-    const json = { $schema: 'https://tr.designtokens.org/format/' };
-    for (const cat in tokensMap) {
-      if (Array.isArray(tokensMap[cat])) {
-        tokensMap[cat].forEach(t => {
-          const parts = t.name.split('.');
-          let current = json;
-          for (let i = 0; i < parts.length - 1; i++) {
-            const part = parts[i];
-            if (!current[part]) current[part] = {};
-            current = current[part];
-          }
-          current[parts[parts.length - 1]] = { $value: t.value, $type: t.type };
-        });
-      }
-    }
-    return JSON.stringify(json, null, 2);
-  };
 
-  const getActiveExportText = () => {
-    if (activeExportTab === 'tailwind') return getTailwindTheme();
-    if (activeExportTab === 'json') return getDTCGJson();
-    return getCSSVariables();
-  };
 
   // Every token flat, each carrying its category and resolved tier. The category list this
   // also built went with the sidebar; the Explore tabs derive their tabs from tokensMap
@@ -781,86 +656,17 @@ const SharedProject = () => {
     });
   }
 
-  // Tier and category pills are gone; the Explore tabs are the category, and search is
-  // the only remaining narrowing. Matching is on the name and the value alike, because a
-  // reader hunting a colour is as likely to paste a hex as to type a token name.
-  const searchTokens = (list) => {
-    const q = tokenSearch.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(t => (t.name + ' ' + t.value).toLowerCase().includes(q));
-  };
+  // Token search moved into DesignSystemView along with the grid it filters.
 
   const projectSlug = (project.name || 'design-system').toLowerCase().replace(/\s+/g, '-');
 
-  // ── What the page states about this system ──────────────────────────────
-  // Every row and every fact is counted off the tokens above. A value that cannot be
-  // derived is absent from these lists, so the markup below never has to decide what to
-  // print when there is nothing to print.
-  const stats = statsFor(tokensMap, project.components, brand, project.color);
-  const facts = distinctFacts(tokensMap, project.components, brand);
+  // stats, facts and the hero swatch strip are all derived inside DesignSystemView,
+  // so a caller cannot hand it a count that disagrees with the tokens underneath.
 
-  // The strip under the title: real colours, in the order the Tokens page folders them.
-  // Aliases resolve first so a strip of `{color.primary.main}` is not eight grey blanks.
-  const stripSwatches = (() => {
-    const seen = new Set();
-    const out = [];
-    const groups = groupsFor('Color', tokensMap.Color || []);
-    // Neutrals last. They are the greys and near-blacks, and leading with them put two
-    // swatches the colour of the page itself where the brand colour belongs. Ordering by
-    // the folder rather than by token name works for a system whose colours are called
-    // `color.primary` as well as one using `brand.color.primary`.
-    const ordered = [
-      ...groups.filter(g => !/neutral/i.test(g.label || '')),
-      ...groups.filter(g => /neutral/i.test(g.label || '')),
-    ];
-    for (const g of ordered) {
-      for (const t of g.tokens) {
-        const v = String(t.value || '').startsWith('{') ? resolveTokenValue(
-          String(t.value).replace(/[{}]/g, '')) : t.value;
-        if (!/^#[0-9a-f]{3,8}$/i.test(String(v || '').trim())) continue;
-        const hex = String(v).trim().toUpperCase();
-        if (seen.has(hex)) continue;
-        seen.add(hex);
-        out.push({ name: t.name, value: hex });
-        if (out.length >= 9) return out;
-      }
-    }
-    return out;
-  })();
-
-  // Tabs are the categories this system actually has. A category with nothing in it
-  // produces no tab, so the row describes the system rather than the schema.
-  const TAB_LABELS = { Color: 'Colours', Typography: 'Typography', Spacing: 'Spacing',
-    Sizing: 'Sizing', Border: 'Border', Shadow: 'Shadow', Motion: 'Motion',
-    Layout: 'Layout', Flexbox: 'Flexbox', Lists: 'Lists' };
-  const tokenTabs = Object.keys(TAB_LABELS)
-    .filter(cat => Array.isArray(tokensMap[cat]) && tokensMap[cat].length > 0)
-    .map(cat => ({ id: cat, label: TAB_LABELS[cat], count: tokensMap[cat].length }));
-  const componentCount = (project.components || []).length;
-  const exploreTabs = [
-    ...tokenTabs,
-    ...(componentCount ? [{ id: '__components', label: 'Components', count: componentCount }] : []),
-    ...(componentCount ? [{ id: '__preview', label: 'Preview', count: null }] : []),
-  ];
-  // A system whose first category is empty would otherwise open on a blank tab.
-  const currentTab = exploreTabs.some(t => t.id === activeTab)
-    ? activeTab
-    : (exploreTabs[0] ? exploreTabs[0].id : null);
 
   // Other systems a reader can actually open: published, and not this one. There is no
   // discovery index, so this is empty for most visitors and the section is then omitted
   // rather than shown with nothing under it.
-  // Components under the same category headings the editor's tree uses.
-  const componentGroups = (() => {
-    const by = new Map();
-    for (const c of project.components || []) {
-      if (isFragment(c)) continue;
-      const cat = categoryForComponent(c);
-      if (!by.has(cat)) by.set(cat, []);
-      by.get(cat).push(c);
-    }
-    return [...by.entries()].map(([category, components]) => ({ category, components }));
-  })();
 
   const otherPublished = (projects || [])
     .filter(p => String(p.id) !== String(id) && p.liveReleaseId)
@@ -933,475 +739,123 @@ const SharedProject = () => {
   return (
     <div className="page-container" style={{ paddingBottom: '6rem' }}>
 
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <div style={{ padding: '4.5rem 0 0' }}>
-        <Link to="/explore" style={{
-          color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.85rem',
-          display: 'inline-flex', alignItems: 'center', gap: '0.25rem', marginBottom: '1.25rem',
-        }}>
-          ← Back to Explore
-        </Link>
-
-        <div className="sp-header-row" style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1.5rem',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', minWidth: 0 }}>
-            <div style={{
-              width: '56px', height: '56px', borderRadius: '14px', flexShrink: 0,
-              background: `linear-gradient(135deg, ${project.color}, var(--accent))`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#ffffff', fontSize: '1.75rem', fontWeight: 900,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.3)', textTransform: 'uppercase',
-            }}>
-              {project.name ? project.name.charAt(0) : 'S'}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <h1 style={{ fontSize: '2.1rem', fontWeight: 700, margin: 0, color: 'var(--text-primary)', lineHeight: 1.15 }}>
-                {project.name}
-              </h1>
-              {project.description && (
-                <p style={{ margin: '0.4rem 0 0', color: 'var(--text-secondary)', fontSize: '0.95rem', maxWidth: '58ch', lineHeight: 1.6 }}>
-                  {project.description}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* The actions, in the order they are most likely to be wanted. */}
-        <div className="sp-header-actions" style={{
-          display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '1.5rem',
-        }}>
-          <button
-            onClick={handleRemix}
-            disabled={forking}
-            className="btn"
-            style={{
-              padding: '0.65rem 1.35rem', fontSize: '0.88rem', fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: '0.45rem',
-              background: 'var(--accent)', color: '#ffffff', border: 'none',
-              opacity: forking ? 0.7 : 1, cursor: forking ? 'default' : 'pointer',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M6 9a9 9 0 0012 8"/></svg>
-            {forking ? 'Remixing…' : 'Remix design system'}
-          </button>
-          <button onClick={handleDownloadMarkdown} className="btn btn-secondary"
-            style={{ padding: '0.65rem 1.2rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Download {projectSlug}.md
-          </button>
-          <button onClick={() => handleCopy(generateMarkdown(), 'Markdown')} className="btn btn-secondary"
-            style={{ padding: '0.65rem 1.2rem', fontSize: '0.85rem' }}>
-            {copiedToken === 'Markdown' ? 'Copied!' : 'Copy markdown'}
-          </button>
-          <button onClick={() => handleCopy(window.location.href, 'Link')} className="btn btn-secondary"
-            style={{ padding: '0.65rem 1.2rem', fontSize: '0.85rem' }}>
-            {copiedToken === 'Link' ? 'Copied!' : 'Share'}
-          </button>
-        </div>
-
-        {/* Real colours from the system, not decoration. Absent when it has none. */}
-        {stripSwatches.length > 0 && (
-          <div style={{ display: 'flex', gap: '0.3rem', marginTop: '1.75rem', flexWrap: 'wrap' }}>
-            {stripSwatches.map(s => (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => handleCopy(s.value, 'strip-' + s.value)}
-                title={s.name + ' — ' + s.value}
-                style={{
-                  width: '64px', height: '34px', borderRadius: '8px', background: s.value,
-                  border: '1px solid var(--border)', cursor: 'pointer', padding: 0,
-                  fontSize: '0.6rem', color: 'transparent',
-                }}
-              >
-                {copiedToken === 'strip-' + s.value ? '✓' : ''}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: '2.5rem' }}>{draftNotice}</div>
-
-      {/* ── About + the stats rail ────────────────────────────────────────── */}
-      <div className="sp-main-grid" style={{
-        display: 'grid', gridTemplateColumns: '1fr 300px', gap: '3rem', marginTop: '1rem',
-        alignItems: 'start',
-      }}>
-        <div style={{ minWidth: 0 }}>
-          <h2 id="about" style={{ fontSize: '1.4rem', margin: '0 0 0.75rem', color: 'var(--text-primary)' }}>
-            About {project.name}
-          </h2>
-
-          {/* Only what is recorded: a publish stamp, and a version if one exists. */}
-          {(publishedStamp || versionsList.length > 0) && (
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginBottom: '0.9rem' }}>
-              {publishedStamp && <>Published {publishedStamp}</>}
-              {publishedStamp && versionsList.length > 0 && ' · '}
-              {versionsList.length > 0 && <>Version {versionsList[0].version}</>}
-            </div>
-          )}
-
-          {Array.isArray(brand.toneKeywords) && brand.toneKeywords.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.1rem' }}>
-              {brand.toneKeywords.map(k => (
-                <span key={k} style={{
-                  fontSize: '0.72rem', padding: '0.25rem 0.65rem', borderRadius: '999px',
-                  background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                  color: 'var(--text-secondary)',
-                }}>{k}</span>
-              ))}
-            </div>
-          )}
-
-          {brand.voice && (
-            <p style={{ fontSize: '0.92rem', lineHeight: 1.7, color: 'var(--text-secondary)', maxWidth: '64ch' }}>
-              {brand.voice}
-            </p>
-          )}
-
-          {/* Fewer than two facts reads as a page that failed to load, so the block goes. */}
-          {facts.length >= 2 && (
-            <div style={{ marginTop: '1.75rem' }}>
+      <DesignSystemView
+        name={project.name}
+        description={project.description}
+        color={project.color}
+        brand={brand}
+        tokensMap={tokensMap}
+        components={project.components}
+        meta={[
+          publishedStamp ? 'Published ' + publishedStamp : null,
+          versionsList.length > 0 ? 'Version ' + versionsList[0].version : null,
+        ].filter(Boolean)}
+        resolveAlias={resolveTokenValue}
+        preview={(
+          <div style={{
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            borderRadius: '16px', padding: '1.5rem',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
               <div style={{
-                fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em',
-                color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '1rem',
+                display: 'flex', gap: '0.3rem', background: 'var(--bg-tertiary)',
+                padding: '0.25rem', borderRadius: '100px', border: '1px solid var(--border)',
               }}>
-                What makes it distinct
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {facts.map((f, i) => (
-                  <div key={f.title} style={{ display: 'flex', gap: '0.85rem' }}>
-                    <span style={{
-                      fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: 'var(--accent)',
-                      fontWeight: 700, paddingTop: '0.15rem',
-                    }}>{String(i + 1).padStart(2, '0')}</span>
-                    <div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{f.title}</div>
-                      <div style={{ fontSize: '0.83rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginTop: '0.15rem' }}>
-                        {f.body}
-                      </div>
-                    </div>
-                  </div>
+                {['dark', 'light'].map(th => (
+                  <button
+                    key={th}
+                    type="button"
+                    role="radio"
+                    aria-checked={previewTheme === th}
+                    onClick={() => setPreviewTheme(th)}
+                    style={{
+                      background: previewTheme === th ? 'var(--accent)' : 'transparent',
+                      border: 'none', padding: '0.3rem 0.9rem', borderRadius: '100px',
+                      color: previewTheme === th ? '#fff' : 'var(--text-secondary)',
+                      fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                      fontFamily: 'inherit', textTransform: 'capitalize',
+                    }}
+                  >{th}</button>
                 ))}
               </div>
             </div>
-          )}
-
-          <nav aria-label="Sections" style={{
-            display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem',
-            fontSize: '0.82rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)',
-          }}>
-            <span style={{ color: 'var(--text-tertiary)' }}>Jump to</span>
-            <a href="#explore" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Explore the system →</a>
-            <a href="#export" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Export →</a>
-            <a href="#remix" style={{ color: 'var(--accent)', textDecoration: 'none' }}>Remix →</a>
-          </nav>
-        </div>
-
-        {/* The rail. statsFor returns only rows that resolved, so this maps blindly. */}
-        {stats.length > 0 && (
-          <aside style={{
-            position: 'sticky', top: '2rem', background: 'var(--bg-secondary)',
-            border: '1px solid var(--border)', borderRadius: '16px', overflow: 'hidden',
-          }}>
-            {stats[0].kind === 'color' && (
-              <div style={{ background: stats[0].value, padding: '1.15rem 1.25rem 1.4rem' }}>
-                <div style={{
-                  fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.09em',
-                  color: inkOn(stats[0].value), opacity: 0.7, fontWeight: 700,
-                }}>{stats[0].label}</div>
-                <div style={{
-                  fontFamily: 'var(--font-mono)', fontSize: '1.2rem', fontWeight: 700,
-                  color: inkOn(stats[0].value), marginTop: '0.2rem',
-                }}>{stats[0].value}</div>
-              </div>
-            )}
-            <div style={{ padding: '0.5rem 1.25rem 1rem' }}>
-              {stats.slice(stats[0].kind === 'color' ? 1 : 0).map(row => (
-                <div key={row.label} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  gap: '1rem', padding: '0.6rem 0', borderBottom: '1px solid var(--border)',
-                }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{row.label}</span>
-                  <span style={{
-                    fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)',
-                    display: 'flex', alignItems: 'center', gap: '0.4rem', textAlign: 'right',
-                  }}>
-                    {row.kind === 'color' && (
-                      <span style={{
-                        width: '13px', height: '13px', borderRadius: '4px', flexShrink: 0,
-                        background: row.value, border: '1px solid var(--border)',
-                      }} />
-                    )}
-                    {row.value}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </aside>
-        )}
-      </div>
-
-      {/* ── Explore ──────────────────────────────────────────────────────── */}
-      {exploreTabs.length > 0 && (
-        <section id="explore" style={{ marginTop: '4rem', scrollMarginTop: '2rem' }}>
-          <h2 style={{ fontSize: '1.4rem', margin: '0 0 0.4rem', color: 'var(--text-primary)' }}>
-            Explore {project.name}
-          </h2>
-          <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 0 1.5rem' }}>
-            Pick what you want to see. Every value here is the one the system ships.
-          </p>
-
-          <div style={{
-            display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.25rem',
-            borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem',
-          }}>
-            {exploreTabs.map(t => {
-              const on = currentTab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={on}
-                  onClick={() => setActiveTab(t.id)}
-                  style={{
-                    padding: '0.4rem 0.9rem', borderRadius: '999px', fontFamily: 'inherit',
-                    border: '1px solid ' + (on ? 'var(--accent)' : 'var(--border)'),
-                    background: on ? 'var(--accent)' : 'var(--bg-tertiary)',
-                    color: on ? '#fff' : 'var(--text-secondary)',
-                    fontSize: '0.8rem', fontWeight: on ? 600 : 400, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  }}
-                >
-                  {t.label}
-                  {t.count !== null && (
-                    <span style={{ opacity: 0.7, fontSize: '0.72rem' }}>{t.count}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {currentTab !== '__preview' && currentTab !== '__components' && (
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label htmlFor="sp-token-search" style={{
-                display: 'block', fontSize: '0.7rem', textTransform: 'uppercase',
-                letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600,
-                marginBottom: '0.4rem',
-              }}>Search {TAB_LABELS[currentTab] || 'tokens'}</label>
-              <input
-                id="sp-token-search"
-                type="text"
-                autoComplete="off"
-                value={tokenSearch}
-                onChange={(e) => setTokenSearch(e.target.value)}
-                placeholder="Name or value…"
-                style={{
-                  width: '100%', maxWidth: '320px', background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border)', borderRadius: '999px',
-                  padding: '0.5rem 1rem', color: 'var(--text-primary)',
-                  fontSize: '0.85rem', fontFamily: 'inherit',
-                }}
-              />
-            </div>
-          )}
-
-          {/* Tokens, in the folders the Tokens page already uses — colour by role,
-              everything else by layer, so the public page and the editor agree. */}
-          {currentTab !== '__preview' && currentTab !== '__components' && (() => {
-            const groups = groupsFor(currentTab, tokensMap[currentTab] || [])
-              .map(g => ({ ...g, tokens: searchTokens(g.tokens) }))
-              .filter(g => g.tokens.length > 0);
-            if (groups.length === 0) {
-              return (
-                <div style={{
-                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                  borderRadius: '14px', padding: '2.5rem', textAlign: 'center',
-                  color: 'var(--text-secondary)', fontSize: '0.86rem',
-                }}>
-                  {tokenSearch.trim()
-                    ? 'Nothing in ' + (TAB_LABELS[currentTab] || 'this group') + ' matches “' + tokenSearch.trim() + '”.'
-                    : 'No tokens here.'}
-                </div>
-              );
-            }
-            return groups.map(g => (
-              <div key={g.key} style={{ marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', marginBottom: '0.85rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', margin: 0, color: 'var(--text-primary)' }}>{g.label}</h3>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{g.tokens.length}</span>
-                </div>
-                <div className="sp-swatch-grid" style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.75rem',
-                }}>
-                  {g.tokens.map(t => (
-                    <button
-                      key={t.name}
-                      type="button"
-                      onClick={() => handleCopy(t.value, t.name)}
-                      title={'Copy ' + t.name}
-                      style={{
-                        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                        borderRadius: '10px', padding: 0, overflow: 'hidden', cursor: 'pointer',
-                        textAlign: 'left', fontFamily: 'inherit', display: 'block', width: '100%',
-                      }}
-                    >
-                      <div style={{
-                        height: '58px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: currentTab === 'Color' ? (String(t.value).startsWith('{')
-                          ? resolveTokenValue(String(t.value).replace(/[{}]/g, '')) : t.value) : 'transparent',
-                      }}>
-                        {/* For colour the block IS the preview — renderTokenPreview also
-                            prints the hex, which the row below already shows. */}
-                        {currentTab !== 'Color' && renderTokenPreview(t)}
-                      </div>
-                      <div style={{ padding: '0.5rem 0.6rem 0.6rem', borderTop: '1px solid var(--border)' }}>
-                        <div style={{
-                          fontSize: '0.76rem', color: 'var(--text-primary)', fontWeight: 500,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{rowLabelFor(currentTab, t)}</div>
-                        <div style={{
-                          fontSize: '0.68rem', fontFamily: 'var(--font-mono)', marginTop: '0.15rem',
-                          color: copiedToken === t.name ? 'var(--accent)' : 'var(--text-tertiary)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{copiedToken === t.name ? 'Copied!' : t.value}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ));
-          })()}
-
-          {/* Components, in the taxonomy's own folders. */}
-          {currentTab === '__components' && componentGroups.map(folder => (
-              <div key={folder.category} style={{ marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', marginBottom: '0.85rem' }}>
-                  <h3 style={{ fontSize: '0.95rem', margin: 0, color: 'var(--text-primary)' }}>{folder.category}</h3>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{folder.components.length}</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '0.75rem' }}>
-                  {folder.components.map(c => (
-                    <div key={c.id} style={{
-                      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                      borderRadius: '12px', padding: '1rem',
-                    }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
-                      {c.description && (
-                        <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', marginTop: '0.2rem', lineHeight: 1.5 }}>
-                          {c.description}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-          ))}
-
-          {/* The live preview, on both surfaces the system has to work on. */}
-          {currentTab === '__preview' && (
             <div style={{
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '16px', padding: '1.5rem',
+              background: previewTheme === 'dark' ? '#0B0B0F' : '#FFFFFF',
+              borderRadius: '12px', padding: '1.5rem', display: 'flex',
+              flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-                <div style={{
-                  display: 'flex', gap: '0.3rem', background: 'var(--bg-tertiary)',
-                  padding: '0.25rem', borderRadius: '100px', border: '1px solid var(--border)',
-                }}>
-                  {['dark', 'light'].map(th => (
-                    <button
-                      key={th}
-                      type="button"
-                      role="radio"
-                      aria-checked={previewTheme === th}
-                      onClick={() => setPreviewTheme(th)}
-                      style={{
-                        background: previewTheme === th ? 'var(--accent)' : 'transparent',
-                        border: 'none', padding: '0.3rem 0.9rem', borderRadius: '100px',
-                        color: previewTheme === th ? '#fff' : 'var(--text-secondary)',
-                        fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                        textTransform: 'capitalize',
-                      }}
-                    >{th}</button>
-                  ))}
-                </div>
-              </div>
-              <div style={{
-                background: previewTheme === 'dark' ? '#0B0B0F' : '#FFFFFF',
-                borderRadius: '12px', padding: '1.5rem', display: 'flex',
-                flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start',
-              }}>
-                {(project.components || []).filter(c => !isFragment(c)).slice(0, 12)
-                  .map(c => <div key={c.id}>{renderLivePreview(c, 0)}</div>)}
-              </div>
+              {(project.components || []).filter(c => !isFragment(c)).slice(0, 12)
+                .map(c => <div key={c.id}>{renderLivePreview(c, 0)}</div>)}
             </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Export ───────────────────────────────────────────────────────── */}
-      <section id="export" style={{ marginTop: '4rem', scrollMarginTop: '2rem' }}>
-        <h2 style={{ fontSize: '1.4rem', margin: '0 0 0.4rem', color: 'var(--text-primary)' }}>Export</h2>
-        <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 0 1.5rem' }}>
-          The same tokens, in the shape your tools expect.
-        </p>
-
-        <div style={{
-          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-          borderRadius: '16px', overflow: 'hidden',
-        }}>
-          <div style={{
-            display: 'flex', gap: '0.3rem', padding: '0.75rem 1rem',
-            borderBottom: '1px solid var(--border)', flexWrap: 'wrap',
-          }}>
-            {[['css', 'CSS variables'], ['tailwind', 'Tailwind'], ['json', 'DTCG JSON']].map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="radio"
-                aria-checked={activeExportTab === id}
-                onClick={() => setActiveExportTab(id)}
-                style={{
-                  background: activeExportTab === id ? 'var(--bg-tertiary)' : 'transparent',
-                  border: 'none', padding: '0.35rem 0.85rem', borderRadius: '7px',
-                  color: activeExportTab === id ? 'var(--accent)' : 'var(--text-secondary)',
-                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >{label}</button>
-            ))}
-            <div style={{ flex: 1 }} />
-            <button
-              type="button"
-              onClick={() => handleCopy(getActiveExportText(), 'Export')}
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                color: 'var(--accent)', fontSize: '0.8rem', fontWeight: 600,
-              }}
-            >{copiedToken === 'Export' ? 'Copied!' : 'Copy'}</button>
           </div>
-          <pre style={{
-            margin: 0, padding: '1.1rem', overflowX: 'auto', maxHeight: '340px',
-            fontSize: '0.74rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)',
-            lineHeight: 1.65,
-          }}>{getActiveExportText()}</pre>
-        </div>
+        )}
+        notice={draftNotice}
+        breadcrumb={(
+          <div style={{ padding: '4.5rem 0 1.25rem' }}>
+            <Link to="/explore" style={{
+              color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.85rem',
+              display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+            }}>← Back to Explore</Link>
+          </div>
+        )}
+        actions={(
+          <>
+            <button
+              onClick={handleRemix}
+              disabled={forking}
+              className="btn"
+              style={{
+                padding: '0.65rem 1.35rem', fontSize: '0.88rem', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: '0.45rem',
+                background: 'var(--accent)', color: '#ffffff', border: 'none',
+                opacity: forking ? 0.7 : 1, cursor: forking ? 'default' : 'pointer',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6M6 9a9 9 0 0012 8"/></svg>
+              {forking ? 'Remixing…' : 'Remix design system'}
+            </button>
+            <button onClick={handleDownloadMarkdown} className="btn btn-secondary"
+              style={{ padding: '0.65rem 1.2rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download {projectSlug}.md
+            </button>
+            <button onClick={() => handleCopy(generateMarkdown(), 'Markdown')} className="btn btn-secondary"
+              style={{ padding: '0.65rem 1.2rem', fontSize: '0.85rem' }}>
+              {copiedToken === 'Markdown' ? 'Copied!' : 'Copy markdown'}
+            </button>
+            <button onClick={() => handleCopy(window.location.href, 'Link')} className="btn btn-secondary"
+              style={{ padding: '0.65rem 1.2rem', fontSize: '0.85rem' }}>
+              {copiedToken === 'Link' ? 'Copied!' : 'Share'}
+            </button>
+          </>
+        )}
+        footerTitle={'Use ' + project.name + ' in your project'}
+        footerBody="Remix it into a system of your own — every token and component copied across, and everything editable from the moment it opens."
+        footerActions={(
+          <>
+            <button onClick={handleRemix} disabled={forking} className="btn"
+              style={{
+                padding: '0.7rem 1.5rem', fontSize: '0.88rem', fontWeight: 600, border: 'none',
+                background: 'var(--accent)', color: '#fff',
+                opacity: forking ? 0.7 : 1, cursor: forking ? 'default' : 'pointer',
+              }}>
+              {forking ? 'Remixing…' : 'Remix design system'}
+            </button>
+            <button onClick={handleDownloadMarkdown} className="btn btn-secondary"
+              style={{ padding: '0.7rem 1.4rem', fontSize: '0.85rem' }}>
+              Download {projectSlug}.md
+            </button>
+          </>
+        )}
+      />
 
-        <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '1rem' }}>
-          <button onClick={handleDownloadMarkdown} className="btn btn-secondary"
-            style={{ padding: '0.55rem 1.1rem', fontSize: '0.82rem' }}>
-            Download {projectSlug}.md
-          </button>
-          <button onClick={handlePrintBrandBible} className="btn btn-secondary"
-            style={{ padding: '0.55rem 1.1rem', fontSize: '0.82rem' }}>
-            Print the Brand Bible
-          </button>
-        </div>
-      </section>
+      {/* The Brand Bible is a project-only artefact — a template has no manifesto. */}
+      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+        <button onClick={handlePrintBrandBible} className="btn btn-secondary"
+          style={{ padding: '0.55rem 1.1rem', fontSize: '0.82rem' }}>
+          Print the Brand Bible
+        </button>
+      </div>
 
       {/* Only rendered when there genuinely are other published systems to open. */}
       {otherPublished.length > 0 && (
@@ -1425,81 +879,10 @@ const SharedProject = () => {
         </section>
       )}
 
-      {/* ── Closing call to action ───────────────────────────────────────── */}
-      <section id="remix" style={{
-        marginTop: '4rem', scrollMarginTop: '2rem', background: 'var(--bg-secondary)',
-        border: '1px solid var(--border)', borderRadius: '20px',
-        padding: '2.5rem 1.5rem', textAlign: 'center',
-      }}>
-        <h2 style={{ fontSize: '1.35rem', margin: '0 0 0.5rem', color: 'var(--text-primary)' }}>
-          Use {project.name} in your project
-        </h2>
-        <p style={{
-          fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 auto 1.5rem',
-          maxWidth: '52ch', lineHeight: 1.65,
-        }}>
-          Remix it into a system of your own — every token and component copied across, and
-          everything editable from the moment it opens.
-        </p>
-        <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button onClick={handleRemix} disabled={forking} className="btn"
-            style={{
-              padding: '0.7rem 1.5rem', fontSize: '0.88rem', fontWeight: 600, border: 'none',
-              background: 'var(--accent)', color: '#fff',
-              opacity: forking ? 0.7 : 1, cursor: forking ? 'default' : 'pointer',
-            }}>
-            {forking ? 'Remixing…' : 'Remix design system'}
-          </button>
-          <button onClick={handleDownloadMarkdown} className="btn btn-secondary"
-            style={{ padding: '0.7rem 1.4rem', fontSize: '0.85rem' }}>
-            Download {projectSlug}.md
-          </button>
-        </div>
-      </section>
 
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        @media (max-width: 768px) {
-          .sp-header-row { flex-direction: column !important; align-items: stretch !important; gap: 1.25rem !important; }
-          .sp-header-actions { width: 100%; }
-          .sp-header-actions button { flex: 1; justify-content: center !important; }
-          .sp-audience-switcher { width: 100% !important; max-width: 100%; overflow-x: auto; }
-          .sp-main-grid { grid-template-columns: 1fr !important; }
-          .sp-token-grid { grid-template-columns: 1fr !important; gap: 1.25rem !important; }
-          .sp-token-categories {
-            flex-direction: row !important;
-            overflow-x: auto;
-            border-right: none !important;
-            border-bottom: 1px solid var(--border);
-            padding-right: 0 !important;
-            padding-bottom: 0.75rem !important;
-            gap: 0.5rem !important;
-          }
-          .sp-token-categories-label { display: none; }
-          .sp-token-category-btn {
-            flex-shrink: 0;
-            white-space: nowrap;
-            border-radius: 100px !important;
-            padding: 0.4rem 0.9rem !important;
-          }
-          .sp-token-table-header { display: none !important; }
-          .sp-token-row {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 0.6rem !important;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1rem !important;
-            margin-bottom: 0.75rem;
-            border-bottom: 1px solid var(--border) !important;
-          }
-          .sp-token-row > *:nth-child(1) { order: 1; }
-          .sp-token-row > *:nth-child(2) { order: 4; }
-          .sp-token-row > *:nth-child(3) { order: 2; }
-          .sp-token-row > *:nth-child(4) { order: 3; }
-        }
-      `}} />
+      {/* The mobile rules that lived here moved into DesignSystemView, which owns the
+          markup they target. The rest styled the token table, the category rail and the
+          audience switcher — all removed with the tabs. */}
 
     </div>
   );

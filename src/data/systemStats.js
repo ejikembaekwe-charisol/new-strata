@@ -182,9 +182,13 @@ export const distinctFacts = (tokensMap, components, brand, limit = 4) => {
   }
 
   // Only ever stated when true, and only when there was something that could have failed.
+  //
+  // Components are required, not incidental: with none there is nothing downstream that
+  // *could* reference a token, so "nothing unused" would be true only in the empty sense
+  // and would read as praise for a system that has not been wired up at all.
   const usage = buildUsageIndex(tokensMap || {}, components || []);
   const checkable = all.filter(t => t.layer === 'Semantic' || t.layer === 'Component');
-  if (checkable.length >= 4) {
+  if ((components || []).length > 0 && checkable.length >= 4) {
     const dead = checkable.filter(t => isDeadToken(t, usage));
     if (dead.length === 0) {
       facts.push({

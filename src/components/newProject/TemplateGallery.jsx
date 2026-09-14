@@ -13,29 +13,18 @@
 // in the faces it names. No screenshots, no stand-in imagery — there is none in this app
 // and inventing some would make the card a picture of something that does not exist.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { renderComponentPreview } from '../componentPreviews';
-import { hexToRgb, contrastRatio } from '../ColorPicker';
+import { inkOn } from '../../data/ink';
+import DesignSystemView from '../DesignSystemView';
+import { systemFromTemplate } from '../../data/templateSystem';
 import { industryName, pairingById } from './designSystemData';
-import { card, chip, grid, groupLabel } from './stepStyles';
+import { card, chip, chipCount, grid, groupLabel } from './stepStyles';
 import {
-  TEMPLATES, INDUSTRY_FACETS, VIBE_FACETS, FREE_COUNT, matchesQuery, scaleLabel,
+  TEMPLATES, INDUSTRY_FACETS, VIBE_FACETS, FREE_COUNT, scaleLabel,
+  selectTemplates, facetCounts,
 } from './templateData';
-
-/**
- * Black or white, whichever is actually readable on this colour.
- *
- * The same WCAG maths the colour ramps use, rather than a guess about which palettes are
- * dark — five of these templates have a near-white canvas.
- */
-const inkOn = (bg) => {
-  const c = hexToRgb(bg);
-  if (!c) return '#FFFFFF';
-  const white = contrastRatio(c, hexToRgb('#FFFFFF')) || 0;
-  const black = contrastRatio(c, hexToRgb('#0B0B0F')) || 0;
-  return white >= black ? '#FFFFFF' : '#0B0B0F';
-};
 
 const mutedOn = (ink) => (ink === '#FFFFFF' ? 'rgba(255,255,255,0.6)' : 'rgba(11,11,15,0.6)');
 
@@ -188,130 +177,113 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
   );
 };
 
-const Details = ({ t, projectName, onClose, onUse, onShowFree }) => {
+// A template's detail view — the same page a published system gets at /explore/:id.
+//
+// It is an overlay rather than a route on purpose. Both callers render the gallery inline
+// (step 2 of /projects/new, and the Get Started modal inside a project), and navigating
+// away from either would throw away a half-finished create flow — on /projects/new the
+// project does not exist yet, so the typed name lives only in component state.
+//
+// The system it shows is built by systemFromTemplate, which runs the template through the
+// same tokensFromChoices -> deriveTokens path the wizard runs on Apply. So the counts here
+// are what you get, not an estimate: thirteen authored tokens become eighty-nine.
+const Details = ({ t, onClose, onUse, onShowFree }) => {
   const locked = t.tier === 'pro';
-  const p = t.palette;
-  const pair = pairingById(t.pairingId);
+  const system = systemFromTemplate(t);
+
+  // Escape closes it. Captured, so it wins before anything underneath can act on the key,
+  // and the gallery behind stays exactly where it was.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+
+  // Not named useBtn: a `use` prefix makes ESLint read it as a hook.
+  const applyBtn = (big) => (
+    <button
+      type="button"
+      onClick={() => onUse(t)}
+      style={{
+        padding: big ? '0.7rem 1.5rem' : '0.55rem 1.2rem', borderRadius: '999px',
+        border: 'none', background: 'var(--accent)', color: '#fff',
+        fontSize: big ? '0.88rem' : '0.85rem', fontWeight: 600, cursor: 'pointer',
+        fontFamily: 'inherit', touchAction: 'manipulation',
+      }}
+    >
+      Use this template
+    </button>
+  );
+
+  const plansBtn = (
+    <Link
+      to="/pricing"
+      style={{
+        padding: '0.55rem 1.2rem', borderRadius: '999px', background: 'var(--accent)',
+        color: '#fff', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none',
+      }}
+    >
+      See plans →
+    </Link>
+  );
+
   return (
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 2100,
-        background: 'rgba(9, 9, 12, 0.85)', backdropFilter: 'blur(10px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem',
+        position: 'fixed', inset: 0, zIndex: 2100, overflowY: 'auto',
+        background: 'rgba(9, 9, 12, 0.92)', backdropFilter: 'blur(10px)',
+        padding: '1.5rem',
+        // Without this, scrolling past the end of this panel scrolls the gallery behind it.
+        overscrollBehavior: 'contain',
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-          borderRadius: '16px', width: 'min(680px, 100%)', maxHeight: '88vh',
-          overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+          background: 'var(--bg)', border: '1px solid var(--border)',
+          borderRadius: '20px', width: 'min(1080px, 100%)', margin: '0 auto',
+          padding: '1.5rem 2rem 3rem', boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
         }}
       >
-        <Canvas t={t} projectName={projectName} height={168} />
-
-        <div style={{ padding: '1.4rem 1.5rem 1.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--text-primary)' }}>{t.name}</h3>
-            {locked && <ProBadge />}
-          </div>
-          <p style={{
-            fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.4rem 0 1.1rem',
-            lineHeight: 1.6,
-          }}>{t.description}</p>
-
-          <div style={{ ...groupLabel, marginTop: 0 }}>Type</div>
-          <div style={{ marginBottom: '1.1rem' }}>
-            <div style={{
-              fontFamily: `'${pair.heading}', sans-serif`, fontSize: '1.5rem',
-              color: 'var(--text-primary)', lineHeight: 1.2,
-            }}>{pair.heading}</div>
-            <div style={{
-              fontFamily: `'${pair.body}', sans-serif`, fontSize: '0.85rem',
-              color: 'var(--text-secondary)', marginTop: '0.3rem', lineHeight: 1.6,
-            }}>
-              {pair.body} — the quick brown fox jumps over the lazy dog.
-            </div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '0.35rem' }}>
-              {pair.note} · {scaleLabel(t.scaleRatio)}, {t.scaleRatio}× on {t.baseSize}
-            </div>
-          </div>
-
-          <div style={groupLabel}>Colour</div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.1rem' }}>
-            {[['primary', p.primary], ['canvas', p.secondary], ['accent', p.accent]].map(([role, hex]) => (
-              <div key={role} style={{ flex: 1 }}>
-                <span style={{
-                  display: 'block', height: '38px', borderRadius: '8px', background: hex,
-                  border: '1px solid var(--border)',
-                }} />
-                <div style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
-                  {role}
-                </div>
-                <div style={{
-                  fontSize: '0.66rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)',
-                }}>{hex.toUpperCase()}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={groupLabel}>What it writes</div>
-          <p style={{
-            fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 1.2rem',
-            lineHeight: 1.65,
-          }}>
-            Five brand tokens — three colours and two typefaces — plus an eight-step type
-            scale. Strata then derives 33 colour ramp steps from those three colours, and the
-            line heights, weights and text styles from the scale. Every one is yours to change
-            afterwards.
-          </p>
-
-          {locked && (
-            <div style={{
-              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-              borderRadius: '10px', padding: '0.8rem 0.9rem', marginBottom: '1.2rem',
-            }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
-                This one needs Pro
-              </div>
-              <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
-                Everything it contains is on this page — the palette, the type, the scale and
-                the tokens it writes. It just cannot be applied yet.
-              </p>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            {locked ? (
-              <>
-                <Link
-                  to="/pricing"
-                  style={{
-                    padding: '0.5rem 1.1rem', borderRadius: '999px', background: 'var(--accent)',
-                    color: '#fff', fontSize: '0.82rem', fontWeight: 600, textDecoration: 'none',
-                  }}
-                >
-                  See plans →
-                </Link>
-                <button type="button" style={ghostBtn} onClick={onShowFree}>Show free templates</button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onUse(t)}
-                style={{
-                  padding: '0.5rem 1.2rem', borderRadius: '999px', border: 'none',
-                  background: 'var(--accent)', color: '#fff', fontSize: '0.85rem',
-                  fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                Use this template
-              </button>
-            )}
-            <button type="button" style={ghostBtn} onClick={onClose}>Close</button>
-          </div>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '1rem', marginBottom: '1.25rem',
+        }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+            Template{locked ? ' · needs Pro' : ''}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close"
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-tertiary)',
+              cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1, padding: 0,
+            }}
+          >×</button>
         </div>
+
+        <DesignSystemView
+          name={system.name}
+          description={system.description}
+          color={system.color}
+          brand={system.brand}
+          tokensMap={system.tokensMap}
+          components={system.components}
+          meta={system.meta}
+          actions={locked ? (
+            <>
+              {plansBtn}
+              <button type="button" style={ghostBtn} onClick={onShowFree}>Show free templates</button>
+            </>
+          ) : applyBtn(false)}
+          footerTitle={locked ? t.name + ' needs Pro' : 'Start from ' + t.name}
+          footerBody={locked
+            ? 'Everything it contains is on this page — the palette, the type, the scale and every token it writes. It just cannot be applied yet.'
+            : 'Picking it fills in the setup steps with these answers, so you can change anything before it is applied.'}
+          footerActions={locked ? plansBtn : applyBtn(true)}
+        />
       </div>
     </div>
   );
@@ -320,18 +292,27 @@ const Details = ({ t, projectName, onClose, onUse, onShowFree }) => {
 export default function TemplateGallery({ projectName, onUse }) {
   const [query, setQuery] = useState('');
   const [tier, setTier] = useState('all');
-  const [industry, setIndustry] = useState('all');
-  const [style, setStyle] = useState('all');
+  // Arrays, not single ids: OR inside a facet, AND across them. An empty array means the
+  // facet is unconstrained, which is what the "All" chip restores.
+  const [industries, setIndustries] = useState([]);
+  const [styles, setStyles] = useState([]);
   const [details, setDetails] = useState(null);
 
-  const results = TEMPLATES.filter(t =>
-    (tier === 'all' || t.tier === tier)
-    && (industry === 'all' || t.industry === industry)
-    && (style === 'all' || t.vibe === style)
-    && matchesQuery(t, query));
+  const selection = { industries, styles, tier, query };
+  const results = selectTemplates(selection);
+  // How many each chip would yield given everything else. Counting a facet ignores that
+  // facet's own selections, so picking one industry never zeroes out the rest.
+  const counts = facetCounts(selection);
 
-  const filtered = Boolean(query.trim()) || tier !== 'all' || industry !== 'all' || style !== 'all';
-  const clearAll = () => { setQuery(''); setTier('all'); setIndustry('all'); setStyle('all'); };
+  // The same toggle shape the tone chips in BrandContextEngine and the voice tags in
+  // ScratchSteps already use, so a chip row behaves the same wherever it appears.
+  const toggle = (list, set) => (v) =>
+    set(list.includes(v) ? list.filter(x => x !== v) : [...list, v]);
+  const toggleIndustry = toggle(industries, setIndustries);
+  const toggleStyle = toggle(styles, setStyles);
+
+  const filtered = Boolean(query.trim()) || tier !== 'all' || industries.length > 0 || styles.length > 0;
+  const clearAll = () => { setQuery(''); setTier('all'); setIndustries([]); setStyles([]); };
   const lockedShown = results.filter(t => t.tier === 'pro').length;
   // The case worth naming separately: a filter that matches only locked templates would
   // otherwise be a dead end reached in two clicks.
@@ -360,15 +341,19 @@ export default function TemplateGallery({ projectName, onUse }) {
         </p>
 
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
-          <div style={{
+          {/* The ring is on the pill, not the input: the input clears its own outline,
+              and a caret alone is not a focus indicator. */}
+          <div className="sf-search" style={{
             display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)',
             border: '1px solid var(--border)', borderRadius: '100px',
             padding: '0.45rem 1.1rem', width: '260px', maxWidth: '100%',
           }}>
-            <span style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>🔍</span>
+            <span aria-hidden="true" style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>🔍</span>
             <input
               type="text"
-              placeholder="Search templates..."
+              aria-label="Search templates"
+              autoComplete="off"
+              placeholder="Search templates…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{
@@ -378,9 +363,19 @@ export default function TemplateGallery({ projectName, onUse }) {
               }}
             />
           </div>
-          <div style={pillTrack}>
+          {/* Mutually exclusive, so role=radiogroup — the same shape as the component-kind
+              chooser in ProjectDetail, which is this codebase's one worked example. */}
+          <div style={pillTrack} role="radiogroup" aria-label="Pricing tier">
             {[['all', 'All'], ['free', 'Free'], ['pro', 'Pro']].map(([id, label]) => (
-              <button key={id} type="button" onClick={() => setTier(id)} style={pill(tier === id)}>
+              <button
+                key={id}
+                type="button"
+                className="sf-focus"
+                role="radio"
+                aria-checked={tier === id}
+                onClick={() => setTier(id)}
+                style={pill(tier === id)}
+              >
                 {label}
               </button>
             ))}
@@ -388,34 +383,79 @@ export default function TemplateGallery({ projectName, onUse }) {
         </div>
 
         {/* Chips rather than dropdowns: a closed select would hide that these twelve span
-            seven industries, and the flow has no other select in it. */}
+            seven industries, and the flow has no other select in it.
+
+            Multi-select, and every chip carries the number it would yield. With 44 of the
+            56 industry-x-style pairs empty, a single-select row could only ever narrow
+            toward nothing; the counts make the shape of the collection visible and a chip
+            that would return nothing is dimmed rather than clickable. */}
         <div style={{ marginBottom: '0.9rem' }}>
-          <div style={groupLabel}>Industry</div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => setIndustry('all')} style={chip(industry === 'all')}>All</button>
-            {INDUSTRY_FACETS.map(i => (
-              <button
-                key={i.id}
-                type="button"
-                onClick={() => setIndustry(industry === i.id ? 'all' : i.id)}
-                style={chip(industry === i.id)}
-              >{i.name}</button>
-            ))}
+          <div style={groupLabel} id="tg-industry-label">Industry</div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}
+               role="group" aria-labelledby="tg-industry-label">
+            <button
+              type="button"
+              className="sf-focus"
+              aria-pressed={industries.length === 0}
+              onClick={() => setIndustries([])}
+              style={chip(industries.length === 0)}
+            >
+              All<span style={chipCount(industries.length === 0)}>{counts.industryAll}</span>
+            </button>
+            {INDUSTRY_FACETS.map(i => {
+              const on = industries.includes(i.id);
+              const n = counts.industry[i.id];
+              // A selected chip may legitimately count 0 — pick SaaS & Tech, then Warm.
+              // It has to stay clickable or the selection could never be undone.
+              const dead = n === 0 && !on;
+              return (
+                <button
+                  key={i.id}
+                  type="button"
+                  className="sf-focus"
+                  aria-pressed={on}
+                  disabled={dead}
+                  onClick={() => toggleIndustry(i.id)}
+                  style={chip(on, dead)}
+                >
+                  {i.name}<span style={chipCount(on)}>{n}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div style={{ marginBottom: '1.4rem' }}>
-          <div style={groupLabel}>Style</div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => setStyle('all')} style={chip(style === 'all')}>All</button>
-            {VIBE_FACETS.map(v => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setStyle(style === v ? 'all' : v)}
-                style={chip(style === v)}
-              >{v}</button>
-            ))}
+          <div style={groupLabel} id="tg-style-label">Style</div>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}
+               role="group" aria-labelledby="tg-style-label">
+            <button
+              type="button"
+              className="sf-focus"
+              aria-pressed={styles.length === 0}
+              onClick={() => setStyles([])}
+              style={chip(styles.length === 0)}
+            >
+              All<span style={chipCount(styles.length === 0)}>{counts.styleAll}</span>
+            </button>
+            {VIBE_FACETS.map(v => {
+              const on = styles.includes(v);
+              const n = counts.style[v];
+              const dead = n === 0 && !on;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  className="sf-focus"
+                  aria-pressed={on}
+                  disabled={dead}
+                  onClick={() => toggleStyle(v)}
+                  style={chip(on, dead)}
+                >
+                  {v}<span style={chipCount(on)}>{n}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -423,13 +463,18 @@ export default function TemplateGallery({ projectName, onUse }) {
           fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem',
           display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
         }}>
-          <span>
-            {results.length} template{results.length === 1 ? '' : 's'}
+          {/* Announced, because narrowing the set is the one thing on this screen that
+              changes content without moving focus. */}
+          <span aria-live="polite">
+            {filtered
+              ? results.length + ' of ' + TEMPLATES.length + ' templates'
+              : TEMPLATES.length + ' templates'}
             {tier === 'all' && lockedShown > 0 && ' · ' + lockedShown + ' need' + (lockedShown === 1 ? 's' : '') + ' Pro'}
           </span>
           {filtered && (
             <button
               type="button"
+              className="sf-focus"
               onClick={clearAll}
               style={{
                 background: 'none', border: 'none', padding: 0, cursor: 'pointer',
@@ -492,7 +537,6 @@ export default function TemplateGallery({ projectName, onUse }) {
       {details && (
         <Details
           t={details}
-          projectName={projectName}
           onClose={() => setDetails(null)}
           onUse={(t) => { setDetails(null); onUse(t); }}
           onShowFree={() => { setDetails(null); setTier('free'); }}
