@@ -386,7 +386,16 @@ export default function TemplateGallery({ projectName, onUse }) {
             border: '1px solid var(--border)', borderRadius: '100px',
             padding: '0.45rem 1.1rem', width: '260px', maxWidth: '100%',
           }}>
-            <span aria-hidden="true" style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>🔍</span>
+            {/* The same glyph the Tokens and Components searches use, rather than an
+                emoji — which renders as a different picture on every platform and at a
+                weight the rest of the iconography does not share. */}
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" aria-hidden="true"
+              style={{ marginRight: '8px', color: 'var(--text-tertiary)', flexShrink: 0 }}
+            >
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
             <input
               type="text"
               aria-label="Search templates"
