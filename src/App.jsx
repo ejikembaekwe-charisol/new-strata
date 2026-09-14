@@ -24,6 +24,7 @@ import ProjectDetail from './pages/ProjectDetail';
 import NewProjectPage from './pages/NewProjectPage';
 import Generator from './pages/Generator';
 import SharedProject from './pages/SharedProject';
+import TemplatePage from './pages/TemplatePage';
 import ForgotPassword from './pages/ForgotPassword';
 
 // Auth Guard Component
@@ -55,6 +56,9 @@ function AppInner() {
         <Route path="/design-teams" element={<DesignTeams />} />
         <Route path="/explore" element={<Explore />} />
         <Route path="/explore/:id" element={<SharedProject />} />
+        {/* Templates have an address so the gallery can link to them, and so a card
+            can open one in a new tab without costing you the screen you were on. */}
+        <Route path="/templates/:id" element={<TemplatePage />} />
         <Route path="/learn" element={<Learn />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/pricing" element={<Pricing />} />

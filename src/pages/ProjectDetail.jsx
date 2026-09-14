@@ -9,7 +9,6 @@ import { getBrandCompleteness, emptyBrandContext } from '../utils/projectComplet
 import BrandContextEngine from '../components/BrandContextEngine';
 import StartChoice from '../components/StartChoice';
 import TemplateGallery from '../components/newProject/TemplateGallery';
-import { seedFromTemplate } from '../components/newProject/templateData';
 import ScratchWizard from '../components/newProject/ScratchWizard';
 import ComponentInspector from '../components/inspector/ComponentInspector';
 import PropertySections, { sectionIdsForProperties } from '../components/inspector/PropertySections';
@@ -6515,15 +6514,10 @@ export default function RootLayout({ children }) {
               }}
             />
 
-            {/* Under the two cards. No navigation from here — the wizard opens over this
-                project, pre-filled, the way 'scratch' opens it empty. */}
-            <TemplateGallery
-              projectName={project?.name}
-              onUse={(t) => {
-                setStartChoice(false);
-                setScratchWizard(seedFromTemplate(t));
-              }}
-            />
+            {/* Under the two cards. Each links to its own page in a new tab, and applying
+                happens there — so a template no longer seeds *this* project's wizard; it
+                creates one of its own. That is the cost of the card being a plain link. */}
+            <TemplateGallery projectName={project?.name} />
           </div>
         </div>
       )}

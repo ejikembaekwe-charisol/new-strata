@@ -13,12 +13,9 @@
 // in the faces it names. No screenshots, no stand-in imagery — there is none in this app
 // and inventing some would make the card a picture of something that does not exist.
 
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { renderComponentPreview } from '../componentPreviews';
 import { inkOn } from '../../data/ink';
-import DesignSystemView from '../DesignSystemView';
-import { systemFromTemplate } from '../../data/templateSystem';
 import { industryName, pairingById } from './designSystemData';
 import { card, chip, chipCount, grid, groupLabel } from './stepStyles';
 import {
@@ -101,7 +98,18 @@ const ProBadge = () => (
   }}>PRO</span>
 );
 
-const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
+// A card is a link to the template's own page, and nothing else.
+//
+// It opens in a new tab on purpose: reading a template should never cost you the screen you
+// were standing on — on /projects/new that screen holds a project name that exists nowhere
+// else yet. Applying therefore happens on that page rather than here, which is why the card
+// carries no buttons of its own.
+//
+// The link is stretched across the card rather than wrapped around it. Canvas renders a
+// real <button> and a real <input>, and an <a> may not contain interactive content any more
+// than a <button> may; as a sibling it nests nothing. Being a real <a href> is also what
+// makes middle-click, ctrl-click and "open in new window" behave the way they should.
+const TemplateCard = ({ t, projectName }) => {
   const locked = t.tier === 'pro';
   const p = t.palette;
   return (
@@ -115,7 +123,7 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
       <Canvas t={t} projectName={projectName} />
 
       <div style={{
-        padding: '0.75rem 0.85rem 0.8rem', display: 'flex', flexDirection: 'column',
+        padding: '0.75rem 0.85rem 0.85rem', display: 'flex', flexDirection: 'column',
         gap: '0.4rem', flex: 1,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
@@ -140,194 +148,33 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
           {industryName(t.industry)} · {t.vibe} · {scaleLabel(t.scaleRatio)}
         </div>
 
-        {/* The card opens the detail view. A transparent button stretched over the card
-            rather than a wrapper around it, because Canvas renders a real <button> and a
-            real <input> — inert stops them being focused, but <button> inside <button> is
-            still invalid markup and React says so. As a sibling it nests nothing.
-
-            It comes before the action row in DOM order, so that row's own positioned
-            buttons paint above it and keep their clicks. */}
-        <button
-          type="button"
+        <a
           className="sf-focus"
-          onClick={() => onDetails(t)}
-          aria-label={t.name + ' — see what it contains'}
+          href={'/templates/' + t.id}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={t.name + ' — opens in a new tab'}
           style={{
             position: 'absolute', inset: 0, zIndex: 1,
-            background: 'none', border: 'none', padding: 0, margin: 0,
             cursor: 'pointer', touchAction: 'manipulation',
           }}
         />
-
-        <div style={{
-          marginTop: 'auto', paddingTop: '0.4rem', display: 'flex',
-          alignItems: 'center', gap: '0.6rem',
-          // Above the stretched button, so these stay clickable.
-          position: 'relative', zIndex: 2,
-        }}>
-          {/* Not a disabled button: a disabled element fires no hover events, so its
-              title never appears and the card would say "Needs Pro" with no way to
-              learn what that means. It stays enabled and opens the details panel,
-              which is where the explanation and the link to plans already are. */}
-          <button
-            type="button"
-            className="sf-focus"
-            onClick={() => (locked ? onDetails(t) : onUse(t))}
-            title={locked
-              ? 'Pro templates unlock when paid plans launch after beta — see what it contains'
-              : 'Start from ' + t.name}
-            style={{
-              padding: '0.36rem 0.85rem', borderRadius: '999px', cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: '0.76rem', fontWeight: 600,
-              background: locked ? 'transparent' : 'var(--accent)',
-              border: locked ? '1px solid var(--accent)' : 'none',
-              color: locked ? 'var(--accent)' : '#fff',
-              touchAction: 'manipulation',
-            }}
-          >
-            {locked ? 'See what it has' : 'Use this'}
-          </button>
-          {/* Named and in the accent colour. It was 12px grey and borderless, which is why
-              the detail view read as missing rather than merely hard to see. */}
-          <button
-            type="button"
-            className="sf-focus"
-            onClick={() => onDetails(t)}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              color: 'var(--accent)', fontSize: '0.75rem', fontWeight: 600,
-              fontFamily: 'inherit', touchAction: 'manipulation',
-            }}
-          >
-            View details →
-          </button>
-        </div>
       </div>
     </div>
   );
 };
 
-// A template's detail view, built from DesignSystemView.
-//
-// The community page at /explore/:id briefly shared this design and has since gone back
-// to its own — so this is now the only place the scrolling layout appears.
-//
-// It is an overlay rather than a route on purpose. Both callers render the gallery inline
-// (step 2 of /projects/new, and the Get Started modal inside a project), and navigating
-// away from either would throw away a half-finished create flow — on /projects/new the
-// project does not exist yet, so the typed name lives only in component state.
-//
-// The system it shows is built by systemFromTemplate, which runs the template through the
-// same tokensFromChoices -> deriveTokens path the wizard runs on Apply. So the counts here
-// are what you get, not an estimate: thirteen authored tokens become eighty-nine.
-const Details = ({ t, onClose, onUse, onShowFree }) => {
-  const locked = t.tier === 'pro';
-  const system = systemFromTemplate(t);
+// A Details overlay stood here, opened from the card. Cards are links to /templates/:id
+// now, so the template's own page is the detail view and this had nothing left to do.
 
-  // Escape closes it. Captured, so it wins before anything underneath can act on the key,
-  // and the gallery behind stays exactly where it was.
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
-
-  // Not named useBtn: a `use` prefix makes ESLint read it as a hook.
-  const applyBtn = (big) => (
-    <button
-      type="button"
-      onClick={() => onUse(t)}
-      style={{
-        padding: big ? '0.7rem 1.5rem' : '0.55rem 1.2rem', borderRadius: '999px',
-        border: 'none', background: 'var(--accent)', color: '#fff',
-        fontSize: big ? '0.88rem' : '0.85rem', fontWeight: 600, cursor: 'pointer',
-        fontFamily: 'inherit', touchAction: 'manipulation',
-      }}
-    >
-      Use this template
-    </button>
-  );
-
-  const plansBtn = (
-    <Link
-      to="/pricing"
-      style={{
-        padding: '0.55rem 1.2rem', borderRadius: '999px', background: 'var(--accent)',
-        color: '#fff', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none',
-      }}
-    >
-      See plans →
-    </Link>
-  );
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 2100, overflowY: 'auto',
-        background: 'rgba(9, 9, 12, 0.92)', backdropFilter: 'blur(10px)',
-        padding: '1.5rem',
-        // Without this, scrolling past the end of this panel scrolls the gallery behind it.
-        overscrollBehavior: 'contain',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'var(--bg)', border: '1px solid var(--border)',
-          borderRadius: '20px', width: 'min(1080px, 100%)', margin: '0 auto',
-          padding: '1.5rem 2rem 3rem', boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-        }}
-      >
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: '1rem', marginBottom: '1.25rem',
-        }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-            {locked
-              ? 'Template · everything it contains is on this page; it just cannot be applied yet'
-              : 'Template · picking it fills in the setup steps, so you can change anything first'}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close"
-            style={{
-              background: 'none', border: 'none', color: 'var(--text-tertiary)',
-              cursor: 'pointer', fontSize: '1.5rem', lineHeight: 1, padding: 0,
-            }}
-          >×</button>
-        </div>
-
-        <DesignSystemView
-          name={system.name}
-          description={system.description}
-          color={system.color}
-          brand={system.brand}
-          tokensMap={system.tokensMap}
-          components={system.components}
-          meta={system.meta}
-          actions={locked ? (
-            <>
-              {plansBtn}
-              <button type="button" style={ghostBtn} onClick={onShowFree}>Show free templates</button>
-            </>
-          ) : applyBtn(false)}
-          badge={locked ? <ProBadge /> : null}
-        />
-      </div>
-    </div>
-  );
-};
-
-export default function TemplateGallery({ projectName, onUse }) {
+// onUse is gone with the card's buttons: the gallery browses, and /templates/:id applies.
+export default function TemplateGallery({ projectName }) {
   const [query, setQuery] = useState('');
   const [tier, setTier] = useState('all');
   // Arrays, not single ids: OR inside a facet, AND across them. An empty array means the
   // facet is unconstrained, which is what the "All" chip restores.
   const [industries, setIndustries] = useState([]);
   const [styles, setStyles] = useState([]);
-  const [details, setDetails] = useState(null);
 
   const selection = { industries, styles, tier, query };
   const results = selectTemplates(selection);
@@ -567,13 +414,7 @@ export default function TemplateGallery({ projectName, onUse }) {
             )}
             <div style={{ ...grid('230px'), gap: '1rem' }}>
               {results.map(t => (
-                <TemplateCard
-                  key={t.id}
-                  t={t}
-                  projectName={projectName}
-                  onDetails={setDetails}
-                  onUse={onUse}
-                />
+                <TemplateCard key={t.id} t={t} projectName={projectName} />
               ))}
             </div>
           </>
@@ -581,14 +422,6 @@ export default function TemplateGallery({ projectName, onUse }) {
 
       </div>
 
-      {details && (
-        <Details
-          t={details}
-          onClose={() => setDetails(null)}
-          onUse={(t) => { setDetails(null); onUse(t); }}
-          onShowFree={() => { setDetails(null); setTier('free'); }}
-        />
-      )}
     </div>
   );
 }

@@ -3,7 +3,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useProjects } from '../context/ProjectContext';
 import StartChoice from '../components/StartChoice';
 import TemplateGallery from '../components/newProject/TemplateGallery';
-import { seedFromTemplate } from '../components/newProject/templateData';
 
 // Creating a project is two steps: name it, then choose how the brand gets built.
 //
@@ -38,18 +37,15 @@ export default function NewProjectPage() {
   // No brand, no tokens: addProject already defaults to an empty token map, and a project
   // the user creates should start genuinely empty rather than pre-filled with guesses.
   // `setup` rides along in route state so the project opens with that wizard running.
-  const create = (setup, template) => {
+  const create = (setup) => {
     if (!named) return;
     const project = addProject({
       title: projectName.trim(),
       description: '',
-      // A template's primary, so the project's tile in the list already carries its
-      // colour. Falls back to the app accent, which is what every project used before.
-      color: (template && template.customPalette && template.customPalette.primary) || '#FC0694',
+      color: '#FC0694',
       brand: { toneKeywords: [] },
     });
-    navigate('/projects/' + project.id,
-      setup ? { state: { setup, template: template || undefined } } : undefined);
+    navigate('/projects/' + project.id, setup ? { state: { setup } } : undefined);
   };
 
   return (
@@ -154,12 +150,10 @@ export default function NewProjectPage() {
               onPick={(key) => create(key)}
             />
 
-            {/* Under the two cards, not behind a third one. Using a template creates the
-                project and opens the same wizard 'scratch' does, pre-filled. */}
-            <TemplateGallery
-              projectName={projectName.trim()}
-              onUse={(t) => create('scratch', seedFromTemplate(t))}
-            />
+            {/* Under the two cards. Each one links to its own page, opened in a new tab,
+                which is also where a template is applied — so this list only browses and
+                the half-typed name on this screen survives being curious. */}
+            <TemplateGallery projectName={projectName.trim()} />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1.75rem' }}>
               <button
