@@ -105,9 +105,12 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
   const locked = t.tier === 'pro';
   const p = t.palette;
   return (
-    <div style={{
+    <div className="tpl-card" style={{
       ...card(false), padding: 0, overflow: 'hidden', cursor: 'default',
-      display: 'flex', flexDirection: 'column',
+      display: 'flex', flexDirection: 'column', position: 'relative',
+      // Through a custom property so the class below can flip it on hover and focus. The
+      // inline border card() writes would otherwise beat any rule without !important.
+      border: '1px solid var(--tpl-border, var(--border))',
     }}>
       <Canvas t={t} projectName={projectName} />
 
@@ -137,9 +140,30 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
           {industryName(t.industry)} · {t.vibe} · {scaleLabel(t.scaleRatio)}
         </div>
 
+        {/* The card opens the detail view. A transparent button stretched over the card
+            rather than a wrapper around it, because Canvas renders a real <button> and a
+            real <input> — inert stops them being focused, but <button> inside <button> is
+            still invalid markup and React says so. As a sibling it nests nothing.
+
+            It comes before the action row in DOM order, so that row's own positioned
+            buttons paint above it and keep their clicks. */}
+        <button
+          type="button"
+          className="sf-focus"
+          onClick={() => onDetails(t)}
+          aria-label={t.name + ' — see what it contains'}
+          style={{
+            position: 'absolute', inset: 0, zIndex: 1,
+            background: 'none', border: 'none', padding: 0, margin: 0,
+            cursor: 'pointer', touchAction: 'manipulation',
+          }}
+        />
+
         <div style={{
           marginTop: 'auto', paddingTop: '0.4rem', display: 'flex',
           alignItems: 'center', gap: '0.6rem',
+          // Above the stretched button, so these stay clickable.
+          position: 'relative', zIndex: 2,
         }}>
           {/* Not a disabled button: a disabled element fires no hover events, so its
               title never appears and the card would say "Needs Pro" with no way to
@@ -147,6 +171,7 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
               which is where the explanation and the link to plans already are. */}
           <button
             type="button"
+            className="sf-focus"
             onClick={() => (locked ? onDetails(t) : onUse(t))}
             title={locked
               ? 'Pro templates unlock when paid plans launch after beta — see what it contains'
@@ -157,19 +182,24 @@ const TemplateCard = ({ t, projectName, onDetails, onUse }) => {
               background: locked ? 'transparent' : 'var(--accent)',
               border: locked ? '1px solid var(--accent)' : 'none',
               color: locked ? 'var(--accent)' : '#fff',
+              touchAction: 'manipulation',
             }}
           >
             {locked ? 'See what it has' : 'Use this'}
           </button>
+          {/* Named and in the accent colour. It was 12px grey and borderless, which is why
+              the detail view read as missing rather than merely hard to see. */}
           <button
             type="button"
+            className="sf-focus"
             onClick={() => onDetails(t)}
             style={{
               background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              color: 'var(--text-secondary)', fontSize: '0.75rem', fontFamily: 'inherit',
+              color: 'var(--accent)', fontSize: '0.75rem', fontWeight: 600,
+              fontFamily: 'inherit', touchAction: 'manipulation',
             }}
           >
-            Details
+            View details →
           </button>
         </div>
       </div>
@@ -323,6 +353,13 @@ export default function TemplateGallery({ projectName, onUse }) {
 
   return (
     <div>
+      {/* Ships with the markup it targets, the way DesignSystemView carries its own rules.
+          index.css is deliberately untouched — the focus ring reuses .sf-focus from there
+          rather than inventing a second convention for the same job. */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .tpl-card:hover, .tpl-card:focus-within { --tpl-border: var(--accent); }
+      `}} />
+
       {/* A rule and a heading, because this is a second offer under the first two rather
           than more of the same thing. */}
       <div style={{
