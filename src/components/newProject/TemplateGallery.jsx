@@ -284,7 +284,9 @@ const Details = ({ t, onClose, onUse, onShowFree }) => {
           gap: '1rem', marginBottom: '1.25rem',
         }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-            Template{locked ? ' · needs Pro' : ''}
+            {locked
+              ? 'Template · everything it contains is on this page; it just cannot be applied yet'
+              : 'Template · picking it fills in the setup steps, so you can change anything first'}
           </span>
           <button
             type="button"
@@ -311,11 +313,7 @@ const Details = ({ t, onClose, onUse, onShowFree }) => {
               <button type="button" style={ghostBtn} onClick={onShowFree}>Show free templates</button>
             </>
           ) : applyBtn(false)}
-          footerTitle={locked ? t.name + ' needs Pro' : 'Start from ' + t.name}
-          footerBody={locked
-            ? 'Everything it contains is on this page — the palette, the type, the scale and every token it writes. It just cannot be applied yet.'
-            : 'Picking it fills in the setup steps with these answers, so you can change anything before it is applied.'}
-          footerActions={locked ? plansBtn : applyBtn(true)}
+          badge={locked ? <ProBadge /> : null}
         />
       </div>
     </div>

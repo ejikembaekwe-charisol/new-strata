@@ -8,19 +8,11 @@ import { deriveTokens } from '../data/derivedTokens';
 import { liveReleaseOf, releasesOf, formatStamp, storageUsage } from '../data/releases';
 // Imported, not redefined. The template detail view renders the same swatches and
 // offers the same three formats, and a second copy here could drift from it.
-import { renderTokenPreview } from '../components/TokenPreview';
+import TokenExplorer from '../components/TokenExplorer';
+import BrandSummary from '../components/BrandSummary';
 import { EXPORT_FORMATS, exportTextFor } from '../data/tokenExport';
 
-const TYPE_COLORS = {
-  color: '#FC0694',
-  fontFamily: '#10B981',
-  fontSize: '#3B82F6',
-  spacing: '#F59E0B',
-  borderRadius: '#8B5CF6',
-  shadow: '#EC4899',
-  duration: '#6366F1',
-  easing: '#14B8A6',
-};
+// TYPE_COLORS moved into TokenExplorer, which is the only thing that paints type pills.
 
 // Live sites are only shown green when they actually say they're live.
 const siteStatusColor = (status) => String(status || '').toLowerCase() === 'live'
@@ -288,12 +280,10 @@ const SharedProject = () => {
   const { projects, addProject } = useProjects();
   const [copiedToken, setCopiedToken] = useState(null);
   const [previewTheme, setPreviewTheme] = useState('dark');
-  const [tokenSearch, setTokenSearch] = useState('');
+  // Search, tier and category live inside TokenExplorer now.
   const [activeExportTab, setActiveExportTab] = useState('css');
   const [activeTab, setActiveTab] = useState('overview');
   const [activeAudience, setActiveAudience] = useState('overview');
-  const [selectedTier, setSelectedTier] = useState('brand');
-  const [selectedCategory, setSelectedCategory] = useState('All');
   const [forking, setForking] = useState(false);
   const [sandboxColor, setSandboxColor] = useState(SANDBOX_COLORS[0]);
   const [sandboxRadius, setSandboxRadius] = useState(SANDBOX_RADII[1].value);
@@ -718,17 +708,8 @@ const SharedProject = () => {
     }
   }
 
-  const tokenCategories = Array.from(tokenCategoriesSet);
 
-  const filteredTokens = allTokens.filter(t => {
-    const tierMatch = selectedTier === 'all' || t.tier === selectedTier;
-    const catMatch = selectedCategory === 'All' || t.category === selectedCategory;
-    const searchMatch = tokenSearch === '' || 
-      t.name.toLowerCase().includes(tokenSearch.toLowerCase()) || 
-      t.value.toLowerCase().includes(tokenSearch.toLowerCase()) ||
-      t.type.toLowerCase().includes(tokenSearch.toLowerCase());
-    return tierMatch && catMatch && searchMatch;
-  });
+  // filteredTokens went with it — the component does its own filtering.
 
   const projectSlug = (project.name || 'design-system').toLowerCase().replace(/\s+/g, '-');
 
@@ -1259,228 +1240,17 @@ const SharedProject = () => {
                 </button>
               </div>
 
-              {/* Color swatches & typography preview */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem'
-              }}>
-                <div>
-                  <h3 style={{ margin: '0 0 1rem 0', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>Brand Color Swatches</h3>
-                  {brandSwatches.length === 0 && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No brand colours defined for this system.</p>
-                  )}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
-                    {brandSwatches.map(c => (
-                      <div key={c.label} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'var(--bg-tertiary)', padding: '0.5rem 1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                        <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: c.value, border: '1px solid rgba(255,255,255,0.1)' }} />
-                        <div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{c.label}</div>
-                          <div 
-                            onClick={() => handleCopy(c.value, c.label)}
-                            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                            title="Click to copy hex"
-                          >
-                            {c.value.toUpperCase()}
-                            <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>{copiedToken === c.label ? '✓' : '📋'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
-                  <div>
-                    <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>Heading Typography</h3>
-                    {brand.headingFont ? (
-                      <>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Family: {brand.headingFont}</span>
-                        <span style={{ fontSize: '1.75rem', fontWeight: 800, fontFamily: brand.headingFont, color: 'var(--text-primary)', display: 'block', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-                          The quick brown fox jumps.
-                        </span>
-                      </>
-                    ) : (
-                      <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No heading font defined.</p>
-                    )}
-                  </div>
-                  <div>
-                    <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>Body Typography</h3>
-                    {brand.bodyFont ? (
-                      <>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>Family: {brand.bodyFont}</span>
-                        <span style={{ fontSize: '0.9rem', lineHeight: 1.6, fontFamily: brand.bodyFont, color: 'var(--text-secondary)', display: 'block' }}>
-                          Strata compiles modular, structured design variables directly from brand assets. Every UI token maintains dynamic reference parameters back to global design layers.
-                        </span>
-                      </>
-                    ) : (
-                      <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No body font defined.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Tone Guidelines */}
-              <div style={{
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
-              }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>Tone & Voice</h3>
-                  <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Design communication specifications.</p>
-                </div>
-                
-                <div>
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem' }}>Keywords</span>
-                  {(brand.toneKeywords || []).length === 0 && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', margin: 0 }}>No tone keywords defined.</p>
-                  )}
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {(brand.toneKeywords || []).map(k => (
-                      <span key={k} style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.3rem 0.8rem', borderRadius: '100px', fontSize: '0.78rem', fontWeight: 500 }}>
-                        {k}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                
-                <div>
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', marginBottom: '0.3rem' }}>Voice Guidelines</span>
-                  <p style={{ margin: 0, fontSize: '0.9rem', color: brand.voice ? 'var(--text-secondary)' : 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                    {brand.voice || 'No voice guidelines defined.'}
-                  </p>
-                </div>
-              </div>
+              {/* Colours, type specimens and tone — a component, so a template's detail
+                  view describes a brand through exactly the same blocks. */}
+              <BrandSummary brand={brand} brandSwatches={brandSwatches} />
 
             </div>
           )}
 
           {/* TOKENS TAB */}
-          {activeTab === 'tokens' && (
-            <div style={{
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '20px', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem'
-            }}>
-              
-              {/* Header with Search and Sliding Pill */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', borderBottom: '1px solid var(--border)', paddingBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>Token Dictionary</h3>
-                    <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Full spec index of atomic variables.</p>
-                  </div>
-                  <input 
-                    type="text" 
-                    placeholder="Search variables..."
-                    value={tokenSearch}
-                    onChange={(e) => setTokenSearch(e.target.value)}
-                    style={{
-                      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                      color: 'var(--text-primary)', padding: '0.4rem 1rem', borderRadius: '100px',
-                      fontSize: '0.85rem', width: '220px', outline: 'none'
-                    }}
-                  />
-                </div>
-
-                {/* Sliding Category Pill Filter */}
-                <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-tertiary)', padding: '0.25rem', borderRadius: '100px', border: '1px solid var(--border)', width: 'fit-content' }}>
-                  {[
-                    { id: 'brand', label: 'Brand Core' },
-                    { id: 'semantic', label: 'Semantic' },
-                    { id: 'component', label: 'Component Tier' },
-                    { id: 'all', label: 'Show All' }
-                  ].map(pill => (
-                    <button
-                      key={pill.id}
-                      onClick={() => setSelectedTier(pill.id)}
-                      style={{
-                        background: selectedTier === pill.id ? 'var(--accent)' : 'transparent',
-                        border: 'none',
-                        padding: '0.4rem 1.1rem',
-                        borderRadius: '100px',
-                        color: selectedTier === pill.id ? '#ffffff' : 'var(--text-secondary)',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      {pill.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Side Category Selector + Table Grid */}
-              <div className="sp-token-grid" style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '2rem' }}>
-                {/* Category Sidebar list */}
-                <div className="sp-token-categories" style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', borderRight: '1px solid var(--border)', paddingRight: '1rem' }}>
-                  <span className="sp-token-categories-label" style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>Categories</span>
-                  {tokenCategories.map(cat => (
-                    <button
-                      key={cat}
-                      className="sp-token-category-btn"
-                      onClick={() => setSelectedCategory(cat)}
-                      style={{
-                        background: selectedCategory === cat ? 'rgba(255,255,255,0.05)' : 'none',
-                        border: 'none',
-                        textAlign: 'left',
-                        padding: '0.5rem 0.75rem',
-                        borderRadius: '8px',
-                        color: selectedCategory === cat ? 'var(--accent)' : 'var(--text-secondary)',
-                        fontSize: '0.82rem',
-                        fontWeight: selectedCategory === cat ? '600' : '500',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Tokens display list */}
-                <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '550px', overflowY: 'auto' }}>
-                  <div className="sp-token-table-header" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '1rem', padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)', marginBottom: '0.25rem' }}>
-                    {['Name', 'Value', 'Type', 'Visual Preview'].map(h => (
-                      <span key={h} style={{ fontSize: '0.68rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</span>
-                    ))}
-                  </div>
-
-                  {filteredTokens.length > 0 ? (
-                    filteredTokens.map((t, idx) => (
-                      <div key={idx} className="sp-token-row" style={{
-                        display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr 1.5fr', gap: '1rem', alignItems: 'center',
-                        padding: '0.6rem 0.875rem', borderBottom: '1px solid rgba(128,128,128,0.08)'
-                      }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase', marginTop: '0.1rem' }}>{t.tier}</span>
-                        </div>
-                        <span 
-                          onClick={() => handleCopy(t.value, t.name)}
-                          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                          title="Click to copy value"
-                        >
-                          {t.value}
-                          <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)' }}>{copiedToken === t.name ? '✓' : '📋'}</span>
-                        </span>
-                        <span style={{
-                          display: 'inline-flex', alignSelf: 'center', justifySelf: 'start',
-                          fontSize: '0.65rem', padding: '0.15rem 0.5rem', borderRadius: '100px',
-                          background: `${TYPE_COLORS[t.type] || 'rgba(255,255,255,0.1)'}15`, color: TYPE_COLORS[t.type] || 'var(--text-primary)',
-                          border: `1px solid ${TYPE_COLORS[t.type] || 'rgba(255,255,255,0.1)'}30`, fontWeight: 500, letterSpacing: '0.03em',
-                        }}>{t.type}</span>
-                        <div>{renderTokenPreview(t)}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>No tokens matching selected filters.</div>
-                  )}
-                </div>
-              </div>
-
-            </div>
-          )}
+          {/* The dictionary is a component now, so a template's detail view shows tokens
+              through exactly the same table rather than a second implementation. */}
+          {activeTab === 'tokens' && <TokenExplorer tokens={allTokens} />}
 
           {/* COMPONENTS TAB */}
           {activeTab === 'components' && (
