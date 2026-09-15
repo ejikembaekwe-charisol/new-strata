@@ -28,6 +28,7 @@ import {
   EXPORT_FORMATS, exportTextFor, cssVariablesFrom, dtcgJsonFrom, tailwindThemeFrom,
 } from '../data/tokenExport';
 import { designMarkdown, markdownSlug } from '../data/designMarkdown';
+import TokenExplorer from '../components/TokenExplorer';
 import {
   isSupported as fsIsSupported, loadHandle, forgetHandle, permissionState,
   requestPermission, pickFolder, writeFiles, downloadText, mimeFor,
@@ -4592,6 +4593,15 @@ This document serves as our living source of truth.`
               Everything below is generated from this project's own tokens and components. */}
           {activeTab === 'handoff' && (() => {
             const tokensText = exportTextFor(devFormat, activeTokens);
+            // The dictionary wants a flat list carrying the tier its pills filter on.
+            // The store writes `layer`; reconciled here rather than in the shared component.
+            const devTokenList = [];
+            for (const cat in activeTokens) {
+              if (!Array.isArray(activeTokens[cat])) continue;
+              activeTokens[cat].forEach(t => devTokenList.push({
+                ...t, category: cat, tier: String(t.tier || t.layer || 'Brand').toLowerCase(),
+              }));
+            }
             const compIndex = indexById(components);
             const mdText = designMarkdown({ ...project, components }, activeTokens);
 
@@ -4689,6 +4699,17 @@ This document serves as our living source of truth.`
                       {dlBtn(devFormat === 'css' ? 'tokens.css'
                         : devFormat === 'tailwind' ? 'tailwind.tokens.json' : 'tokens.json', tokensText)}
                     </div>
+
+                    {/* The file above is the thing being copied; this is what is in it. The
+                        same dictionary the public system page uses, so a token looks the same
+                        wherever it is read, and each row copies its own value. */}
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+                      <div style={{
+                        fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em',
+                        color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.75rem',
+                      }}>What is in it</div>
+                      <TokenExplorer tokens={devTokenList} />
+                    </div>
                   </div>
                 )}
 
@@ -4722,7 +4743,24 @@ This document serves as our living source of truth.`
                             {copyBtn(componentCss(c, compIndex), 'css-' + c.id, 'Copy CSS')}
                             {copyBtn(componentJsx(c), 'jsx-' + c.id, 'Copy JSX')}
                           </div>
-                          <pre style={{ ...preStyle, maxHeight: '200px' }}>{componentJsx(c) + '\n\n' + componentCss(c, compIndex)}</pre>
+                          {/* The component as it actually renders, from the same pipeline
+                              the Components tab uses — so what is copied and what is seen
+                              cannot drift. renderThumbPreview rather than the live one: a
+                              preview here should not pop an alert when clicked. */}
+                          <div className="dev-code-row" style={{
+                            display: 'grid', gridTemplateColumns: 'minmax(0, 200px) minmax(0, 1fr)',
+                            gap: '1rem', alignItems: 'start',
+                          }}>
+                            <div style={{
+                              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                              borderRadius: '10px', padding: '1rem', display: 'flex',
+                              alignItems: 'center', justifyContent: 'center', minHeight: '86px',
+                              overflow: 'hidden',
+                            }}>
+                              {renderThumbPreview(c)}
+                            </div>
+                            <pre style={{ ...preStyle, maxHeight: '200px', margin: 0 }}>{componentJsx(c) + '\n\n' + componentCss(c, compIndex)}</pre>
+                          </div>
                         </div>
                       ))}
                     </div>
