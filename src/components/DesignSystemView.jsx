@@ -31,7 +31,7 @@ const railHead = { margin: 0, fontSize: '0.85rem', fontWeight: 600, color: 'var(
 
 export default function DesignSystemView({
   name, description, color, brand, tokensMap, components,
-  meta = [], actions = null, badge = null,
+  meta = [], actions = null, badge = null, overviewLead = null,
 }) {
   const [tab, setTab] = useState('overview');
   const [copied, setCopied] = useState(null);
@@ -151,6 +151,7 @@ export default function DesignSystemView({
           {/* ── Overview ─────────────────────────────────────────────── */}
           {current === 'overview' && (
             <>
+              {overviewLead}
               {facts.length >= 2 && (
                 <div style={cardBox}>
                   <div>

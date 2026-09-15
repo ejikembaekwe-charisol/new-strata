@@ -40,10 +40,12 @@ import { INDUSTRIES, VIBES, CUSTOM_ID, pairingById, industryName } from './desig
 export const TEMPLATES = [
   // ── Interpretations of well-known product surfaces ──────────────────────
   //
-  // Named "X Inspired" and described as interpretations because that is what they are:
-  // palettes approximated from publicly visible brand colours, not those companies' design
-  // tokens, which we do not have and could not honestly claim to ship. None of these is
-  // affiliated with the company it is named after.
+  // Named plainly, and described as interpretations because that is what they are: palettes
+  // approximated from publicly visible brand colours, not those companies' design tokens,
+  // which we do not have and could not honestly claim to ship. None of these is affiliated
+  // with the company it is named after, which is why every description still says so — the
+  // plainer the name and the more real the logo beside it, the more that line earns its
+  // place.
   //
   // Typefaces are the harder honesty problem. Sohne, SF Pro, Geist and Inter Display are
   // not families this app loads, and a template naming an unloaded family makes its own
@@ -51,73 +53,73 @@ export const TEMPLATES = [
   // thing it is showing you. So each maps to the closest family that IS loaded, and each
   // description says which substitution was made.
   {
-    id: 'stripe', name: 'Stripe Inspired', tier: 'free',
+    id: 'stripe', name: 'Stripe', tier: 'free',
     description: "An interpretation of Stripe's design language, not affiliated with Stripe. Indigo over deep navy — what a payments brand reaches for when it needs to look safe. Manrope and Inter stand in for Sohne, which this app does not load.",
     industry: 'finance', vibe: 'Professional',
-    palette: { name: 'Stripe Inspired', primary: '#635BFF', secondary: '#0A2540', accent: '#00D4FF' },
+    palette: { name: 'Stripe', primary: '#635BFF', secondary: '#0A2540', accent: '#00D4FF' },
     pairingId: 'manrope-inter', baseSize: '1rem', scaleRatio: 1.25,
     voiceTags: ['Professional', 'Technical'],
     tags: ['stripe', 'payments', 'fintech', 'indigo', 'popular'],
   },
   {
-    id: 'linear', name: 'Linear Inspired', tier: 'free',
+    id: 'linear', name: 'Linear', tier: 'free',
     description: "An interpretation of Linear's design language, not affiliated with Linear. A violet-blue on near-black, sized for dense product surfaces. Sora and IBM Plex Sans stand in for Inter Display.",
     industry: 'saas', vibe: 'Minimal',
-    palette: { name: 'Linear Inspired', primary: '#5E6AD2', secondary: '#08090A', accent: '#A8B1FF' },
+    palette: { name: 'Linear', primary: '#5E6AD2', secondary: '#08090A', accent: '#A8B1FF' },
     pairingId: 'sora-plex', baseSize: '0.9375rem', scaleRatio: 1.125,
     voiceTags: ['Minimal', 'Technical'],
     tags: ['linear', 'issue tracker', 'dark', 'dense', 'popular'],
   },
   {
-    id: 'github', name: 'GitHub Inspired', tier: 'free',
+    id: 'github', name: 'GitHub', tier: 'free',
     description: "An interpretation of GitHub's dark mode, not affiliated with GitHub. The canonical near-black canvas with the blue and green it signals with. JetBrains Mono and Inter, which is close to what a code host actually ships.",
     industry: 'saas', vibe: 'Technical',
-    palette: { name: 'GitHub Inspired', primary: '#2F81F7', secondary: '#0D1117', accent: '#3FB950' },
+    palette: { name: 'GitHub', primary: '#2F81F7', secondary: '#0D1117', accent: '#3FB950' },
     pairingId: 'mono-inter', baseSize: '0.9375rem', scaleRatio: 1.125,
     voiceTags: ['Technical', 'Professional'],
     tags: ['github', 'developer', 'code', 'dark', 'popular'],
   },
   {
-    id: 'vercel', name: 'Vercel Inspired', tier: 'free',
+    id: 'vercel', name: 'Vercel', tier: 'free',
     description: "An interpretation of Vercel's design language, not affiliated with Vercel. Pure black, one electric blue and a gradient purple — a developer platform with the contrast turned all the way up. Space Grotesk and Inter stand in for Geist.",
     industry: 'saas', vibe: 'Bold',
-    palette: { name: 'Vercel Inspired', primary: '#0070F3', secondary: '#000000', accent: '#7928CA' },
+    palette: { name: 'Vercel', primary: '#0070F3', secondary: '#000000', accent: '#7928CA' },
     pairingId: 'space-inter', baseSize: '1rem', scaleRatio: 1.333,
     voiceTags: ['Bold', 'Technical'],
     tags: ['vercel', 'developer', 'platform', 'black', 'popular'],
   },
   {
-    id: 'figma', name: 'Figma Inspired', tier: 'free',
+    id: 'figma', name: 'Figma', tier: 'free',
     description: "An interpretation of Figma's design language, not affiliated with Figma. The multicolour toolkit palette on a neutral canvas. Outfit and Inter, rounded the way its interface is.",
     industry: 'creative', vibe: 'Playful',
-    palette: { name: 'Figma Inspired', primary: '#A259FF', secondary: '#1E1E1E', accent: '#0ACF83' },
+    palette: { name: 'Figma', primary: '#A259FF', secondary: '#1E1E1E', accent: '#0ACF83' },
     pairingId: 'outfit-inter', baseSize: '1rem', scaleRatio: 1.25,
     voiceTags: ['Playful', 'Bold'],
     tags: ['figma', 'design tool', 'colourful', 'popular'],
   },
   {
-    id: 'framer', name: 'Framer Inspired', tier: 'free',
+    id: 'framer', name: 'Framer', tier: 'free',
     description: "An interpretation of Framer's design language, not affiliated with Framer. One saturated blue on near-black, the page treated like a working artboard. Space Grotesk and Inter.",
     industry: 'creative', vibe: 'Bold',
-    palette: { name: 'Framer Inspired', primary: '#0055FF', secondary: '#111111', accent: '#00CCFF' },
+    palette: { name: 'Framer', primary: '#0055FF', secondary: '#111111', accent: '#00CCFF' },
     pairingId: 'space-inter', baseSize: '1rem', scaleRatio: 1.333,
     voiceTags: ['Bold', 'Minimal'],
     tags: ['framer', 'builder', 'site', 'blue', 'popular'],
   },
   {
-    id: 'apple', name: 'Apple Inspired', tier: 'free',
+    id: 'apple', name: 'Apple', tier: 'free',
     description: "An interpretation of Apple's design language, not affiliated with Apple. System blue over graphite, with the restraint of a product page. Manrope and Inter stand in for SF Pro, which this app does not load.",
     industry: 'fashion', vibe: 'Minimal',
-    palette: { name: 'Apple Inspired', primary: '#0071E3', secondary: '#1D1D1F', accent: '#64D2FF' },
+    palette: { name: 'Apple', primary: '#0071E3', secondary: '#1D1D1F', accent: '#64D2FF' },
     pairingId: 'manrope-inter', baseSize: '1.0625rem', scaleRatio: 1.25,
     voiceTags: ['Minimal', 'Professional'],
     tags: ['apple', 'product', 'retail', 'graphite', 'popular'],
   },
   {
-    id: 'claude', name: 'Claude Inspired', tier: 'free',
+    id: 'claude', name: 'Claude', tier: 'free',
     description: "An interpretation of Claude's design language, not affiliated with Anthropic. Terracotta on warm cream — an editorial canvas rather than a dark product shell. Fraunces and Inter.",
     industry: 'saas', vibe: 'Warm',
-    palette: { name: 'Claude Inspired', primary: '#D97757', secondary: '#FAF9F5', accent: '#7D8471' },
+    palette: { name: 'Claude', primary: '#D97757', secondary: '#FAF9F5', accent: '#7D8471' },
     pairingId: 'fraunces-inter', baseSize: '1.0625rem', scaleRatio: 1.2,
     voiceTags: ['Warm', 'Friendly'],
     tags: ['claude', 'anthropic', 'warm', 'cream', 'editorial', 'popular'],

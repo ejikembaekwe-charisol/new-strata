@@ -18,6 +18,7 @@ import { renderComponentPreview } from '../componentPreviews';
 import { inkOn } from '../../data/ink';
 import { industryName, pairingById } from './designSystemData';
 import { card, chip, chipCount, grid, groupLabel } from './stepStyles';
+import { brandAssetsFor } from '../../data/brandAssets';
 import {
   TEMPLATES, INDUSTRY_FACETS, VIBE_FACETS, FREE_COUNT, scaleLabel,
   selectTemplates, facetCounts,
@@ -112,6 +113,9 @@ const ProBadge = () => (
 const TemplateCard = ({ t, projectName }) => {
   const locked = t.tier === 'pro';
   const p = t.palette;
+  // Null for twelve of the twenty. A template with no mark shows none rather than a blank
+  // tile where the others have one.
+  const brand = brandAssetsFor(t.id);
   return (
     <div className="tpl-card" style={{
       ...card(false), padding: 0, overflow: 'hidden', cursor: 'default',
@@ -120,6 +124,31 @@ const TemplateCard = ({ t, projectName }) => {
       // inline border card() writes would otherwise beat any rule without !important.
       border: '1px solid var(--tpl-border, var(--border))',
     }}>
+      {/* The mark sits over the template's own canvas colour, above the specimen rather
+          than instead of it — the specimen is the part that shows what you actually get. */}
+      {brand && (
+        <div style={{
+          background: p.secondary, padding: '0.9rem 0.85rem 0',
+          display: 'flex', alignItems: 'center',
+        }}>
+          <span style={{
+            width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0,
+            background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            overflow: 'hidden',
+          }}>
+            <img
+              src={brand.logo}
+              alt=""
+              aria-hidden="true"
+              width="28"
+              height="28"
+              style={{ width: '28px', height: '28px', objectFit: 'contain', display: 'block' }}
+            />
+          </span>
+        </div>
+      )}
+
       <Canvas t={t} projectName={projectName} />
 
       <div style={{

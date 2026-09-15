@@ -16,6 +16,7 @@ import { useProjects } from '../context/ProjectContext';
 import DesignSystemView from '../components/DesignSystemView';
 import { systemFromTemplate } from '../data/templateSystem';
 import { TEMPLATES, seedFromTemplate } from '../components/newProject/templateData';
+import { brandAssetsFor, capturedLabel } from '../data/brandAssets';
 
 const ProBadge = () => (
   <span style={{
@@ -53,6 +54,8 @@ export default function TemplatePage() {
 
   const locked = template.tier === 'pro';
   const system = systemFromTemplate(template);
+  // Only the eight that interpret a real product have one.
+  const brand = brandAssetsFor(template.id);
 
   const use = () => {
     if (!user) {
@@ -91,6 +94,47 @@ export default function TemplatePage() {
         components={system.components}
         meta={system.meta}
         badge={locked ? <ProBadge /> : null}
+        overviewLead={brand ? (
+          <div style={{
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            borderRadius: '20px', padding: '2rem', display: 'flex',
+            flexDirection: 'column', gap: '1rem',
+          }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {template.name}&rsquo;s website
+              </h3>
+              <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                Where the palette and type below were read from.
+              </p>
+            </div>
+            {/* A still, not an embed: every one of these sites refuses third-party framing,
+                so an iframe would render blank. Sized explicitly at its real 1440x900 so the
+                page does not jump while it loads. */}
+            <img
+              src={brand.shot}
+              alt={'Screenshot of ' + brand.site}
+              width="1440"
+              height="900"
+              loading="lazy"
+              style={{
+                width: '100%', height: 'auto', display: 'block', borderRadius: '12px',
+                border: '1px solid var(--border)',
+              }}
+            />
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+              Screenshot of{' '}
+              <a
+                href={brand.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--accent)', textDecoration: 'none' }}
+              >{brand.site} &#8599;</a>
+              , captured {capturedLabel()}. It is a moment in time and will drift as the site
+              changes.
+            </p>
+          </div>
+        ) : null}
         actions={locked ? (
           <Link
             to="/pricing"
