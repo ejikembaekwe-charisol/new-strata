@@ -48,6 +48,45 @@ const Canvas = ({ t, projectName, height = 132 }) => {
   const pair = pairingById(t.pairingId);
   const ink = inkOn(p.secondary);
   const shared = { fontFamily: `'${pair.body}', sans-serif`, borderRadius: '6px' };
+  const brand = brandAssetsFor(t.id);
+
+  // A template that interprets a real product is recognised by its mark, so the mark is all
+  // the canvas shows. No inert needed here: an <img> is not focusable, unlike the real
+  // button and input the specimen below renders.
+  if (brand) {
+    return (
+      <div
+        aria-hidden="true"
+        style={{
+          background: p.secondary, height: height + 'px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+      >
+        {/* A light plate behind every mark, not just the ones that need it. These icons are
+            inconsistent — some ship their own background, some are a bare glyph — and
+            Framer's dark mark on its near-black canvas was invisible without one. A plate
+            on all eight is also what the reference grid does. */}
+        <span style={{
+          width: '64px', height: '64px', borderRadius: '14px', flexShrink: 0,
+          background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden',
+        }}>
+          <img
+            src={brand.logo}
+            alt=""
+            width="40"
+            height="40"
+            style={{ width: '40px', height: '40px', objectFit: 'contain', display: 'block' }}
+          />
+        </span>
+      </div>
+    );
+  }
+
+  // The other twelve have no mark. They keep the specimen — stripping it would leave a
+  // plain coloured rectangle saying nothing at all.
   return (
     // inert, because renderComponentPreview returns a real <button> and a real <input>.
     // Focusable content inside an aria-hidden decoration is a keyboard trap, and a button
@@ -113,9 +152,6 @@ const ProBadge = () => (
 const TemplateCard = ({ t, projectName }) => {
   const locked = t.tier === 'pro';
   const p = t.palette;
-  // Null for twelve of the twenty. A template with no mark shows none rather than a blank
-  // tile where the others have one.
-  const brand = brandAssetsFor(t.id);
   return (
     <div className="tpl-card" style={{
       ...card(false), padding: 0, overflow: 'hidden', cursor: 'default',
@@ -124,31 +160,8 @@ const TemplateCard = ({ t, projectName }) => {
       // inline border card() writes would otherwise beat any rule without !important.
       border: '1px solid var(--tpl-border, var(--border))',
     }}>
-      {/* The mark sits over the template's own canvas colour, above the specimen rather
-          than instead of it — the specimen is the part that shows what you actually get. */}
-      {brand && (
-        <div style={{
-          background: p.secondary, padding: '0.9rem 0.85rem 0',
-          display: 'flex', alignItems: 'center',
-        }}>
-          <span style={{
-            width: '40px', height: '40px', borderRadius: '10px', flexShrink: 0,
-            background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            overflow: 'hidden',
-          }}>
-            <img
-              src={brand.logo}
-              alt=""
-              aria-hidden="true"
-              width="28"
-              height="28"
-              style={{ width: '28px', height: '28px', objectFit: 'contain', display: 'block' }}
-            />
-          </span>
-        </div>
-      )}
-
+      {/* The mark is the canvas for a branded template — Canvas decides, so the card does
+          not need to know which templates have one. */}
       <Canvas t={t} projectName={projectName} />
 
       <div style={{
