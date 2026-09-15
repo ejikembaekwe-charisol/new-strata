@@ -9,6 +9,7 @@ import { liveReleaseOf, releasesOf, formatStamp, storageUsage } from '../data/re
 // Imported, not redefined. The template detail view renders the same swatches and
 // offers the same three formats, and a second copy here could drift from it.
 import TokenExplorer from '../components/TokenExplorer';
+import { designMarkdown } from '../data/designMarkdown';
 import BrandSummary from '../components/BrandSummary';
 import { EXPORT_FORMATS, exportTextFor } from '../data/tokenExport';
 
@@ -716,46 +717,9 @@ const SharedProject = () => {
   // Full design system as a single Markdown file — meant to be dropped straight
   // into a repo or pasted into an AI prompt, so an agent/LLM has the whole
   // system (brand, tokens, components) as grounded context.
-  const generateMarkdown = () => {
-    const lines = [];
-    lines.push(`# ${project.name}`);
-    if (project.description) lines.push(`\n${project.description}`);
-
-    lines.push(`\n## Brand`);
-    lines.push(`- Primary: \`${brand.primaryColor || project.color || '#FC0694'}\``);
-    lines.push(`- Secondary: \`${brand.secondaryColor || '#1A1A24'}\``);
-    lines.push(`- Accent: \`${brand.accentColor || '#3B82F6'}\``);
-    lines.push(`- Heading font: ${brand.headingFont || 'Outfit'}`);
-    lines.push(`- Body font: ${brand.bodyFont || 'Inter'}`);
-    if (brand.toneKeywords?.length) lines.push(`- Tone: ${brand.toneKeywords.join(', ')}`);
-    if (brand.voice) lines.push(`- Voice: ${brand.voice}`);
-
-    // An "## Integration" section stood here telling the reader to @import
-    // strata.io/api/v1/... and run `npx strata-cli sync`. No such endpoint or CLI exists,
-    // and this file is meant to be handed straight to an AI tool, so it was the worst
-    // place of all to invent instructions.
-
-    if (allTokens.length) {
-      lines.push(`\n## Tokens (${allTokens.length})`);
-      const byCategory = {};
-      allTokens.forEach(t => { (byCategory[t.category] = byCategory[t.category] || []).push(t); });
-      Object.keys(byCategory).forEach(cat => {
-        lines.push(`\n### ${cat}`);
-        lines.push(`| Name | Value | Type |`);
-        lines.push(`|---|---|---|`);
-        byCategory[cat].forEach(t => lines.push(`| \`${t.name}\` | \`${t.value}\` | ${t.type} |`));
-      });
-    }
-
-    if (project.components?.length) {
-      lines.push(`\n## Components (${project.components.length})`);
-      project.components.forEach(c => {
-        lines.push(`- **${c.name}**${c.description ? ` — ${c.description}` : ''}`);
-      });
-    }
-
-    return lines.join('\n') + '\n';
-  };
+  // The builder moved to data/designMarkdown.js so this page and Dev mode emit the same
+  // document. It also fills in components properly, which this version never did.
+  const generateMarkdown = () => designMarkdown(project, tokensMap);
 
   const handleDownloadMarkdown = () => {
     const dataStr = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(generateMarkdown());
