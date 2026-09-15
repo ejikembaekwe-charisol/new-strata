@@ -257,6 +257,52 @@ export const matchesQuery = (t, query) => {
 };
 
 /**
+ * Whether a template survives a selection.
+ *
+ * `industries` and `styles` are arrays and an empty one means "no constraint", so OR
+ * applies inside a facet and AND across them. That is what lets a second industry widen
+ * the set: with 12 templates spread over 7 industries and 8 styles, 44 of the 56
+ * industry-x-style pairs are empty, so a filter that could only ever narrow would spend
+ * most of its time pointing at nothing.
+ */
+export const filterTemplates = (t, sel) => {
+  const { industries = [], styles = [], tier = 'all', query = '' } = sel || {};
+  return (!industries.length || industries.includes(t.industry))
+    && (!styles.length || styles.includes(t.vibe))
+    && (tier === 'all' || t.tier === tier)
+    && matchesQuery(t, query);
+};
+
+export const selectTemplates = (sel) => TEMPLATES.filter(t => filterTemplates(t, sel));
+
+/**
+ * How many templates each chip would yield, given everything else that is selected.
+ *
+ * A facet's own selections are excluded when counting that facet — the standard faceted
+ * rule, and the one that makes multi-select usable. Counting Industry with the industry
+ * selection still applied would show every unselected industry as 0 the moment the first
+ * one was picked, so a second could never be added.
+ *
+ * With zero-count chips unreachable in the UI, this is what guarantees that no sequence of
+ * chip clicks can empty the grid. Only the search box can do that.
+ */
+export const facetCounts = (sel) => {
+  const countOf = (pred, without) =>
+    TEMPLATES.filter(t => pred(t) && filterTemplates(t, { ...sel, ...without })).length;
+  return {
+    industry: Object.fromEntries(INDUSTRY_FACETS.map(i =>
+      [i.id, countOf(t => t.industry === i.id, { industries: [] })])),
+    style: Object.fromEntries(VIBE_FACETS.map(v =>
+      [v, countOf(t => t.vibe === v, { styles: [] })])),
+    // What each "All" chip would yield — i.e. this facet cleared, everything else kept.
+    // Not the collection size: with Bold selected, clearing Industry gives 3, and a chip
+    // reading "All 12" beside a grid of 3 would simply be wrong.
+    industryAll: countOf(() => true, { industries: [] }),
+    styleAll: countOf(() => true, { styles: [] }),
+  };
+};
+
+/**
  * A template as a patch for ScratchWizard's `data`.
  *
  * Every key the wizard's seeding effects read is supplied deliberately: ScratchWizard

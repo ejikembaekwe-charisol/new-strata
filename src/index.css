@@ -80,3 +80,20 @@ p {
         --section-padding: 4rem 1.5rem;
     }
 }
+
+/* Focus rings for the template gallery's controls.
+ *
+ * These live here because inline style={{}} cannot express :focus-visible or
+ * :focus-within, and every control in that gallery is inline-styled.
+ *
+ * .sf-search exists because the search input sets outline:none — the caret alone is a
+ * poor focus indicator, so the ring moves to the pill that wraps it. */
+.sf-focus:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.sf-search:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}

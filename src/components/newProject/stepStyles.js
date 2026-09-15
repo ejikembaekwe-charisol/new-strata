@@ -21,7 +21,14 @@ export const card = (selected) => ({
   transition: 'border-color 0.15s, box-shadow 0.15s',
 });
 
-export const chip = (on) => ({
+/**
+ * A filter/choice chip. `dead` marks one that would return nothing — dimmed and not
+ * clickable, so a dead end is visible before the click rather than after it.
+ *
+ * `dead` is optional, so the existing single-argument callers in ScratchSteps are
+ * unaffected.
+ */
+export const chip = (on, dead) => ({
   padding: '0.45rem 0.95rem',
   borderRadius: '999px',
   border: '1px solid ' + (on ? 'var(--accent)' : 'var(--border)'),
@@ -29,8 +36,21 @@ export const chip = (on) => ({
   color: on ? '#fff' : 'var(--text-secondary)',
   fontSize: '0.82rem',
   fontWeight: on ? 600 : 400,
-  cursor: 'pointer',
+  cursor: dead ? 'not-allowed' : 'pointer',
   fontFamily: 'inherit',
+  // Removes the 300ms tap delay; these are the most-tapped controls in the flow.
+  touchAction: 'manipulation',
+  opacity: dead ? 0.38 : 1,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+});
+
+/** The count that rides inside a filter chip, after its label. */
+export const chipCount = (on) => ({
+  fontSize: '0.72rem',
+  fontVariantNumeric: 'tabular-nums',
+  color: on ? 'rgba(255,255,255,0.8)' : 'var(--text-tertiary)',
 });
 
 export const grid = (min) => ({
