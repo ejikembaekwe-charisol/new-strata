@@ -421,6 +421,7 @@ function ProjectDetailInner() {
   // ── Dev mode ───────────────────────────────────────────────────────────
   const [devFormat, setDevFormat] = useState('css');
   const [devCopied, setDevCopied] = useState(null);
+  const [devComponentSearch, setDevComponentSearch] = useState('');
   const fsSupported = fsIsSupported();
   const [fsDir, setFsDir] = useState(null);
   const [fsPerm, setFsPerm] = useState('prompt');
@@ -4605,6 +4606,14 @@ This document serves as our living source of truth.`
             const compIndex = indexById(components);
             const mdText = designMarkdown({ ...project, components }, activeTokens);
 
+            // Fragments have no element of their own, so they get no rule and no card.
+            const devCodeComponents = components.filter(c => c && c.template !== 'fragment');
+            const devQuery = devComponentSearch.trim().toLowerCase();
+            const devShownComponents = devQuery
+              ? devCodeComponents.filter(c => ((c.name || '') + ' ' + (c.template || '')
+                  + ' ' + (c.description || '')).toLowerCase().includes(devQuery))
+              : devCodeComponents;
+
             const files = [
               { name: 'tokens.css', text: cssVariablesFrom(activeTokens) },
               { name: 'tokens.json', text: dtcgJsonFrom(activeTokens) },
@@ -4659,8 +4668,10 @@ This document serves as our living source of truth.`
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  {[['tokens', 'Tokens'], ['components', 'Components'],
-                    ['md', 'DESIGN.md'], ['connect', 'Connect']].map(([id, label]) => (
+                  {/* Connect first: it is what the tab opens on, and it is the one thing
+                      here a developer does once rather than every time. */}
+                  {[['connect', 'Connect'], ['tokens', 'Tokens'],
+                    ['components', 'Components'], ['md', 'DESIGN.md']].map(([id, label]) => (
                     <button key={id} type="button" className="sf-focus" role="radio"
                       aria-checked={activeHandoffSubTab === id}
                       onClick={() => setActiveHandoffSubTab(id)}
@@ -4718,9 +4729,25 @@ This document serves as our living source of truth.`
                   <div style={panelStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                       <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {components.length} components
+                        {devComponentSearch.trim()
+                          ? devShownComponents.length + ' of ' + devCodeComponents.length + ' components'
+                          : devCodeComponents.length + ' components'}
                       </h3>
                       <div style={{ flex: 1 }} />
+                      <input
+                        type="text"
+                        aria-label="Search components"
+                        autoComplete="off"
+                        value={devComponentSearch}
+                        onChange={(e) => setDevComponentSearch(e.target.value)}
+                        placeholder="Search components…"
+                        style={{
+                          background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                          borderRadius: '999px', padding: '0.35rem 0.9rem',
+                          color: 'var(--text-primary)', fontSize: '0.8rem',
+                          fontFamily: 'inherit', width: '200px', maxWidth: '100%',
+                        }}
+                      />
                       {copyBtn(libraryCss(components, compIndex), 'libcss', 'Copy all CSS')}
                       {copyBtn(libraryJsx(components), 'libjsx', 'Copy all JSX')}
                       {dlBtn('components.css', libraryCss(components, compIndex))}
@@ -4730,8 +4757,25 @@ This document serves as our living source of truth.`
                       Styles reference the custom properties in <code>tokens.css</code>, so they
                       stay correct when a token changes. Take both files together.
                     </p>
+                    {devShownComponents.length === 0 && (
+                      <div style={{
+                        border: '1px solid var(--border)', borderRadius: '12px',
+                        padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)',
+                        fontSize: '0.85rem',
+                      }}>
+                        No component matches &ldquo;{devComponentSearch.trim()}&rdquo;.{' '}
+                        <button type="button" className="sf-focus"
+                          onClick={() => setDevComponentSearch('')}
+                          style={{
+                            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                            color: 'var(--accent)', fontSize: '0.85rem', fontFamily: 'inherit',
+                          }}>Clear the search</button>{' '}
+                        to see all {devCodeComponents.length}.
+                      </div>
+                    )}
+
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      {components.filter(c => c.template !== 'fragment').map(c => (
+                      {devShownComponents.map(c => (
                         <div key={c.id} style={{
                           border: '1px solid var(--border)', borderRadius: '12px',
                           padding: '1rem', background: 'var(--bg-tertiary)',
