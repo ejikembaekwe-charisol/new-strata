@@ -153,7 +153,7 @@ export default function NewProjectPage() {
             {/* Under the two cards. Each one links to its own page, opened in a new tab,
                 which is also where a template is applied — so this list only browses and
                 the half-typed name on this screen survives being curious. */}
-            <TemplateGallery projectName={projectName.trim()} />
+            <TemplateGallery />
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '1.75rem' }}>
               <button

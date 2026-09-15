@@ -6517,7 +6517,7 @@ export default function RootLayout({ children }) {
             {/* Under the two cards. Each links to its own page in a new tab, and applying
                 happens there — so a template no longer seeds *this* project's wizard; it
                 creates one of its own. That is the cost of the card being a plain link. */}
-            <TemplateGallery projectName={project?.name} />
+            <TemplateGallery />
           </div>
         </div>
       )}

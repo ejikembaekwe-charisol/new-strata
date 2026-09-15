@@ -14,8 +14,8 @@
 // and inventing some would make the card a picture of something that does not exist.
 
 import { useState } from 'react';
-import { renderComponentPreview } from '../componentPreviews';
 import { inkOn } from '../../data/ink';
+import { hexToRgb, contrastRatio } from '../ColorPicker';
 import { industryName, pairingById } from './designSystemData';
 import { card, chip, chipCount, grid, groupLabel } from './stepStyles';
 import { brandAssetsFor } from '../../data/brandAssets';
@@ -24,7 +24,19 @@ import {
   selectTemplates, facetCounts,
 } from './templateData';
 
-const mutedOn = (ink) => (ink === '#FFFFFF' ? 'rgba(255,255,255,0.6)' : 'rgba(11,11,15,0.6)');
+/**
+ * `want` if it is legible on `bg`, otherwise plain black or white.
+ *
+ * 3:1 is the WCAG threshold for large text, which is what this is. A palette whose primary
+ * sits too close to its canvas would otherwise render the name nearly invisible — the same
+ * failure the brand marks had before they were given a plate.
+ */
+const readableOn = (want, bg) => {
+  const a = hexToRgb(want), b = hexToRgb(bg);
+  if (!a || !b) return want;
+  return (contrastRatio(a, b) || 0) >= 3 ? want : inkOn(bg);
+};
+
 
 const pillTrack = {
   display: 'flex', gap: '0.3rem', background: 'var(--bg-tertiary)', padding: '0.25rem',
@@ -43,11 +55,12 @@ const ghostBtn = {
 };
 
 /** The canvas: real previews on the template's own surface colour. */
-const Canvas = ({ t, projectName, height = 132 }) => {
+// The canvas shows a template's identity and nothing else: its mark if it has one, its
+// name if it does not. It needs no project name now — the specimen that used to borrow it
+// is gone.
+const Canvas = ({ t, height = 132 }) => {
   const p = t.palette;
   const pair = pairingById(t.pairingId);
-  const ink = inkOn(p.secondary);
-  const shared = { fontFamily: `'${pair.body}', sans-serif`, borderRadius: '6px' };
   const brand = brandAssetsFor(t.id);
 
   // A template that interprets a real product is recognised by its mark, so the mark is all
@@ -85,47 +98,32 @@ const Canvas = ({ t, projectName, height = 132 }) => {
     );
   }
 
-  // The other twelve have no mark. They keep the specimen — stripping it would leave a
-  // plain coloured rectangle saying nothing at all.
+  // The other twelve have no mark, so the name is the mark: set in the template's own
+  // heading face, on its own canvas colour, centred where the logo sits on the branded
+  // eight. That keeps the grid one thing rather than two, and the wordmark still shows the
+  // heading typeface now that the pairing line underneath is gone.
+  //
+  // No inert here either — there is nothing focusable left once the button and input are
+  // gone, only text.
   return (
-    // inert, because renderComponentPreview returns a real <button> and a real <input>.
-    // Focusable content inside an aria-hidden decoration is a keyboard trap, and a button
-    // inside the card's own clickable area would be invalid markup. The card's real
-    // controls are the named buttons beneath it.
-    //
-    // inert={true}, never inert="": React 19 maps the empty string to false, so the
-    // attribute would never reach the DOM and both controls would stay tabbable.
     <div
-      inert={true}
       aria-hidden="true"
       style={{
         background: p.secondary, height: height + 'px', padding: '0.85rem',
-        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        gap: '0.5rem', overflow: 'hidden',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden',
       }}
     >
-      <div style={{
-        fontFamily: `'${pair.heading}', sans-serif`, fontSize: '1.05rem', fontWeight: 700,
-        color: p.primary, lineHeight: 1.1,
+      <span style={{
+        fontFamily: `'${pair.heading}', sans-serif`, fontSize: '1.5rem', fontWeight: 700,
+        // The palettes are built so the primary reads on the canvas, but a pair that is too
+        // close would make the name vanish the way Framer's mark did. inkOn is the fallback.
+        color: readableOn(p.primary, p.secondary),
+        lineHeight: 1.15, textAlign: 'center',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
       }}>
-        {projectName || 'Your brand'}<span style={{ color: p.accent }}>.</span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-        {renderComponentPreview({ template: 'button' }, {
-          backgroundColor: p.primary, color: inkOn(p.primary),
-          fontSize: '0.68rem', padding: '0.3rem 0.7rem', ...shared,
-        }, { buttonLabel: 'Get started' })}
-        {renderComponentPreview({ template: 'badge' }, {
-          backgroundColor: p.accent, color: inkOn(p.accent), fontSize: '0.6rem', ...shared,
-        })}
-      </div>
-
-      <div style={{
-        fontFamily: `'${pair.body}', sans-serif`, fontSize: '0.66rem', color: mutedOn(ink),
-      }}>
-        {pair.heading} + {pair.body}
-      </div>
+        {t.name}<span style={{ color: p.accent }}>.</span>
+      </span>
     </div>
   );
 };
@@ -149,7 +147,7 @@ const ProBadge = () => (
 // real <button> and a real <input>, and an <a> may not contain interactive content any more
 // than a <button> may; as a sibling it nests nothing. Being a real <a href> is also what
 // makes middle-click, ctrl-click and "open in new window" behave the way they should.
-const TemplateCard = ({ t, projectName }) => {
+const TemplateCard = ({ t }) => {
   const locked = t.tier === 'pro';
   const p = t.palette;
   return (
@@ -162,7 +160,7 @@ const TemplateCard = ({ t, projectName }) => {
     }}>
       {/* The mark is the canvas for a branded template — Canvas decides, so the card does
           not need to know which templates have one. */}
-      <Canvas t={t} projectName={projectName} />
+      <Canvas t={t} />
 
       <div style={{
         padding: '0.75rem 0.85rem 0.85rem', display: 'flex', flexDirection: 'column',
@@ -209,8 +207,9 @@ const TemplateCard = ({ t, projectName }) => {
 // A Details overlay stood here, opened from the card. Cards are links to /templates/:id
 // now, so the template's own page is the detail view and this had nothing left to do.
 
-// onUse is gone with the card's buttons: the gallery browses, and /templates/:id applies.
-export default function TemplateGallery({ projectName }) {
+// No props at all now: the gallery browses, /templates/:id applies, and the cards show the
+// template's own identity rather than borrowing the project's name for a specimen.
+export default function TemplateGallery() {
   const [query, setQuery] = useState('');
   const [tier, setTier] = useState('all');
   // Arrays, not single ids: OR inside a facet, AND across them. An empty array means the
@@ -456,7 +455,7 @@ export default function TemplateGallery({ projectName }) {
             )}
             <div style={{ ...grid('230px'), gap: '1rem' }}>
               {results.map(t => (
-                <TemplateCard key={t.id} t={t} projectName={projectName} />
+                <TemplateCard key={t.id} t={t} />
               ))}
             </div>
           </>
