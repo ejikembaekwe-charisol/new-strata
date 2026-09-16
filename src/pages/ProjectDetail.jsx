@@ -25,17 +25,16 @@ import MergeModal from '../components/branch/MergeModal';
 import { diffDesigns, applyDiffEntries } from '../data/designDiff';
 import { cssPropForTokenKey } from '../data/tokenKeys';
 import {
-  EXPORT_FORMATS, exportTextFor, cssVariablesFrom, dtcgJsonFrom, tailwindThemeFrom,
+  cssVariablesFrom, dtcgJsonFrom, tailwindThemeFrom, EXPORT_TARGETS, targetText,
 } from '../data/tokenExport';
 import { designMarkdown, markdownSlug } from '../data/designMarkdown';
-import TokenExplorer from '../components/TokenExplorer';
 import {
   isSupported as fsIsSupported, loadHandle, forgetHandle, permissionState,
   requestPermission, pickFolder, writeFiles, downloadText, mimeFor,
 } from '../data/fsConnect';
 import {
   tokenToCssVar, componentToCssText, componentToJsxText, componentToJsonText,
-  componentCss, componentJsx, libraryCss, libraryJsx,
+  libraryCss, libraryJsx,
 } from '../data/componentExport';
 import {
   buildRelease, nextReleaseNumber, pruneReleases, releasesOf, liveReleaseOf,
@@ -418,10 +417,11 @@ function ProjectDetailInner() {
   const [activeBrandSubTab, setActiveBrandSubTab] = useState('identity');
   const [projectVisibility, setProjectVisibility] = useState(project?.visibility || 'Private');
 
-  // ── Dev mode ───────────────────────────────────────────────────────────
-  const [devFormat, setDevFormat] = useState('css');
+  // ── Handoff ───────────────────────────────────────────────────────────
   const [devCopied, setDevCopied] = useState(null);
-  const [devComponentSearch, setDevComponentSearch] = useState('');
+  // Which exporter card has its usage snippet open, and the dictionary's filter.
+  const [expandedCard, setExpandedCard] = useState(null);
+  const [handoffSearch, setHandoffSearch] = useState('');
   const fsSupported = fsIsSupported();
   const [fsDir, setFsDir] = useState(null);
   const [fsPerm, setFsPerm] = useState('prompt');
@@ -2498,6 +2498,45 @@ This document serves as our living source of truth.`
             </>
           )}
         </div>
+
+        {/* Refine brand — to the Brand Bible, where the brand-context checklist sits at the
+            top of the tab.
+
+            It is deliberately not a bare copy of the sidebar's Brand Bible link: it carries
+            how much brand context has actually been supplied, so it says why you would press
+            it. The count comes from getBrandCompleteness, which reads stored brandContext
+            only — never the invented #FC0694/Outfit defaults ProjectDetail fills in at load.
+
+            It sits left of Share so Share and Publish stay paired at the right edge and
+            Publish does not move. */}
+        <button
+          className="pd-refine-btn"
+          onClick={() => setActiveTab('brand')}
+          title={completeness.done === completeness.total
+            ? 'Open the Brand Bible'
+            : completeness.total - completeness.done + ' of ' + completeness.total
+              + ' brand sources still to add'}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+            borderRadius: '6px', padding: '0.4rem 0.875rem',
+            color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 500,
+            cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+            <circle cx="12" cy="12" r="3.2" />
+          </svg>
+          <span className="pd-btn-label">Refine brand</span>
+          {completeness.done < completeness.total && (
+            <span style={{
+              fontSize: '0.68rem', fontWeight: 700, lineHeight: 1,
+              padding: '0.2rem 0.4rem', borderRadius: '100px',
+              background: 'var(--accent-glow)', color: 'var(--accent)',
+            }}>{completeness.done}/{completeness.total}</span>
+          )}
+        </button>
 
         {/* Share — export, invite teammates, or copy a link. .pd-export-btn on the wrapper
             keeps the existing mobile hide behaviour. */}
@@ -4583,50 +4622,79 @@ This document serves as our living source of truth.`
           })()}
 
 
-          {/* ── Dev mode ──────────────────────────────────────────────────
+          {/* ── Handoff ───────────────────────────────────────────────────
               What a developer can actually take away from this project.
 
-              What stood here promised a product that does not exist: an @strata-ds/core npm
-              package, a snapshot CDN, a sync token that authenticated nothing, and nine
-              strata.charisol.io API endpoints each with a working Copy button. Six of the nine
-              formats it advertised had no generator anywhere in the codebase.
+              The layout is the one that stood here before. What stood here was not: an
+              @strata-ds/core npm package, a snapshot CDN, a sync token that authenticated
+              nothing, and nine strata.charisol.io endpoints each with a working Copy button
+              that handed over a dead URL. Six of the nine formats the grid advertised had no
+              generator anywhere in the codebase.
 
-              Everything below is generated from this project's own tokens and components. */}
+              They have one now, in data/tokenExport.js — so the cards stayed and the URLs
+              went. Every card copies and downloads a file this project's own tokens
+              generate, at the moment you press it. */}
           {activeTab === 'handoff' && (() => {
-            const tokensText = exportTextFor(devFormat, activeTokens);
-            // The dictionary wants a flat list carrying the tier its pills filter on.
-            // The store writes `layer`; reconciled here rather than in the shared component.
-            const devTokenList = [];
-            for (const cat in activeTokens) {
-              if (!Array.isArray(activeTokens[cat])) continue;
-              activeTokens[cat].forEach(t => devTokenList.push({
-                ...t, category: cat, tier: String(t.tier || t.layer || 'Brand').toLowerCase(),
-              }));
-            }
             const compIndex = indexById(components);
             const mdText = designMarkdown({ ...project, components }, activeTokens);
+            const mdName = markdownSlug(project.name) + '.md';
 
-            // Fragments have no element of their own, so they get no rule and no card.
-            const devCodeComponents = components.filter(c => c && c.template !== 'fragment');
-            const devQuery = devComponentSearch.trim().toLowerCase();
-            const devShownComponents = devQuery
-              ? devCodeComponents.filter(c => ((c.name || '') + ' ' + (c.template || '')
-                  + ' ' + (c.description || '')).toLowerCase().includes(devQuery))
-              : devCodeComponents;
+            // strata.json is the only target that needs more than the tokens.
+            const strataMeta = {
+              id: project.id, name: project.name,
+              description: project.description, components,
+            };
+            // Built once per render, so a card's byte count, its Copy and its Download can
+            // never disagree with one another.
+            const targets = EXPORT_TARGETS.map(t => ({
+              ...t, text: targetText(t, activeTokens, strataMeta),
+            }));
 
+            const shareUrl = window.location.origin + '/explore/' + project.id;
+            // Named after components that are really in components.jsx, so the snippet
+            // compiles against the file it tells you to import.
+            // libraryJsx skips fragments and drops names that collide, so the snippet has to
+            // skip the same ones or it would import something the file never exported.
+            const snippetNames = [...new Set(components
+              .filter(c => c && c.template !== 'fragment')
+              .map(c => String(c.name || '').replace(/[^a-zA-Z0-9]/g, ''))
+              .filter(Boolean))].slice(0, 2);
+            const integrationSnippet = [
+              '// your app entry, e.g. src/main.jsx',
+              "import './tokens.css';",
+              snippetNames.length
+                ? 'import { ' + snippetNames.join(', ') + " } from './components.jsx';"
+                : "// import { YourComponent } from './components.jsx';",
+              '',
+              'export default function App() {',
+              '  return (',
+              snippetNames.length
+                ? '    <' + snippetNames[0] + ' />'
+                : '    <div style={{ color: "var(--brand-color-primary)" }}>Hello</div>',
+              '  );',
+              '}',
+            ].join('\n');
+
+            const sizeOf = (text) => {
+              const n = new TextEncoder().encode(text).length;
+              return n < 1024 ? n + ' B' : (n / 1024).toFixed(1) + ' KB';
+            };
+
+            // What Connect writes into a folder: the web-facing files plus the document.
+            // The mobile targets are a per-card download rather than something dropped into
+            // a repo that did not ask for them.
             const files = [
               { name: 'tokens.css', text: cssVariablesFrom(activeTokens) },
               { name: 'tokens.json', text: dtcgJsonFrom(activeTokens) },
               { name: 'tailwind.tokens.json', text: tailwindThemeFrom(activeTokens) },
               { name: 'components.css', text: libraryCss(components, compIndex) },
               { name: 'components.jsx', text: libraryJsx(components) },
-              { name: markdownSlug(project.name) + '.md', text: mdText },
+              { name: mdName, text: mdText },
             ];
 
-            const panelStyle = {
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-              borderRadius: '20px', padding: '2rem', display: 'flex',
-              flexDirection: 'column', gap: '1.25rem',
+            const cardStyle = {
+              background: 'var(--bg-secondary)', padding: '2rem',
+              borderRadius: '16px', border: '1px solid var(--border)',
             };
             const preStyle = {
               margin: 0, padding: '1rem', borderRadius: '10px', background: 'var(--bg-tertiary)',
@@ -4647,307 +4715,542 @@ This document serves as our living source of truth.`
                 {devCopied === key ? 'Copied!' : label}
               </button>
             );
-            const dlBtn = (name, text) => (
-              <button type="button" className="sf-focus" style={smallBtn}
-                onClick={() => downloadText(name, text, mimeFor(name))}>
-                Download {name}
-              </button>
-            );
+
+            const dictTokens = Object.keys(activeTokens || {})
+              .flatMap(cat => activeTokens[cat] || []);
+            const dictQuery = handoffSearch.trim().toLowerCase();
+            const dictShown = dictQuery
+              ? dictTokens.filter(t => ((t.name || '') + ' ' + (t.value || '') + ' ' + (t.type || ''))
+                  .toLowerCase().includes(dictQuery))
+              : dictTokens;
 
             return (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Dev mode
-                  </h2>
-                  <p style={{ margin: '0.3rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '64ch', lineHeight: 1.6 }}>
-                    Every file here is generated from this project&rsquo;s own tokens and
-                    components, right now. Copy it, download it, or write it straight into your
-                    repo.
-                  </p>
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem', maxWidth: '1200px' }}>
 
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  {/* Connect first: it is what the tab opens on, and it is the one thing
-                      here a developer does once rather than every time. */}
-                  {[['connect', 'Connect'], ['tokens', 'Tokens'],
-                    ['components', 'Components'], ['md', 'DESIGN.md']].map(([id, label]) => (
-                    <button key={id} type="button" className="sf-focus" role="radio"
-                      aria-checked={activeHandoffSubTab === id}
-                      onClick={() => setActiveHandoffSubTab(id)}
-                      style={{
-                        padding: '0.45rem 1rem', borderRadius: '999px', fontFamily: 'inherit',
-                        border: '1px solid ' + (activeHandoffSubTab === id ? 'var(--accent)' : 'var(--border)'),
-                        background: activeHandoffSubTab === id ? 'var(--accent)' : 'var(--bg-tertiary)',
-                        color: activeHandoffSubTab === id ? '#fff' : 'var(--text-secondary)',
-                        fontSize: '0.82rem', fontWeight: activeHandoffSubTab === id ? 600 : 400,
-                        cursor: 'pointer', touchAction: 'manipulation',
-                      }}>{label}</button>
-                  ))}
-                </div>
-
-                {/* ── Tokens ─────────────────────────────────────────────── */}
-                {activeHandoffSubTab === 'tokens' && (
-                  <div style={panelStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {tokenTotal} tokens
-                      </h3>
-                      <div style={{ flex: 1 }} />
-                      {EXPORT_FORMATS.map(f => (
-                        <button key={f.id} type="button" className="sf-focus"
-                          onClick={() => setDevFormat(f.id)}
-                          style={{ ...smallBtn,
-                            borderColor: devFormat === f.id ? 'var(--accent)' : 'var(--border)',
-                            color: devFormat === f.id ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                          {f.label}
-                        </button>
-                      ))}
-                    </div>
-                    <pre style={preStyle}>{tokensText}</pre>
-                    <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                      {copyBtn(tokensText, 'tokens')}
-                      {dlBtn(devFormat === 'css' ? 'tokens.css'
-                        : devFormat === 'tailwind' ? 'tailwind.tokens.json' : 'tokens.json', tokensText)}
-                    </div>
-
-                    {/* The file above is the thing being copied; this is what is in it. The
-                        same dictionary the public system page uses, so a token looks the same
-                        wherever it is read, and each row copies its own value. */}
-                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
-                      <div style={{
-                        fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em',
-                        color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.75rem',
-                      }}>What is in it</div>
-                      <TokenExplorer tokens={devTokenList} />
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Components ─────────────────────────────────────────── */}
-                {activeHandoffSubTab === 'components' && (
-                  <div style={panelStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        {devComponentSearch.trim()
-                          ? devShownComponents.length + ' of ' + devCodeComponents.length + ' components'
-                          : devCodeComponents.length + ' components'}
-                      </h3>
-                      <div style={{ flex: 1 }} />
-                      <input
-                        type="text"
-                        aria-label="Search components"
-                        autoComplete="off"
-                        value={devComponentSearch}
-                        onChange={(e) => setDevComponentSearch(e.target.value)}
-                        placeholder="Search components…"
-                        style={{
-                          background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                          borderRadius: '999px', padding: '0.35rem 0.9rem',
-                          color: 'var(--text-primary)', fontSize: '0.8rem',
-                          fontFamily: 'inherit', width: '200px', maxWidth: '100%',
-                        }}
-                      />
-                      {copyBtn(libraryCss(components, compIndex), 'libcss', 'Copy all CSS')}
-                      {copyBtn(libraryJsx(components), 'libjsx', 'Copy all JSX')}
-                      {dlBtn('components.css', libraryCss(components, compIndex))}
-                      {dlBtn('components.jsx', libraryJsx(components))}
-                    </div>
-                    <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                      Styles reference the custom properties in <code>tokens.css</code>, so they
-                      stay correct when a token changes. Take both files together.
-                    </p>
-                    {devShownComponents.length === 0 && (
-                      <div style={{
-                        border: '1px solid var(--border)', borderRadius: '12px',
-                        padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)',
-                        fontSize: '0.85rem',
-                      }}>
-                        No component matches &ldquo;{devComponentSearch.trim()}&rdquo;.{' '}
-                        <button type="button" className="sf-focus"
-                          onClick={() => setDevComponentSearch('')}
+                {/* ── Integration card ───────────────────────────────────── */}
+                <div className="pd-handoff-card" style={cardStyle}>
+                  <div className="pd-handoff-subtabs" style={{
+                    display: 'flex', borderBottom: '1px solid var(--border)',
+                    paddingBottom: '0.75rem', marginBottom: '2rem', gap: '0.5rem',
+                  }}>
+                    {[['connect', 'Connect your app'], ['publish', 'Publish & Sync'],
+                      ['md', 'DESIGN.md']].map(([sid, label]) => {
+                      const isActive = activeHandoffSubTab === sid;
+                      return (
+                        <button key={sid} type="button" className="sf-focus pd-handoff-subtab-btn"
+                          role="radio" aria-checked={isActive}
+                          onClick={() => setActiveHandoffSubTab(sid)}
                           style={{
-                            background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                            color: 'var(--accent)', fontSize: '0.85rem', fontFamily: 'inherit',
-                          }}>Clear the search</button>{' '}
-                        to see all {devCodeComponents.length}.
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                      {devShownComponents.map(c => (
-                        <div key={c.id} style={{
-                          border: '1px solid var(--border)', borderRadius: '12px',
-                          padding: '1rem', background: 'var(--bg-tertiary)',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</span>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{c.template}</span>
-                            <div style={{ flex: 1 }} />
-                            {copyBtn(componentCss(c, compIndex), 'css-' + c.id, 'Copy CSS')}
-                            {copyBtn(componentJsx(c), 'jsx-' + c.id, 'Copy JSX')}
-                          </div>
-                          {/* The component as it actually renders, from the same pipeline
-                              the Components tab uses — so what is copied and what is seen
-                              cannot drift. renderThumbPreview rather than the live one: a
-                              preview here should not pop an alert when clicked. */}
-                          <div className="dev-code-row" style={{
-                            display: 'grid', gridTemplateColumns: 'minmax(0, 200px) minmax(0, 1fr)',
-                            gap: '1rem', alignItems: 'start',
-                          }}>
-                            <div style={{
-                              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                              borderRadius: '10px', padding: '1rem', display: 'flex',
-                              alignItems: 'center', justifyContent: 'center', minHeight: '86px',
-                              overflow: 'hidden',
-                            }}>
-                              {renderThumbPreview(c)}
-                            </div>
-                            <pre style={{ ...preStyle, maxHeight: '200px', margin: 0 }}>{componentJsx(c) + '\n\n' + componentCss(c, compIndex)}</pre>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                            padding: '0.45rem 1rem', borderRadius: '8px', fontFamily: 'inherit',
+                            border: '1px solid ' + (isActive ? 'var(--accent)' : 'transparent'),
+                            background: isActive ? 'var(--accent-glow)' : 'none',
+                            color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                            fontSize: '0.85rem', fontWeight: isActive ? 600 : 500,
+                            cursor: 'pointer', touchAction: 'manipulation',
+                          }}>{label}</button>
+                      );
+                    })}
                   </div>
-                )}
 
-                {/* ── DESIGN.md ──────────────────────────────────────────── */}
-                {activeHandoffSubTab === 'md' && (
-                  <div style={panelStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        The whole system, as one file
-                      </h3>
-                      <div style={{ flex: 1 }} />
-                      {copyBtn(mdText, 'md')}
-                      {dlBtn(markdownSlug(project.name) + '.md', mdText)}
-                    </div>
-                    <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                      Brand, every token, and every component with its mapped tokens and its
-                      rule. Made to be handed to a person or dropped into an AI tool.
-                    </p>
-                    <pre style={preStyle}>{mdText}</pre>
-                  </div>
-                )}
+                  {/* ── Connect your app ─────────────────────────────────── */}
+                  {activeHandoffSubTab === 'connect' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
 
-                {/* ── Connect ────────────────────────────────────────────── */}
-                {activeHandoffSubTab === 'connect' && (
-                  <div style={panelStyle}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Write into your repo
-                      </h3>
-                      <p style={{ margin: '0.3rem 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '62ch' }}>
-                        Pick a folder once and Strata writes these files into it. Nothing is
-                        uploaded and nothing runs in the background &mdash; press Write whenever
-                        you want the files brought up to date.
-                      </p>
-                    </div>
-
-                    {!fsSupported && (
-                      <p style={{
-                        margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)',
+                      {/* Project ID — a real identifier, and the only one there is. */}
+                      <div className="pd-handoff-id-row" style={{
+                        display: 'flex', alignItems: 'center', gap: '1rem',
                         background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                        borderRadius: '10px', padding: '0.8rem 0.9rem', lineHeight: 1.6,
+                        borderRadius: '10px', padding: '0.75rem 1rem',
                       }}>
-                        Writing to a folder needs a Chromium browser &mdash; Chrome, Edge or
-                        Opera. In this one the downloads below do the same job by hand.
-                      </p>
-                    )}
-
-                    {fsSupported && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <button type="button" className="sf-focus" style={{
-                          padding: '0.55rem 1.2rem', borderRadius: '999px', border: 'none',
-                          background: 'var(--accent)', color: '#fff', fontSize: '0.85rem',
-                          fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                        }} onClick={handleConnectFolder}>
-                          {fsDir ? 'Choose a different folder' : 'Choose folder'}
-                        </button>
-                        {fsDir && (
-                          <button type="button" className="sf-focus" style={smallBtn}
-                            onClick={() => handleWriteFiles(files)}>
-                            {fsBusy ? 'Writing…' : 'Write files'}
-                          </button>
-                        )}
-                        {fsDir && (
-                          <button type="button" className="sf-focus" style={smallBtn}
-                            onClick={handleDisconnectFolder}>Disconnect</button>
-                        )}
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
+                          Project ID:
+                        </span>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+                          color: 'var(--text-primary)', overflow: 'hidden',
+                          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{project.id}</span>
+                        <div style={{ flex: 1 }} />
+                        {copyBtn(String(project.id), 'projectid')}
                       </div>
-                    )}
 
-                    {fsSupported && fsDir && (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                        Connected to <strong style={{ color: 'var(--text-primary)' }}>{fsDir.name}</strong>
-                        {fsPerm === 'granted'
-                          ? ''
-                          : ' · permission needed — the browser asks again after a reload, and Write will request it'}
-                      </div>
-                    )}
-
-                    {fsResults.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                        {fsResults.map(r => (
-                          <div key={r.name} style={{
-                            display: 'flex', justifyContent: 'space-between', gap: '1rem',
-                            fontSize: '0.78rem', fontFamily: 'var(--font-mono)',
-                            color: r.ok ? 'var(--text-secondary)' : '#EF4444',
-                          }}>
-                            <span>{r.name}</span>
-                            <span>{r.ok ? r.bytes + ' bytes' : r.error}</span>
-                          </div>
-                        ))}
-                        {fsWrittenAt && (
-                          <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
-                            Written {fsWrittenAt}. These files are a snapshot — press Write again
-                            after you change a token.
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div>
-                      <div style={{
-                        fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em',
-                        color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.6rem',
-                      }}>Or download them</div>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        {files.map(f => (
-                          <button key={f.name} type="button" className="sf-focus" style={smallBtn}
-                            onClick={() => downloadText(f.name, f.text, mimeFor(f.name))}>
-                            {f.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Visibility is the one control from the old Publish & Sync panel that
-                        genuinely persisted, so it stays. */}
-                    {can(myRole, 'releases', 'setVisibility') && (
-                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
-                          Project visibility
-                        </div>
-                        <p style={{ margin: '0 0 0.6rem', fontSize: '0.78rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                          Marks this project public or private. Note that it is a label only —
-                          anyone with the share link can open the published system either way.
+                      {/* Where the npm install and the CDN snippet used to be. This one
+                          actually puts files on disk. */}
+                      <div>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: '0 0 0.3rem', color: 'var(--text-primary)' }}>
+                          Write into your repo
+                        </h4>
+                        <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                          Pick a folder once and Strata writes these files into it. Nothing is
+                          uploaded and nothing runs in the background &mdash; press Write
+                          whenever you want the files brought up to date.
                         </p>
-                        <div style={{ display: 'flex', gap: '0.4rem' }}>
-                          {['private', 'public'].map(v => (
-                            <button key={v} type="button" className="sf-focus"
-                              onClick={() => handleVisibilityChange(v)}
-                              style={{ ...smallBtn, textTransform: 'capitalize',
-                                borderColor: projectVisibility === v ? 'var(--accent)' : 'var(--border)',
-                                color: projectVisibility === v ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                              {v}
+
+                        {!fsSupported && (
+                          <p style={{
+                            margin: '0 0 1rem', fontSize: '0.8rem', color: 'var(--text-secondary)',
+                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                            borderRadius: '10px', padding: '0.8rem 0.9rem', lineHeight: 1.6,
+                          }}>
+                            Writing to a folder needs a Chromium browser &mdash; Chrome, Edge or
+                            Opera. In this one the downloads below do the same job by hand.
+                          </p>
+                        )}
+
+                        {fsSupported && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                            <button type="button" className="sf-focus" style={{
+                              padding: '0.55rem 1.2rem', borderRadius: '999px', border: 'none',
+                              background: 'var(--accent)', color: '#fff', fontSize: '0.85rem',
+                              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                            }} onClick={handleConnectFolder}>
+                              {fsDir ? 'Choose a different folder' : 'Choose folder'}
+                            </button>
+                            {fsDir && (
+                              <button type="button" className="sf-focus" style={smallBtn}
+                                onClick={() => handleWriteFiles(files)}>
+                                {fsBusy ? 'Writing…' : 'Write files'}
+                              </button>
+                            )}
+                            {fsDir && (
+                              <button type="button" className="sf-focus" style={smallBtn}
+                                onClick={handleDisconnectFolder}>Disconnect</button>
+                            )}
+                          </div>
+                        )}
+
+                        {fsSupported && fsDir && (
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                            Connected to <strong style={{ color: 'var(--text-primary)' }}>{fsDir.name}</strong>
+                            {fsPerm === 'granted'
+                              ? ''
+                              : ' · permission needed — the browser asks again after a reload, and Write will request it'}
+                          </div>
+                        )}
+
+                        {fsResults.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '1rem' }}>
+                            {fsResults.map(r => (
+                              <div key={r.name} style={{
+                                display: 'flex', justifyContent: 'space-between', gap: '1rem',
+                                fontSize: '0.78rem', fontFamily: 'var(--font-mono)',
+                                color: r.ok ? 'var(--text-secondary)' : '#EF4444',
+                              }}>
+                                <span>{r.name}</span>
+                                <span>{r.ok ? r.bytes + ' bytes' : r.error}</span>
+                              </div>
+                            ))}
+                            {fsWrittenAt && (
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', marginTop: '0.25rem' }}>
+                                Written {fsWrittenAt}. These files are a snapshot — press Write
+                                again after you change a token.
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{
+                          fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em',
+                          color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.6rem',
+                        }}>Or download them</div>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          {files.map(f => (
+                            <button key={f.name} type="button" className="sf-focus" style={smallBtn}
+                              onClick={() => downloadText(f.name, f.text, mimeFor(f.name))}>
+                              {f.name}
                             </button>
                           ))}
                         </div>
                       </div>
-                    )}
+
+                    </div>
+                  )}
+
+                  {/* ── Publish & Sync ───────────────────────────────────── */}
+                  {activeHandoffSubTab === 'publish' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+
+                      {/* Visibility is the one control the old panel had that genuinely
+                          persisted, and it belongs here rather than beside the folder. */}
+                      {can(myRole, 'releases', 'setVisibility') && (
+                        <div>
+                          <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: '0 0 0.3rem', color: 'var(--text-primary)' }}>
+                            Project visibility
+                          </h4>
+                          <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                            Marks this project public or private. It is a label on the project,
+                            not a lock &mdash; anyone holding the share link below can open the
+                            published system either way.
+                          </p>
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            {['public', 'private'].map(v => (
+                              <button key={v} type="button" className="sf-focus"
+                                onClick={() => handleVisibilityChange(v)}
+                                style={{ ...smallBtn, textTransform: 'capitalize',
+                                  borderColor: projectVisibility === v ? 'var(--accent)' : 'var(--border)',
+                                  color: projectVisibility === v ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                                {v}
+                              </button>
+                            ))}
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem' }}>
+                              Current: <strong style={{ color: 'var(--text-primary)', textTransform: 'capitalize' }}>{projectVisibility}</strong>
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* What /explore/:id is actually serving. Where the old panel minted a
+                          pt_live_ key that authenticated nothing, this reads the release the
+                          Branch & Publish tab really wrote. */}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: '0 0 0.3rem', color: 'var(--text-primary)' }}>
+                          Published release
+                        </h4>
+                        {liveRelease ? (
+                          <>
+                            <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                              The share link serves this release, not your working draft. Edits
+                              here stay private until you publish again.
+                            </p>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                              borderRadius: '10px', padding: '0.75rem 1rem',
+                            }}>
+                              <span style={{
+                                fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.5rem',
+                                borderRadius: '100px', letterSpacing: '0.05em',
+                                background: 'rgba(16,185,129,0.12)', color: '#10B981',
+                                border: '1px solid rgba(16,185,129,0.2)',
+                              }}>LIVE</span>
+                              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                v{liveRelease.number}{liveRelease.name ? ' · ' + liveRelease.name : ''}
+                              </span>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                                {liveRelease.counts?.tokens ?? 0} tokens · {liveRelease.counts?.components ?? 0} components
+                                {liveRelease.publishedAt ? ' · ' + new Date(liveRelease.publishedAt).toLocaleString() : ''}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                            Nothing is published yet, so the share link has no release to serve.{' '}
+                            <button type="button" className="sf-focus"
+                              onClick={() => setActiveTab('branch')}
+                              style={{
+                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                color: 'var(--accent)', fontSize: '0.8rem', fontFamily: 'inherit',
+                              }}>Publish one from Branch &amp; Publish</button>.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Where the sync token used to sit. A URL that resolves, in this app. */}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: '0 0 0.3rem', color: 'var(--text-primary)' }}>
+                          Share link
+                        </h4>
+                        <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                          The read-only page for this system. No key is needed to open it, and
+                          there is none to generate &mdash; Strata has no server to authenticate
+                          against.
+                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <input
+                            readOnly
+                            className="form-input"
+                            aria-label="Share link"
+                            value={shareUrl}
+                            onFocus={(e) => e.target.select()}
+                            style={{
+                              flex: '1 1 320px', minWidth: 0, fontSize: '0.78rem', height: '36px',
+                              padding: '0 0.75rem', background: 'var(--bg-tertiary)',
+                              border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                              fontFamily: 'var(--font-mono)', borderRadius: '6px',
+                            }}
+                          />
+                          {copyBtn(shareUrl, 'sharelink')}
+                          <a
+                            className="sf-focus"
+                            href={'/explore/' + project.id}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ ...smallBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                          >Open ↗</a>
+                        </div>
+                      </div>
+
+                      {/* The only sync this app has: the folder, rewritten when you ask. */}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: '0 0 0.3rem', color: 'var(--text-primary)' }}>
+                          Sync to your folder
+                        </h4>
+                        <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                          Syncing here means rewriting the files in the folder you connected.
+                          It happens when you press the button and at no other time &mdash;
+                          nothing polls, and nothing runs while this tab is closed.
+                        </p>
+                        {fsSupported && fsDir ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <button type="button" className="sf-focus" style={{
+                              padding: '0.5rem 1.1rem', borderRadius: '999px', border: 'none',
+                              background: 'var(--accent)', color: '#fff', fontSize: '0.82rem',
+                              fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                            }} onClick={() => handleWriteFiles(files)}>
+                              {fsBusy ? 'Writing…' : 'Sync now'}
+                            </button>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              {fsDir.name}
+                              {fsWrittenAt ? ' · last written ' + fsWrittenAt : ' · not written yet'}
+                            </span>
+                          </div>
+                        ) : (
+                          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            No folder connected.{' '}
+                            <button type="button" className="sf-focus"
+                              onClick={() => setActiveHandoffSubTab('connect')}
+                              style={{
+                                background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                color: 'var(--accent)', fontSize: '0.8rem', fontFamily: 'inherit',
+                              }}>Connect one</button>{' '}
+                            and this becomes a one-press rewrite.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* The slot the CDN snippet occupied. This one consumes the files that
+                          were actually written, so it works with no network at all. */}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+                        <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: '0 0 0.3rem', color: 'var(--text-primary)' }}>
+                          Integration snippet
+                        </h4>
+                        <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                          Import the two files Strata wrote. They are plain CSS and plain JSX,
+                          so there is no package to install and nothing to configure.
+                        </p>
+                        <div style={{ position: 'relative' }}>
+                          <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 1 }}>
+                            {copyBtn(integrationSnippet, 'integration')}
+                          </div>
+                          <pre style={preStyle}>{integrationSnippet}</pre>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── DESIGN.md ────────────────────────────────────────── */}
+                  {activeHandoffSubTab === 'md' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <div>
+                          <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                            The whole system, as one file
+                          </h4>
+                          <p style={{ margin: '0.2rem 0 0', fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                            {mdName} · {sizeOf(mdText)}
+                          </p>
+                        </div>
+                        <div style={{ flex: 1 }} />
+                        {copyBtn(mdText, 'md')}
+                        <button type="button" className="sf-focus" style={smallBtn}
+                          onClick={() => downloadText(mdName, mdText, mimeFor(mdName))}>
+                          Download {mdName}
+                        </button>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                        Brand, every token, and every component with its mapped tokens and its
+                        generated rule. Made to be handed to a person, or dropped into an AI
+                        tool as the whole of what it needs to know.
+                      </p>
+                      <pre style={preStyle}>{mdText}</pre>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Formats and exporters ──────────────────────────────── */}
+                <div>
+                  <h3 style={{
+                    fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-tertiary)',
+                    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1.25rem',
+                  }}>
+                    Available formats &amp; exporters
+                  </h3>
+
+                  <div className="pd-handoff-grid" style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                    gap: '1.25rem',
+                  }}>
+                    {targets.map(fmt => {
+                      const isExpanded = expandedCard === fmt.id;
+                      return (
+                        <div key={fmt.id} style={{
+                          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                          borderRadius: '12px', padding: '1.25rem',
+                          display: 'flex', flexDirection: 'column', gap: '1rem',
+                        }}>
+                          <div className="pd-exporter-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                              <span style={{
+                                fontSize: '0.625rem', fontWeight: 700, padding: '0.2rem 0.5rem',
+                                borderRadius: '4px', letterSpacing: '0.05em', flexShrink: 0,
+                                background: fmt.tint + '1A', color: fmt.tint,
+                              }}>{fmt.badge}</span>
+                              <span style={{
+                                fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)',
+                                fontFamily: 'var(--font-mono)', overflow: 'hidden',
+                                textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>{fmt.filename}</span>
+                            </div>
+                            {fmt.recommended && (
+                              <span style={{
+                                fontSize: '0.6rem', fontWeight: 700, padding: '0.15rem 0.4rem',
+                                borderRadius: '4px', letterSpacing: '0.05em', flexShrink: 0,
+                                background: 'rgba(34, 197, 94, 0.1)', color: '#22C55E',
+                              }}>RECOMMENDED</span>
+                            )}
+                          </div>
+
+                          <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, minHeight: '3rem', lineHeight: 1.4 }}>
+                            {fmt.desc}
+                          </p>
+
+                          {/* Where the sync URL used to sit. The file itself, and the two
+                              things you can do with it. */}
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                            borderRadius: '6px', padding: '0.35rem 0.35rem 0.35rem 0.75rem',
+                          }}>
+                            <span style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.72rem',
+                              color: 'var(--text-tertiary)', whiteSpace: 'nowrap',
+                            }}>{sizeOf(fmt.text)}</span>
+                            <div style={{ flex: 1 }} />
+                            {copyBtn(fmt.text, 'fmt-' + fmt.id)}
+                            <button type="button" className="sf-focus" style={smallBtn}
+                              aria-label={'Download ' + fmt.filename}
+                              onClick={() => downloadText(fmt.filename, fmt.text, mimeFor(fmt.filename))}>
+                              Download
+                            </button>
+                          </div>
+
+                          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '0.5rem' }}>
+                            <button type="button" className="sf-focus"
+                              aria-expanded={isExpanded}
+                              onClick={() => setExpandedCard(isExpanded ? null : fmt.id)}
+                              style={{
+                                background: 'none', border: 'none', color: 'var(--accent)',
+                                fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', gap: '0.25rem',
+                                padding: 0, fontFamily: 'inherit',
+                              }}>
+                              <span>Show usage snippets</span>
+                              <span aria-hidden="true" style={{
+                                display: 'inline-block', transition: 'transform 0.2s',
+                                transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                              }}>▼</span>
+                            </button>
+
+                            {isExpanded && (
+                              <div style={{
+                                marginTop: '0.75rem', background: 'var(--bg-tertiary)',
+                                border: '1px solid var(--border)', borderRadius: '8px',
+                                padding: '0.75rem', position: 'relative',
+                              }}>
+                                <div style={{ position: 'absolute', top: '6px', right: '6px' }}>
+                                  {copyBtn(fmt.usage, 'usage-' + fmt.id)}
+                                </div>
+                                <pre style={{
+                                  margin: 0, lineHeight: 1.5, overflowX: 'auto',
+                                  fontFamily: 'var(--font-mono)', fontSize: '0.72rem',
+                                  color: 'var(--text-secondary)',
+                                }}>{fmt.usage}</pre>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+
+                {/* ── Unified token dictionary ───────────────────────────── */}
+                <div style={{
+                  background: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px',
+                  border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '1rem',
+                }}>
+                  <div className="pd-handoff-dict-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                    <h3 style={{ fontSize: '0.9rem', fontWeight: 600, margin: 0, color: 'var(--text-primary)' }}>
+                      Unified token dictionary
+                    </h3>
+                    <input
+                      type="text"
+                      className="form-input"
+                      aria-label="Search tokens"
+                      autoComplete="off"
+                      placeholder="Search tokens (name, value, type)…"
+                      value={handoffSearch}
+                      onChange={e => setHandoffSearch(e.target.value)}
+                      style={{
+                        maxWidth: '240px', fontSize: '0.8rem', padding: '0.4rem 0.75rem',
+                        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                        color: 'var(--text-primary)', borderRadius: '6px',
+                      }}
+                    />
+                  </div>
+
+                  <div className="pd-handoff-table-scroll" style={{ overflowX: 'auto' }}>
+                    <div style={{
+                      display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem',
+                      padding: '0.5rem 0.875rem', borderBottom: '1px solid var(--border)',
+                      fontWeight: 600, minWidth: '480px',
+                    }}>
+                      {['Token key', 'Value', 'Type'].map(h => (
+                        <span key={h} style={{
+                          fontSize: '0.68rem', color: 'var(--text-tertiary)',
+                          textTransform: 'uppercase', letterSpacing: '0.06em',
+                        }}>{h}</span>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px', overflowY: 'auto', minWidth: '480px' }}>
+                      {dictShown.map((token, i) => (
+                        <div key={token.name + '-' + i} style={{
+                          display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr', gap: '1rem',
+                          alignItems: 'center', padding: '0.625rem 0.875rem',
+                          borderBottom: '1px solid var(--border-subtle)',
+                        }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-primary)' }}>{token.name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                            {normalizeTypeKey(token.type) === 'color' && (
+                              <div style={{
+                                width: '12px', height: '12px', borderRadius: '3px', flexShrink: 0,
+                                background: token.value, border: '1px solid rgba(255,255,255,0.1)',
+                              }} />
+                            )}
+                            <span style={{
+                              fontFamily: 'var(--font-mono)', fontSize: '0.8rem',
+                              color: 'var(--text-secondary)', overflow: 'hidden',
+                              textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            }}>{token.value}</span>
+                          </div>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 'fit-content', fontSize: '0.6rem', padding: '0.15rem 0.5rem',
+                            borderRadius: '100px', fontWeight: 500,
+                            background: (TYPE_COLORS[token.type] || '#8B8B9E') + '12',
+                            color: TYPE_COLORS[token.type] || '#8B8B9E',
+                            border: '1px solid ' + (TYPE_COLORS[token.type] || '#8B8B9E') + '22',
+                          }}>{token.type}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                    {dictShown.length} of {dictTokens.length} tokens
+                  </div>
+                </div>
+
               </div>
             );
           })()}
@@ -6076,7 +6379,7 @@ This document serves as our living source of truth.`
           .pd-header { padding: 0 0.875rem !important; gap: 0.625rem !important; }
           .pd-status-pill { display: none !important; }
           .pd-btn-label { display: none; }
-          .pd-export-btn, .pd-header-sync, .pd-header-avatar { display: none !important; }
+          .pd-export-btn, .pd-header-sync, .pd-header-avatar, .pd-refine-btn { display: none !important; }
           .pd-header-saved, .pd-header-branch { display: none !important; }
           .pd-header-live-dot { display: inline-block !important; }
 
