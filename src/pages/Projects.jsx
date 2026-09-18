@@ -37,10 +37,19 @@ const Projects = () => {
         {projects.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
             <div className="search-bar" style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '100px', padding: '0.5rem 1.25rem', width: '260px' }}>
-              <span style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>🔍</span>
-              <input 
-                type="text" 
-                placeholder="Search projects..." 
+              {/* The same stroked magnifier every other search field in the app uses. An
+                  emoji rendered differently on every platform and sat on the text baseline
+                  rather than on the input's centre line. */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                aria-hidden="true"
+                style={{ marginRight: '8px', color: 'var(--text-tertiary)', flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                placeholder="Search projects..."
+                aria-label="Search projects"
+                autoComplete="off"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ border: 'none', background: 'transparent', width: '100%', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem' }} 
