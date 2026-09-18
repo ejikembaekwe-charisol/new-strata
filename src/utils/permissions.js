@@ -77,6 +77,13 @@ const PERMISSIONS = {
 // "everyone can view the complete design system" principle — only the two
 // administrative tabs are hidden from roles with no permissions in them.
 export function canViewTab(role, tabId) {
+  // Strata Forge and Strata Design are personal tools rather than project data: the model key
+  // they use belongs to whoever is sitting there and lives only in their own browser, so a
+  // role in this project has no bearing on it. Listed rather than left to the fallthrough so
+  // that this is a decision on the record.
+  if (tabId === 'forge' || tabId === 'design') {
+    return true;
+  }
   if (tabId === 'settings') {
     return can(role, 'projectManagement', 'updateSettings');
   }

@@ -6,6 +6,12 @@ import { useTabs } from '../context/TabsContext';
 import branchIcon from '../assets/branch-icon.svg';
 import { resolveMyRole, can, canViewTab, ROLES, describeRole, roleSummary, LOCAL_OWNER_EMAIL } from '../utils/permissions';
 import { getBrandCompleteness, emptyBrandContext } from '../utils/projectCompleteness';
+import {
+  listKeys, saveKey, getKey, getSecret, deleteKey, touchKey,
+  setSessionToken, getSessionToken, sessionScope, maskSecret, relativeTime,
+} from '../utils/llmKeys';
+import { LLM_PROVIDERS, getProvider, normaliseBaseUrl, testKey } from '../data/llmProviders';
+import { probeMcp, MCP_DEFAULT_ORIGIN } from '../data/figmaMcp';
 import BrandContextEngine from '../components/BrandContextEngine';
 import StartChoice from '../components/StartChoice';
 import TemplateGallery from '../components/newProject/TemplateGallery';
@@ -166,6 +172,8 @@ const MAIN_TABS = [
   { id: 'handoff', label: 'Handoff', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/></svg> },
   { id: 'tokens', label: 'Tokens', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg> },
   { id: 'components', label: 'Components', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+  { id: 'forge', label: 'Strata Forge', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M12 2l1.8 4.6L18.5 8l-3.5 3.2.9 4.8L12 13.6 8.1 16l.9-4.8L5.5 8l4.7-1.4z"/><path d="M5 20h14"/></svg> },
+  { id: 'design', label: 'Strata Design', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg> },
   { id: 'settings', label: 'Settings', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> },
   { id: 'collaboration', label: 'Collaboration', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
   { id: 'branch', label: 'Branch & Publish', icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg> },
@@ -419,6 +427,22 @@ function ProjectDetailInner() {
 
   // ── Handoff ───────────────────────────────────────────────────────────
   const [devCopied, setDevCopied] = useState(null);
+
+  // ── Strata Forge ───────────────────────────────────────────────────────
+  // The key itself never lives in state beyond the field being typed into, and the test
+  // result is component state only: a stored "connected" badge would outlive the fact it
+  // described. `forgeTest` is cleared whenever the key or provider it applied to changes.
+  const [forgeProvider, setForgeProvider] = useState('anthropic');
+  const [forgeKeyDraft, setForgeKeyDraft] = useState('');
+  const [forgeBaseUrl, setForgeBaseUrl] = useState('');
+  const [forgeRemember, setForgeRemember] = useState(false);
+  const [forgeName, setForgeName] = useState('');
+  const [forgeSaved, setForgeSaved] = useState(() => listKeys(user?.email || '', 'anthropic'));
+  const [forgeBusy, setForgeBusy] = useState(false);
+  const [forgeTest, setForgeTest] = useState(null);
+  const [forgeNote, setForgeNote] = useState('');
+  const [mcpBusy, setMcpBusy] = useState(false);
+  const [mcpResult, setMcpResult] = useState(null);
   // Which exporter card has its usage snippet open, and the dictionary's filter.
   const [expandedCard, setExpandedCard] = useState(null);
   const [handoffSearch, setHandoffSearch] = useState('');
@@ -487,6 +511,105 @@ function ProjectDetailInner() {
     if (!can(myRole, 'releases', 'setVisibility')) return;
     setProjectVisibility(visibility);
     updateProject(id, { visibility });
+  };
+
+  // ── Strata Forge — the model connection ────────────────────────────────
+  //
+  // Keys are per-person, not per-project: they are scoped by the signed-in email, exactly as
+  // Figma tokens are, so opening a teammate's project never surfaces their key or hands over
+  // yours. Nothing here runs on mount — testKey and probeMcp fire only when pressed, because
+  // firing someone's credential at a provider unasked is not ours to do.
+  const forgeOwner = user?.email || '';
+  const forgeSessionScope = sessionScope(id, forgeProvider);
+
+  // Called at the points the list actually changes — a save, a delete, a provider switch —
+  // rather than from an effect. It is a synchronous localStorage read, so there is nothing
+  // to wait for and nothing to resynchronise.
+  const refreshForgeKeys = (pid = forgeProvider) => setForgeSaved(listKeys(forgeOwner, pid));
+
+  // A result describes one key at one moment. Changing either makes it stale, so it goes.
+  const clearForgeTest = () => { setForgeTest(null); setForgeNote(''); };
+
+  const handleForgeSave = async () => {
+    const secret = forgeKeyDraft.trim();
+    if (!secret || forgeBusy) return;
+    const provider = getProvider(forgeProvider);
+    if (provider?.needsBaseUrl) {
+      const n = normaliseBaseUrl(forgeBaseUrl);
+      if (!n.ok) { setForgeNote(n.reason); return; }
+    }
+    setForgeBusy(true);
+    try {
+      if (forgeRemember) {
+        const { entry, deduped, persisted } = await saveKey({
+          owner: forgeOwner,
+          name: forgeName.trim() || (provider?.label || 'Key') + ' key',
+          secret,
+          provider: forgeProvider,
+          baseUrl: provider?.needsBaseUrl ? normaliseBaseUrl(forgeBaseUrl).url : '',
+        });
+        // localStorage can refuse a write on a full quota, and a save that failed silently
+        // used to read as one that worked.
+        setForgeNote(!persisted
+          ? 'The browser refused to store this key — its storage is full. It is still held for this tab.'
+          : deduped ? 'Already saved as "' + entry.name + '" — updated it.'
+            : 'Saved as "' + entry.name + '".');
+        if (!persisted) setSessionToken(forgeSessionScope, secret);
+        refreshForgeKeys();
+      } else {
+        setSessionToken(forgeSessionScope, secret);
+        setForgeNote('Kept for this browser tab only.');
+      }
+      setForgeKeyDraft('');
+      setForgeName('');
+    } finally {
+      setForgeBusy(false);
+    }
+  };
+
+  /**
+   * Runs the real request. `keyId` tests a saved key; without one it tests whatever is in the
+   * field, or the unsaved key held for this tab.
+   */
+  const handleForgeTest = async (keyId) => {
+    if (forgeBusy) return;
+    const saved = keyId ? getKey(keyId) : null;
+    const secret = saved ? getSecret(keyId)
+      : (forgeKeyDraft.trim() || getSessionToken(forgeSessionScope));
+    if (!secret) { setForgeNote('Paste a key first.'); return; }
+    const provider = getProvider(saved ? saved.provider : forgeProvider);
+    setForgeBusy(true);
+    setForgeTest(null);
+    setForgeNote('');
+    try {
+      const res = await testKey({
+        providerId: provider?.id,
+        secret,
+        baseUrl: saved ? (saved.baseUrl || '') : forgeBaseUrl,
+      });
+      setForgeTest({ ...res, keyId: keyId || null });
+      if (keyId && res.status === 'ok') { touchKey(keyId); refreshForgeKeys(); }
+    } finally {
+      setForgeBusy(false);
+    }
+  };
+
+  const handleForgeDelete = (keyId) => {
+    deleteKey(keyId);
+    // The result described a key that no longer exists.
+    if (forgeTest?.keyId === keyId) clearForgeTest();
+    refreshForgeKeys();
+  };
+
+  const handleMcpProbe = async () => {
+    if (mcpBusy) return;
+    setMcpBusy(true);
+    setMcpResult(null);
+    try {
+      setMcpResult(await probeMcp());
+    } finally {
+      setMcpBusy(false);
+    }
   };
 
   
@@ -5254,6 +5377,450 @@ This document serves as our living source of truth.`
               </div>
             );
           })()}
+
+          {/* ── Strata Forge ──────────────────────────────────────────────
+              A vibe-coding tool: a design in, a working prototype out.
+
+              One part of it works today and the rest does not, and the page says which is
+              which rather than letting the good part vouch for the others. Connecting a model
+              is real — it sends an actual request to the provider you picked and shows you
+              what came back. Importing a design and generating a prototype are not built, and
+              are labelled that way. */}
+          {activeTab === 'forge' && (() => {
+            const provider = getProvider(forgeProvider) || LLM_PROVIDERS[0];
+            const sessionKeyHeld = Boolean(getSessionToken(forgeSessionScope));
+            const mdText = designMarkdown({ ...project, components }, activeTokens);
+            const mdBytes = new TextEncoder().encode(mdText).length;
+
+            const card = {
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              borderRadius: '16px', padding: '2rem',
+            };
+            const smallBtn = {
+              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+              borderRadius: '8px', padding: '0.35rem 0.8rem', cursor: 'pointer',
+              color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600,
+              fontFamily: 'inherit',
+            };
+            const field = {
+              width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+              borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)',
+              fontSize: '0.82rem', fontFamily: 'var(--font-mono)', outline: 'none',
+            };
+            const pill = (text, tone) => (
+              <span style={{
+                fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em',
+                textTransform: 'uppercase', padding: '0.2rem 0.5rem', borderRadius: '100px',
+                flexShrink: 0,
+                background: tone === 'on' ? 'rgba(16,185,129,0.12)' : 'var(--bg-tertiary)',
+                color: tone === 'on' ? '#10B981' : 'var(--text-tertiary)',
+                border: '1px solid ' + (tone === 'on' ? 'rgba(16,185,129,0.25)' : 'var(--border)'),
+              }}>{text}</span>
+            );
+            const sectionHead = (title, badge, lead) => (
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h3>
+                  {badge}
+                </div>
+                {lead && (
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                    {lead}
+                  </p>
+                )}
+              </div>
+            );
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px' }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Strata Forge
+                  </h2>
+                  <p style={{ margin: '0.3rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '66ch', lineHeight: 1.6 }}>
+                    Turn a design into a working prototype, using the model you choose and the
+                    key you bring. Connecting a model works today; the two steps after it are
+                    not built yet and say so below.
+                  </p>
+                </div>
+
+                {/* ── Connect your model ─────────────────────────────────── */}
+                <div style={card}>
+                  {sectionHead('Connect your model', pill('Working', 'on'),
+                    'Strata sends your key straight to the provider from this browser. There is no Strata server in between, because there is no Strata server.')}
+
+                  <p style={{
+                    margin: '0 0 1.25rem', fontSize: '0.78rem', color: 'var(--text-tertiary)',
+                    lineHeight: 1.6, maxWidth: '64ch',
+                  }}>
+                    The key is stored in this browser under your own account &mdash; it is not
+                    part of the project, so teammates who open this project will not see it, and
+                    you will not see theirs. It is kept in plain text: anyone who can read this
+                    browser can read it, and unlike a Figma token an API key spends money.
+                  </p>
+
+                  {/* Provider */}
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1rem' }} role="radiogroup" aria-label="Model provider">
+                    {LLM_PROVIDERS.map(p => (
+                      <button key={p.id} type="button" className="sf-focus" role="radio"
+                        aria-checked={forgeProvider === p.id}
+                        onClick={() => { setForgeProvider(p.id); clearForgeTest(); refreshForgeKeys(p.id); }}
+                        style={{
+                          padding: '0.45rem 1rem', borderRadius: '999px', fontFamily: 'inherit',
+                          border: '1px solid ' + (forgeProvider === p.id ? 'var(--accent)' : 'var(--border)'),
+                          background: forgeProvider === p.id ? 'var(--accent)' : 'var(--bg-tertiary)',
+                          color: forgeProvider === p.id ? '#fff' : 'var(--text-secondary)',
+                          fontSize: '0.82rem', fontWeight: forgeProvider === p.id ? 600 : 400,
+                          cursor: 'pointer', touchAction: 'manipulation',
+                        }}>{p.label}</button>
+                    ))}
+                  </div>
+
+                  <p style={{ margin: '0 0 1rem', fontSize: '0.78rem', color: 'var(--text-tertiary)', lineHeight: 1.6, maxWidth: '64ch' }}>
+                    {provider.keyHint}
+                    {provider.docsUrl && (
+                      <>
+                        {' '}
+                        <a href={provider.docsUrl} target="_blank" rel="noopener noreferrer"
+                          style={{ color: 'var(--accent)', textDecoration: 'none' }}>Get a key &#8599;</a>
+                      </>
+                    )}
+                  </p>
+
+                  {provider.needsBaseUrl && (
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <label htmlFor="forge-base" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
+                        Base URL
+                      </label>
+                      <input id="forge-base" type="text" style={field} autoComplete="off"
+                        placeholder="https://openrouter.ai/api/v1"
+                        value={forgeBaseUrl}
+                        onChange={(e) => { setForgeBaseUrl(e.target.value); clearForgeTest(); }} />
+                    </div>
+                  )}
+
+                  <div className="pd-forge-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <label htmlFor="forge-key" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
+                        API key
+                      </label>
+                      {/* type=password so it is not shoulder-read, and the value only ever
+                          lives in this field — a saved key is never rendered back. */}
+                      <input id="forge-key" type="password" style={field} autoComplete="off"
+                        placeholder={provider.keyPlaceholder}
+                        value={forgeKeyDraft}
+                        onChange={(e) => { setForgeKeyDraft(e.target.value); clearForgeTest(); }} />
+                    </div>
+                    <div>
+                      <label htmlFor="forge-name" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
+                        Name it (optional)
+                      </label>
+                      <input id="forge-name" type="text" style={{ ...field, fontFamily: 'inherit' }} autoComplete="off"
+                        placeholder="Work key"
+                        value={forgeName}
+                        onChange={(e) => setForgeName(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '1rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={forgeRemember}
+                      onChange={(e) => setForgeRemember(e.target.checked)}
+                      style={{ marginTop: '0.15rem', accentColor: 'var(--accent)' }} />
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                      Remember this key on this device
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                        {forgeRemember
+                          ? 'Not encrypted — anyone with access to this browser can read it.'
+                          : 'Kept for this browser tab only.'}
+                      </span>
+                    </span>
+                  </label>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button type="button" className="sf-focus"
+                      disabled={!forgeKeyDraft.trim() || forgeBusy}
+                      onClick={handleForgeSave}
+                      style={{
+                        padding: '0.5rem 1.1rem', borderRadius: '999px', border: 'none',
+                        background: forgeKeyDraft.trim() ? 'var(--accent)' : 'var(--bg-tertiary)',
+                        color: forgeKeyDraft.trim() ? '#fff' : 'var(--text-tertiary)',
+                        fontSize: '0.82rem', fontWeight: 600, fontFamily: 'inherit',
+                        cursor: forgeKeyDraft.trim() && !forgeBusy ? 'pointer' : 'not-allowed',
+                      }}>
+                      {forgeRemember ? 'Save key' : 'Keep for this tab'}
+                    </button>
+                    <button type="button" className="sf-focus" style={smallBtn}
+                      disabled={forgeBusy || (!forgeKeyDraft.trim() && !sessionKeyHeld)}
+                      onClick={() => handleForgeTest(null)}>
+                      {forgeBusy ? 'Testing…' : 'Test connection'}
+                    </button>
+                    {sessionKeyHeld && !forgeKeyDraft.trim() && (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                        A key is held for this tab.
+                      </span>
+                    )}
+                  </div>
+
+                  {forgeNote && (
+                    <p style={{ margin: '0.75rem 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{forgeNote}</p>
+                  )}
+
+                  {/* The result. Every sentence here is keyed off reachedProvider: when the
+                      browser blocked the request we learned nothing about the key, and the
+                      copy must not pretend otherwise. */}
+                  {forgeTest && (
+                    <div style={{
+                      marginTop: '1rem', padding: '0.9rem 1rem', borderRadius: '10px',
+                      background: 'var(--bg-tertiary)',
+                      border: '1px solid ' + (forgeTest.status === 'ok' ? 'rgba(16,185,129,0.35)' : 'var(--border)'),
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        {pill(forgeTest.status === 'ok' ? 'Answered' : forgeTest.reachedProvider ? 'Answered' : 'No answer',
+                          forgeTest.status === 'ok' ? 'on' : 'off')}
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                          {forgeTest.message}
+                        </span>
+                      </div>
+                      {forgeTest.detail && (
+                        <p style={{ margin: '0.5rem 0 0', fontSize: '0.76rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>
+                          {forgeTest.detail}
+                        </p>
+                      )}
+                      {forgeTest.models.length > 0 && (
+                        <div style={{ marginTop: '0.75rem' }}>
+                          <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.4rem' }}>
+                            What it returned
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            {forgeTest.models.slice(0, 12).map(m => (
+                              <span key={m.id} style={{
+                                fontSize: '0.72rem', fontFamily: 'var(--font-mono)',
+                                padding: '0.2rem 0.5rem', borderRadius: '6px',
+                                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                                color: 'var(--text-secondary)',
+                              }}>{m.label}</span>
+                            ))}
+                          </div>
+                          {/* A raw count would flatter: OpenAI's list includes embeddings and
+                              speech models that cannot generate a prototype. */}
+                          <p style={{ margin: '0.5rem 0 0', fontSize: '0.74rem', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                            {forgeTest.models.length > 12
+                              ? 'The first 12 of ' + forgeTest.models.length + '. '
+                              : ''}
+                            This is everything the key can see, which for some providers includes
+                            embedding and speech models as well as ones that can write code.
+                          </p>
+                        </div>
+                      )}
+                      <p style={{ margin: '0.6rem 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+                        Checked {relativeTime(forgeTest.checkedAt)} · took {forgeTest.durationMs}ms.
+                        This says the key worked from this browser just now, and nothing beyond that.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Saved keys */}
+                  {forgeSaved.length > 0 && (
+                    <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
+                      <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.6rem' }}>
+                        Saved for {provider.label}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        {forgeSaved.map(k => (
+                          <div key={k.id} className="pd-forge-key-row" style={{
+                            display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+                            padding: '0.6rem 0.8rem', borderRadius: '8px',
+                            background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                          }}>
+                            <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 600 }}>{k.name}</span>
+                            <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
+                              {maskSecret(k.secret)}
+                            </span>
+                            <span style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
+                              used {relativeTime(k.lastUsedAt)}
+                            </span>
+                            <div style={{ flex: 1 }} />
+                            <button type="button" className="sf-focus" style={smallBtn}
+                              disabled={forgeBusy}
+                              onClick={() => handleForgeTest(k.id)}>Test</button>
+                            <button type="button" className="sf-focus" style={smallBtn}
+                              onClick={() => handleForgeDelete(k.id)}>Delete</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Bring in a design ──────────────────────────────────── */}
+                <div style={card}>
+                  {sectionHead('Bring in a design', pill('Not built', 'off'),
+                    'Where the prototype starts from. Neither route generates anything yet.')}
+
+                  <div className="pd-forge-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+                    {/* From this project — the payload genuinely exists already. */}
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '1.1rem', background: 'var(--bg-tertiary)' }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
+                        From this design system
+                      </div>
+                      <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        The document Forge would send is the one Handoff already generates:
+                        brand, every token, and every component with its mapped tokens and its
+                        CSS rule. It exists today &mdash; what does not exist is the step that
+                        sends it to a model and turns the answer into files.
+                      </p>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                        {markdownSlug(project.name)}.md · {(mdBytes / 1024).toFixed(1)} KB ·{' '}
+                        {tokenTotal} tokens · {components.length} components
+                      </div>
+                      <button type="button" className="sf-focus" style={{ ...smallBtn, marginTop: '0.75rem' }}
+                        onClick={() => { setActiveTab('handoff'); setActiveHandoffSubTab('md'); }}>
+                        See exactly what it says
+                      </button>
+                    </div>
+
+                    {/* From Figma — a diagnostic, and honest that that is all it is. */}
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '1.1rem', background: 'var(--bg-tertiary)' }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.3rem' }}>
+                        From Figma, over the Dev Mode MCP server
+                      </div>
+                      <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        Figma Desktop runs that server on your own machine, at{' '}
+                        <code style={{ fontFamily: 'var(--font-mono)' }}>{MCP_DEFAULT_ORIGIN}</code>,
+                        for local tools like an editor or an agent. A web page is a harder case:
+                        browsers restrict what a page may read from your machine. The check below
+                        does not connect to anything &mdash; it reports whether this page can
+                        reach it at all, and says plainly when it cannot.
+                      </p>
+                      <button type="button" className="sf-focus" style={smallBtn}
+                        disabled={mcpBusy} onClick={handleMcpProbe}>
+                        {mcpBusy ? 'Checking…' : 'Check for the server'}
+                      </button>
+
+                      {mcpResult && (
+                        <div style={{
+                          marginTop: '0.75rem', padding: '0.75rem 0.85rem', borderRadius: '10px',
+                          background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                            {pill(mcpResult.observed ? 'Answered' : 'No answer', mcpResult.status === 'ok' ? 'on' : 'off')}
+                            {!mcpResult.attempted && (
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+                                no request was sent
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
+                            {mcpResult.message}
+                          </p>
+                          {mcpResult.possibilities.length > 0 && (
+                            <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem', fontSize: '0.76rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                              {mcpResult.possibilities.map(p => <li key={p}>{p}</li>)}
+                            </ul>
+                          )}
+                          {mcpResult.remedy && (
+                            <p style={{ margin: '0.5rem 0 0', fontSize: '0.76rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                              {mcpResult.remedy}
+                            </p>
+                          )}
+                          <p style={{ margin: '0.5rem 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+                            Checked {relativeTime(mcpResult.checkedAt)}.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Generate ───────────────────────────────────────────── */}
+                <div style={card}>
+                  {sectionHead('Generate a prototype', pill('Not built', 'off'), null)}
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: '66ch' }}>
+                    What this will do: send the design above to the model you connected, and
+                    write what comes back into the folder you picked in Handoff &mdash; a page
+                    that imports <code style={{ fontFamily: 'var(--font-mono)' }}>tokens.css</code>{' '}
+                    and the components, not a screenshot of one. That folder connection and the
+                    file generators already exist; the step between them does not, so there is
+                    nothing here to press yet.
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Strata Design ─────────────────────────────────────────────
+              An infinite canvas with AI UI generation, with Plexo behind the generation.
+
+              Nothing here is wired up, and rather than dress that up as a preview this page
+              says what is missing and what is already in place for it. A placeholder canvas
+              would be the most convincing lie in the app. */}
+          {activeTab === 'design' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '1200px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Strata Design
+                  </h2>
+                  <span style={{
+                    fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em',
+                    textTransform: 'uppercase', padding: '0.2rem 0.5rem', borderRadius: '100px',
+                    background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)',
+                    border: '1px solid var(--border)',
+                  }}>Not built</span>
+                </div>
+                <p style={{ margin: '0.3rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '66ch', lineHeight: 1.6 }}>
+                  An infinite canvas, with AI generating UI on it &mdash; powered by our sibling
+                  company <strong style={{ color: 'var(--text-primary)' }}>Plexo</strong>.
+                </p>
+              </div>
+
+              <div style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '16px', padding: '2rem',
+              }}>
+                <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Where this actually stands
+                </h3>
+                <p style={{ margin: '0 0 0.75rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: '66ch' }}>
+                  Two separate things are missing, and they are missing for different reasons.
+                  There is no canvas in Strata yet &mdash; no panning, no zooming, nothing that
+                  can be dragged &mdash; so the surface has to be built. And the generation is
+                  Plexo&rsquo;s: there is no endpoint to call today, so even a finished canvas
+                  would have nothing to ask.
+                </p>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: '66ch' }}>
+                  A mocked-up canvas would be the most convincing thing on this page and the
+                  least true, so there is not one.
+                </p>
+              </div>
+
+              <div style={{
+                background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                borderRadius: '16px', padding: '2rem',
+              }}>
+                <h3 style={{ margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  What it already has to build on
+                </h3>
+                <ul style={{ margin: 0, paddingLeft: '1.1rem', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.8, maxWidth: '66ch' }}>
+                  <li>
+                    A renderer that draws any of this project&rsquo;s{' '}
+                    <strong style={{ color: 'var(--text-primary)' }}>{components.length} components</strong>{' '}
+                    at any size with its real tokens resolved &mdash; the same one the Components
+                    tab and the public system page share.
+                  </li>
+                  <li>
+                    A frame primitive that measures its contents and scales them to fit, which is
+                    most of what a zoom-to-fit needs.
+                  </li>
+                  <li>
+                    <strong style={{ color: 'var(--text-primary)' }}>{tokenTotal} tokens</strong>{' '}
+                    already resolved for this project, so anything drawn on the canvas would be
+                    drawn in your system rather than in a generic one.
+                  </li>
+                </ul>
+              </div>
+            </div>
+          )}
 
           {activeTab === 'settings' && (
             <div style={{ maxWidth: '480px' }}>
