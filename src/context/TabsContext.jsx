@@ -37,8 +37,8 @@ export const TabsProvider = ({ children }) => {
   const { projects, isLoaded } = useProjects();
   const owner = ownerOf(user);
 
-  // { ids, sections, sidebarCollapsed, opened: { [projectId]: iso } }
-  const [state, setState] = useState({ ids: [], sections: {}, sidebarCollapsed: false, opened: {} });
+  // { ids, sections, opened: { [projectId]: iso } }
+  const [state, setState] = useState({ ids: [], sections: {}, opened: {} });
   // False until the load effect below has run. Consumers must not write until it is true.
   const [hydrated, setHydrated] = useState(false);
 
@@ -52,7 +52,6 @@ export const TabsProvider = ({ children }) => {
     setState({
       ids: Array.isArray(forOwner?.ids) ? forOwner.ids.map(String) : [],
       sections: forOwner?.sections && typeof forOwner.sections === 'object' ? forOwner.sections : {},
-      sidebarCollapsed: !!forOwner?.sidebarCollapsed,
       opened: forOwner?.opened && typeof forOwner.opened === 'object' ? forOwner.opened : {},
     });
     setHydrated(true);
@@ -104,7 +103,7 @@ export const TabsProvider = ({ children }) => {
       const ids = prev.ids.filter(x => x !== key);
       const sections = { ...prev.sections };
       delete sections[key];
-      // spread prev so preferences like sidebarCollapsed survive a tab close
+      // spread prev so any other stored preference survives a tab close
       const next = { ...prev, ids, sections };
       const store = readStore();
       store[owner] = next;
@@ -151,17 +150,11 @@ export const TabsProvider = ({ children }) => {
       .sort((a, b) => String(state.opened[String(b.id)]).localeCompare(String(state.opened[String(a.id)])));
   }, [projects, isLoaded, state.ids, state.opened]);
 
-  // A workspace preference rather than a per-project one, so it applies to every project
-  const setSidebarCollapsed = useCallback((value) => {
-    if (!hydrated) return;
-    setState(prev => {
-      const next = { ...prev, sidebarCollapsed: !!value };
-      const store = readStore();
-      store[owner] = next;
-      writeStore(store);
-      return next;
-    });
-  }, [owner, hydrated]);
+  // The sidebar's collapsed/expanded preference used to live here. The sidebar is one
+  // rail now — the name sits under its icon and there is nothing to expand into — so the
+  // preference had nothing left to mean. A stale `sidebarCollapsed` in an already-stored
+  // record is simply ignored rather than migrated away, because reading it costs nothing
+  // and rewriting every stored record to drop one dead field costs more than it saves.
 
   /** The tab to land on after closing `id`: left neighbour, else right, else null. */
   const neighbourOf = useCallback((id) => {
@@ -176,7 +169,6 @@ export const TabsProvider = ({ children }) => {
       hydrated,
       openTabs, openTab, closeTab, sectionFor, setSection, neighbourOf,
       markOpened, recentProjects,
-      sidebarCollapsed: state.sidebarCollapsed, setSidebarCollapsed,
     }}>
       {children}
     </TabsContext.Provider>
