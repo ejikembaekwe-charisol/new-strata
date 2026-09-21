@@ -222,16 +222,16 @@ export function buildPreviewDocument({ html, tokensMap, project, allowRemoteImag
   return { ok: true, srcDoc, bytes, oversize: false, strippedRefresh, note: '' };
 }
 
-/** Bind the page to the project's own background and text, with neutral fallbacks so a
- *  system that defines neither still renders legibly. */
-const RESET = [
-  'html, body { margin: 0; padding: 0; }',
-  'body {',
-  '  background: var(--brand-color-background, #ffffff);',
-  '  color: var(--brand-color-text, #111111);',
-  '  font-family: var(--brand-font-body, system-ui, sans-serif);',
-  '}',
-].join('\n');
+/**
+ * Deliberately almost nothing.
+ *
+ * This used to bind body's background, colour and font to the project's tokens. That reads
+ * as helpful and is not: a system whose surface tokens are dark paints itself over a light
+ * page the model wrote, and the page comes back unreadable with no clue why. The tokens are
+ * declared in the document and the model is told to use them — imposing them on top of what
+ * it wrote is a different thing, and the wrong one.
+ */
+const RESET = 'html, body { margin: 0; padding: 0; }';
 
 /** The families the project's own type tokens name, so the preview does not silently fall
  *  back to Times New Roman for a design system whose subject is partly its typography. */

@@ -12,7 +12,7 @@ import {
 } from '../utils/llmKeys';
 import { LLM_PROVIDERS, getProvider, normaliseBaseUrl, testKey, sendChat, pickModel } from '../data/llmProviders';
 import {
-  FORGE_SYSTEM_PROMPT, extractHtml, buildPreviewDocument, PREVIEW_LIMITS,
+  FORGE_SYSTEM_PROMPT, extractHtml, buildPreviewDocument,
 } from '../data/previewDocument';
 import PreviewFrame from '../components/forge/PreviewFrame';
 import ForgeIcon from '../components/forge/ForgeIcon';
@@ -455,6 +455,7 @@ function ProjectDetailInner() {
   const [forgeDevice, setForgeDevice] = useState('desktop');
   const [forgeMode, setForgeMode] = useState('build');
   const [forgeSettingsOpen, setForgeSettingsOpen] = useState(false);
+  const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
 
   // ── Strata Forge ───────────────────────────────────────────────────────
   // The key itself never lives in state beyond the field being typed into, and the test
@@ -2210,6 +2211,10 @@ This document serves as our living source of truth.`
   // test — see ProjectContext.addProject. Tokens and brand context both being untouched is
   // what "no design system yet" actually means.
   const forgeEmptyProject = tokenTotal === 0 && completeness.done === 0;
+  // Forge's workspace is the one panel that runs edge to edge: the frame it was built from
+  // has the toolbar flush to the top and the chat flush to the right, with no page padding
+  // around either. Every other tab keeps the padding.
+  const forgeFullBleed = activeTab === 'forge' && forgeAnyKey && !forgeEmptyProject && !forgeKeysOpen;
 
   const hasBrandContext = completeness.done > 0 || Boolean(
     project?.brand?.primaryColor || project?.brand?.logoPreview ||
@@ -2642,7 +2647,12 @@ This document serves as our living source of truth.`
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--tabstrip-h, 0px))', marginTop: 'var(--tabstrip-h, 0px)', background: 'var(--bg)' }}>
 
-      {/* ── App Top Bar ── */}
+      {/* ── App Top Bar ──
+          Forge is the one tab that goes without it. Its own toolbar carries Publish and a
+          settings menu, and the design it was built from has the toolbar flush to the top
+          of the window — so the row would be a second, competing header rather than the
+          app’s. The sidebar still navigates, and every other tab keeps it. */}
+      {activeTab !== 'forge' && (
       <header className="pd-header" style={{
         display: 'flex', alignItems: 'center', gap: '1rem',
         padding: '0 1.5rem', height: '52px', flexShrink: 0,
@@ -2938,6 +2948,7 @@ This document serves as our living source of truth.`
           )}
         </div>
       </header>
+      )}
 
       <div className="pd-shell" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
@@ -3205,7 +3216,10 @@ This document serves as our living source of truth.`
         {/* ── Main Content ── */}
         <main
           className={'pd-main' + (previewComponentId ? ' has-inspector' : '')}
-          style={{ flex: 1, overflowY: 'auto', padding: '1.5rem 2rem' }}
+          style={{
+            flex: 1, overflowY: forgeFullBleed ? 'hidden' : 'auto',
+            padding: forgeFullBleed ? 0 : '1.5rem 2rem',
+          }}
         >
 
 
@@ -5562,26 +5576,15 @@ This document serves as our living source of truth.`
 
             return (
               <div style={{
-                display: 'flex', flexDirection: 'column', gap: '1.25rem',
-                maxWidth: forgeAnyKey && !forgeEmptyProject ? 'none' : '1200px',
-                height: forgeAnyKey && !forgeEmptyProject ? '100%' : 'auto',
+                display: 'flex', flexDirection: 'column',
+                gap: forgeFullBleed ? 0 : '1.25rem',
+                maxWidth: forgeFullBleed ? 'none' : '1200px',
+                height: forgeFullBleed ? '100%' : 'auto',
                 minHeight: 0,
+                padding: forgeKeysOpen ? '1.5rem 2rem' : 0,
               }}>
-                <div style={{ flexShrink: 0 }}>
-                  <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Strata Forge
-                  </h2>
-                  <p style={{ margin: '0.3rem 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '66ch', lineHeight: 1.6 }}>
-                    {!forgeAnyKey
-                      ? 'Turn a design into a working prototype, using the model you choose and the key you bring. Connect one to begin.'
-                      : forgeEmptyProject
-                        ? 'Ask for a page. It is written by the model you connected, on your key.'
-                        : 'Ask for a page. It is written by the model you connected, on your key, and rendered here in this project’s design system.'}
-                  </p>
-                </div>
-
                 {/* ── The tool ───────────────────────────────────────────── */}
-                {forgeAnyKey && (() => {
+                {forgeAnyKey && !forgeKeysOpen && (() => {
                   const modelList = forgeTest?.models || [];
                   const usingModel = pickModel(forgeProvider, { model: forgeModel, models: modelList });
                   const doc = forgeDocIndex >= 0 ? forgeDocs[forgeDocIndex] : null;
@@ -5772,8 +5775,7 @@ This document serves as our living source of truth.`
                       {/* ── Preview panel ──────────────────────────────── */}
                       <div style={{
                         display: 'flex', flexDirection: 'column', minWidth: 0,
-                        border: '1px solid var(--border)', borderRadius: '12px 0 0 12px',
-                        borderRight: 'none', background: 'var(--bg-secondary)', overflow: 'hidden',
+                        background: 'var(--bg-secondary)', overflow: 'hidden',
                       }}>
                         <div className="pd-forge-toolbar" style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -5830,6 +5832,11 @@ This document serves as our living source of truth.`
                                       onClick={() => { handleForgeNewChat(); setForgeSettingsOpen(false); }}
                                       style={{ ...smallBtn, width: '100%', marginTop: '0.75rem', textAlign: 'left' }}>
                                       Start a new conversation
+                                    </button>
+                                    <button type="button" className="sf-focus"
+                                      onClick={() => { setForgeKeysOpen(true); setForgeSettingsOpen(false); }}
+                                      style={{ ...smallBtn, width: '100%', marginTop: '0.4rem', textAlign: 'left' }}>
+                                      Model keys
                                     </button>
                                   </div>
                                 </>
@@ -5935,7 +5942,7 @@ This document serves as our living source of truth.`
                       {/* ── Chat panel ─────────────────────────────────── */}
                       <div style={{
                         display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0,
-                        border: '1px solid var(--border)', borderRadius: '0 12px 12px 0',
+                        borderLeft: '1px solid var(--border)',
                         background: 'var(--bg-tertiary)', overflow: 'hidden',
                       }}>
                         <div style={{
@@ -6009,27 +6016,14 @@ This document serves as our living source of truth.`
                   );
                 })()}
 
-                {/* What the frame cannot promise, printed from the module that enforces it
-                    rather than retyped here. */}
-                {forgeAnyKey && !forgeEmptyProject && (
-                  <details style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-                    <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                      What the preview cannot promise
-                    </summary>
-                    <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem', lineHeight: 1.7 }}>
-                      {PREVIEW_LIMITS.map(l => <li key={l}>{l}</li>)}
-                    </ul>
-                  </details>
-                )}
-
-                {/* Once a key is set the connect panel folds away: it is something you do
-                    once, not something you read every visit. */}
-                {forgeAnyKey ? (
-                  <details style={{ flexShrink: 0 }}>
-                    <summary style={{ cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                      Your key and model
-                    </summary>
-                    <div style={{ marginTop: '0.75rem' }}>
+                {/* The connect panel is one of the gear menu’s items rather than a
+                    permanent block: connecting is something you do once. It still has to be
+                    reachable, though — it is the only way to change provider, add a second
+                    key or delete one. */}
+                {forgeAnyKey ? (forgeKeysOpen && (
+                  <div style={{ flexShrink: 0 }}>
+                    <button type="button" className="sf-focus" style={{ ...smallBtn, marginBottom: '0.75rem' }}
+                      onClick={() => setForgeKeysOpen(false)}>← Back to the workspace</button>
                       <div style={card}>
                         {sectionHead('Connect your model', pill('Working', 'on'),
                           'Strata sends your key straight to the provider from this browser. There is no Strata server in between, because there is no Strata server.')}
@@ -6236,9 +6230,8 @@ This document serves as our living source of truth.`
                           </div>
                         )}
                       </div>
-                    </div>
-                  </details>
-                ) : (
+                  </div>
+                )) : (
                   <div style={card}>
                     {sectionHead('Connect your model', pill('Working', 'on'),
                       'Strata sends your key straight to the provider from this browser. There is no Strata server in between, because there is no Strata server.')}
