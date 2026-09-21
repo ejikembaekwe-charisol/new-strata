@@ -15,6 +15,7 @@ import {
   FORGE_SYSTEM_PROMPT, extractHtml, buildPreviewDocument, PREVIEW_LIMITS,
 } from '../data/previewDocument';
 import PreviewFrame from '../components/forge/PreviewFrame';
+import ForgeIcon from '../components/forge/ForgeIcon';
 import TemplateGallery from '../components/newProject/TemplateGallery';
 import BrandContextEngine from '../components/BrandContextEngine';
 import StartChoice from '../components/StartChoice';
@@ -168,6 +169,13 @@ const nlnl = String.fromCharCode(10, 10);
 const HISTORY_LIMIT = 50;
 
 const COLOR_VALUE_TYPES = new Set(['color', 'background-color', 'border-color', 'outline-color', 'text-decoration-color', 'accent-color', 'fill', 'stroke']);
+
+// Forge's composer offers two modes. They differ in the system prompt, not in wording:
+// Build asks for a page and renders what comes back, Ask answers in prose about the system.
+const FORGE_MODES = [
+  { id: 'build', label: 'Build' },
+  { id: 'ask', label: 'Ask' },
+];
 
 // Sidebar main navigation tabs — shared by the desktop list, the mobile icon rail, and the mobile nav overlay
 const MAIN_TABS = [
@@ -443,6 +451,10 @@ function ProjectDetailInner() {
   const [forgeDocs, setForgeDocs] = useState([]);
   const [forgeDocIndex, setForgeDocIndex] = useState(-1);
   const [forgeRemoteImages, setForgeRemoteImages] = useState(false);
+  const [forgeView, setForgeView] = useState('preview');
+  const [forgeDevice, setForgeDevice] = useState('desktop');
+  const [forgeMode, setForgeMode] = useState('build');
+  const [forgeSettingsOpen, setForgeSettingsOpen] = useState(false);
 
   // ── Strata Forge ───────────────────────────────────────────────────────
   // The key itself never lives in state beyond the field being typed into, and the test
@@ -642,6 +654,9 @@ function ProjectDetailInner() {
     setForgeElapsed(0);
     setForgeSending(true);
     try {
+      const rules = forgeMode === 'ask'
+        ? 'You are helping someone reason about the design system below. Answer in prose. Do not write a page unless you are asked for one.'
+        : FORGE_SYSTEM_PROMPT;
       const res = await sendChat({
         providerId: forgeProvider,
         secret,
@@ -650,13 +665,15 @@ function ProjectDetailInner() {
         models: forgeTest?.models || [],
         // Only what the project really holds. An empty project gets the rules and nothing
         // else, and the page says its output will come back in the model's own defaults.
-        system: FORGE_SYSTEM_PROMPT + (forgeEmptyProject ? '' : '\n\n---\n\n'
+        system: rules + (forgeEmptyProject ? '' : '\n\n---\n\n'
           + designMarkdown({ ...project, components }, activeTokens)),
         messages: outgoing.map(m => ({ role: m.role, content: m.content })),
       });
       if (key && res.reachedProvider) touchKey(key.id);
 
-      const extracted = res.status === 'ok' ? extractHtml(res.text) : { ok: false, html: '', source: 'none', note: '' };
+      const extracted = res.status === 'ok' && forgeMode === 'build'
+        ? extractHtml(res.text)
+        : { ok: false, html: '', source: 'none', note: '' };
       let built = null;
       if (extracted.ok) {
         built = buildPreviewDocument({
@@ -689,6 +706,20 @@ function ProjectDetailInner() {
     } finally {
       setForgeSending(false);
     }
+  };
+
+  /**
+   * Clears the conversation and everything it produced.
+   *
+   * Worth having rather than tidy-looking: every message re-sends the whole design system
+   * and the whole transcript, so a long thread costs more each turn than a short one.
+   */
+  const handleForgeNewChat = () => {
+    setForgeMessages([]);
+    setForgeDocs([]);
+    setForgeDocIndex(-1);
+    setForgeInput('');
+    setForgeNote('');
   };
 
   /** What the model said other than the document — the fences come out, because a whole
@@ -5563,81 +5594,129 @@ This document serves as our living source of truth.`
                     </button>
                   );
 
-                  const composer = (big) => (
-                    <div style={{
-                      background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                      borderRadius: big ? '18px' : '14px', padding: big ? '1rem 1.1rem' : '0.7rem 0.8rem',
-                    }}>
-                      <textarea
-                        aria-label="Describe what to make"
-                        placeholder={big ? 'Describe your idea.' : 'Ask for a change…'}
-                        rows={big ? 3 : 2}
-                        value={forgeInput}
-                        onChange={(e) => setForgeInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          // Enter sends, Shift+Enter is a newline — the convention everywhere
-                          // else this shape appears.
-                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleForgeSend(); }
-                        }}
+                  // Cards, labels and the composer, matching the Figma frame's shapes.
+                  const cardPanel = {
+                    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                    borderRadius: '12px', padding: '1rem',
+                    display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                  };
+                  const cardLabel = {
+                    fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.069em',
+                    textTransform: 'uppercase', color: 'var(--text-tertiary)',
+                  };
+                  // A label with a chevron in a round well, the shape the frame uses for both
+                  // of its pickers. The select itself covers the whole control, so the chevron
+                  // never has to catch a click of its own.
+                  const picker = (label, value, options, onChange, width) => (
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '30px' }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        {options.find(o => o.id === value)?.label || label}
+                      </span>
+                      <span style={{
+                        width: '30px', height: '30px', borderRadius: '15px', marginLeft: '0.15rem',
+                        background: 'var(--bg-secondary)', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)',
+                      }}>
+                        <ForgeIcon name="chevronDown" size={18} />
+                      </span>
+                      <select
+                        aria-label={label}
+                        value={value}
+                        onChange={(e) => onChange(e.target.value)}
                         style={{
-                          width: '100%', background: 'none', border: 'none', outline: 'none',
-                          resize: 'none', color: 'var(--text-primary)', fontFamily: 'inherit',
-                          fontSize: big ? '0.95rem' : '0.85rem', lineHeight: 1.5,
-                        }}
-                      />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-                          {provider.label}
-                        </span>
-                        {modelList.length > 0 ? (
-                          <select
-                            aria-label="Model"
-                            value={usingModel}
-                            onChange={(e) => setForgeModel(e.target.value)}
-                            style={{
-                              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                              borderRadius: '6px', color: 'var(--text-secondary)',
-                              fontSize: '0.72rem', fontFamily: 'inherit', padding: '0.2rem 0.3rem',
-                              maxWidth: '190px',
-                            }}>
-                            {modelList.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-                          </select>
-                        ) : (
-                          <input
-                            aria-label="Model"
-                            placeholder={provider.needsModel ? 'model id (required)' : 'model id'}
-                            value={forgeModel}
-                            onChange={(e) => setForgeModel(e.target.value)}
-                            style={{
-                              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                              borderRadius: '6px', color: 'var(--text-secondary)', width: '170px',
-                              fontSize: '0.72rem', fontFamily: 'var(--font-mono)', padding: '0.2rem 0.4rem',
-                            }} />
-                        )}
-                        <div style={{ flex: 1 }} />
-                        {forgeSending && (
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-                            {forgeElapsed}s elapsed
-                          </span>
-                        )}
-                        <button
-                          type="button" className="sf-focus"
-                          disabled={!forgeInput.trim() || forgeSending}
-                          onClick={() => handleForgeSend()}
-                          aria-label="Send"
-                          style={{
-                            width: '30px', height: '30px', borderRadius: '50%', border: 'none',
-                            background: forgeInput.trim() && !forgeSending ? 'var(--accent)' : 'var(--bg-secondary)',
-                            color: forgeInput.trim() && !forgeSending ? '#fff' : 'var(--text-tertiary)',
-                            cursor: forgeInput.trim() && !forgeSending ? 'pointer' : 'not-allowed',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                          }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
-                          </svg>
-                        </button>
-                      </div>
+                          position: 'absolute', inset: 0, width: width || '100%',
+                          opacity: 0, cursor: 'pointer', fontFamily: 'inherit',
+                        }}>
+                        {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                      </select>
                     </div>
+                  );
+
+                  const composer = (big) => (
+                    <>
+                      <div style={{
+                        background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                        borderRadius: '12px', padding: '1rem',
+                      }}>
+                        <textarea
+                          aria-label="Describe what to make"
+                          placeholder={big ? 'Describe your idea.' : 'Ask for a change...'}
+                          rows={big ? 3 : 3}
+                          value={forgeInput}
+                          onChange={(e) => setForgeInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            // Enter sends, Shift+Enter is a newline — the convention everywhere
+                            // else this shape appears.
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleForgeSend(); }
+                          }}
+                          style={{
+                            width: '100%', background: 'none', border: 'none', outline: 'none',
+                            resize: 'none', color: 'var(--text-primary)', fontFamily: 'inherit',
+                            fontSize: big ? '0.95rem' : '0.85rem', lineHeight: 1.5,
+                          }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {/* The frame's plus. It starts a new conversation — the one thing a
+                              plus here can do that Strata can actually carry out, and worth
+                              having because every message re-sends the whole design system. */}
+                          <button type="button" className="sf-focus"
+                            aria-label="Start a new conversation" title="Start a new conversation"
+                            onClick={handleForgeNewChat}
+                            disabled={forgeMessages.length === 0 && !forgeInput}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              width: '30px', height: '30px', borderRadius: '15px',
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: 'var(--text-tertiary)', padding: 0,
+                            }}>
+                            <ForgeIcon name="plus" size={18} />
+                          </button>
+                          {picker('Mode', forgeMode, FORGE_MODES, setForgeMode, '96px')}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          {forgeSending && (
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{forgeElapsed}s</span>
+                          )}
+                          {modelList.length > 0
+                            ? picker('Model', usingModel, modelList.map(m => ({ id: m.id, label: m.label })), setForgeModel, '150px')
+                            : (
+                              <input
+                                aria-label="Model"
+                                placeholder={provider.needsModel ? 'model id (required)' : 'model id'}
+                                value={forgeModel}
+                                onChange={(e) => setForgeModel(e.target.value)}
+                                style={{
+                                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                                  borderRadius: '6px', color: 'var(--text-tertiary)', width: '150px',
+                                  fontSize: '0.72rem', fontFamily: 'var(--font-mono)', padding: '0.3rem 0.4rem',
+                                }} />
+                            )}
+                          {/* The frame has no send of its own — both of its round buttons are
+                              chevrons. Enter alone would strand anyone on a touch screen, so
+                              this stays. */}
+                          <button
+                            type="button" className="sf-focus"
+                            disabled={!forgeInput.trim() || forgeSending}
+                            onClick={() => handleForgeSend()}
+                            aria-label="Send"
+                            style={{
+                              width: '30px', height: '30px', borderRadius: '15px', border: 'none',
+                              background: forgeInput.trim() && !forgeSending ? 'var(--accent)' : 'var(--bg-secondary)',
+                              color: forgeInput.trim() && !forgeSending ? '#fff' : 'var(--text-tertiary)',
+                              cursor: forgeInput.trim() && !forgeSending ? 'pointer' : 'not-allowed',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </>
                   );
 
                   // ── An empty project: the prompt, and systems to start from ──
@@ -5665,28 +5744,160 @@ This document serves as our living source of truth.`
                     );
                   }
 
-                  // ── A project with a system: frame left, chat right ─────────
+                  // ── The toolbar, from the Figma frame ──────────────────
+                  // Every colour in that frame is one of this app's own tokens, so none of
+                  // them is written as a hex here: the design was drawn from --bg-secondary,
+                  // --bg-tertiary, --border, --text-secondary, --text-tertiary and --accent,
+                  // and using the variables keeps the light theme working.
+                  const toolBtn = (on) => ({
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: '0.8rem', lineHeight: 1,
+                    background: on ? 'var(--accent-glow)' : 'var(--bg-tertiary)',
+                    border: '1px solid ' + (on ? 'rgba(252,6,148,0.25)' : 'var(--border)'),
+                    color: on ? 'var(--accent)' : 'var(--text-secondary)',
+                  });
+                  const toggle = (icon, on, label, onClick) => (
+                    <button type="button" className="sf-focus" role="radio" aria-checked={on}
+                      aria-label={label} title={label} onClick={onClick} style={toolBtn(on)}>
+                      <ForgeIcon name={icon} size={16} />
+                    </button>
+                  );
+
                   return (
                     <div className="pd-forge-split" style={{
                       display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px',
-                      gap: '1rem', height: '100%', minHeight: '520px',
+                      gap: 0, height: '100%', minHeight: '520px',
                     }}>
-                      {/* Left — the frame. Its border and label live out here, where a
-                          generated page cannot paint over them: a page can look like
-                          anything, so the chrome saying "this is a preview" has to be
-                          outside it. */}
+                      {/* ── Preview panel ──────────────────────────────── */}
                       <div style={{
                         display: 'flex', flexDirection: 'column', minWidth: 0,
-                        border: '1px solid var(--border)', borderRadius: '12px',
-                        background: 'var(--bg-secondary)', overflow: 'hidden',
+                        border: '1px solid var(--border)', borderRadius: '12px 0 0 12px',
+                        borderRight: 'none', background: 'var(--bg-secondary)', overflow: 'hidden',
                       }}>
-                        <div style={{
-                          display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
+                        <div className="pd-forge-toolbar" style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          gap: '0.75rem', flexWrap: 'wrap',
                           padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border)',
                         }}>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
-                            Generated preview
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                              {project.name} · {doc ? 'Preview page' : 'No page yet'}
+                            </span>
+                            <div style={{ display: 'flex', gap: '0.5rem' }} role="radiogroup" aria-label="Preview or source">
+                              {toggle('eye', forgeView === 'preview', 'Show the page', () => setForgeView('preview'))}
+                              {toggle('code', forgeView === 'code', 'Show the source', () => setForgeView('code'))}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '0.5rem' }} role="radiogroup" aria-label="Preview width">
+                            {toggle('laptop', forgeDevice === 'desktop', 'Full width', () => setForgeDevice('desktop'))}
+                            {toggle('phone', forgeDevice === 'phone', 'Phone width, 390px', () => setForgeDevice('phone'))}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ position: 'relative' }}>
+                              <button type="button" className="sf-focus"
+                                aria-expanded={forgeSettingsOpen} aria-label="Preview settings"
+                                onClick={() => setForgeSettingsOpen(v => !v)}
+                                style={{ ...toolBtn(false), gap: '0.25rem' }}>
+                                <ForgeIcon name="settings" size={16} />
+                                <ForgeIcon name="chevronDown" size={12} />
+                              </button>
+                              {forgeSettingsOpen && (
+                                <>
+                                  <div onClick={() => setForgeSettingsOpen(false)}
+                                    style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'transparent' }} />
+                                  <div style={{
+                                    position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 201,
+                                    width: '270px', padding: '0.75rem',
+                                    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                                    borderRadius: '10px', boxShadow: 'var(--shadow-dropdown)',
+                                  }}>
+                                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}>
+                                      <input type="checkbox" checked={forgeRemoteImages}
+                                        onChange={(e) => handleForgeRemoteImages(e.target.checked)}
+                                        style={{ marginTop: '0.2rem', accentColor: 'var(--accent)' }} />
+                                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                        Allow remote images
+                                        <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
+                                          Off by default: an image pointing at another server is a way
+                                          for a generated page to send what it can see somewhere else.
+                                        </span>
+                                      </span>
+                                    </label>
+                                    <button type="button" className="sf-focus"
+                                      onClick={() => { handleForgeNewChat(); setForgeSettingsOpen(false); }}
+                                      style={{ ...smallBtn, width: '100%', marginTop: '0.75rem', textAlign: 'left' }}>
+                                      Start a new conversation
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            {/* The same publish the app header runs — this is the design's
+                                button, wired to the real action rather than a second one. */}
+                            <button type="button" className="sf-focus"
+                              onClick={() => {
+                                setActiveTab('branch');
+                                if (can(myRole, 'releases', 'publish') && hasUnpublished) setPublishOpen(true);
+                              }}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                padding: '0.4rem 0.9rem', borderRadius: '6px', cursor: 'pointer',
+                                background: 'var(--accent)', border: '1px solid var(--accent)',
+                                color: '#fff', fontSize: '0.8rem', fontWeight: 600, fontFamily: 'inherit',
+                              }}>
+                              Publish
+                              <ForgeIcon name="chevronDown" size={12} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div style={{
+                          flex: 1, minHeight: 0, overflow: 'auto',
+                          background: doc && forgeView === 'preview' ? '#fff' : 'var(--bg-tertiary)',
+                          display: 'flex', justifyContent: 'center',
+                        }}>
+                          {!doc && (
+                            <div style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              padding: '2rem', textAlign: 'center',
+                            }}>
+                              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-tertiary)', lineHeight: 1.7, maxWidth: '40ch' }}>
+                                Nothing here yet. Ask for a page on the right and what the model
+                                writes appears in this frame, with this project&rsquo;s{' '}
+                                {tokenTotal} tokens already applied to it.
+                              </p>
+                            </div>
+                          )}
+                          {doc && forgeView === 'preview' && (
+                            // Phone width constrains the container, never a CSS scale: the page
+                            // has to lay itself out at 390px for the preview to mean anything.
+                            <div style={{
+                              width: forgeDevice === 'phone' ? '390px' : '100%',
+                              maxWidth: '100%', flexShrink: 0,
+                              // An outline rather than a border: a border would eat two pixels
+                              // of the viewport and the page would lay out at 388px while the
+                              // label said 390.
+                              outline: forgeDevice === 'phone' ? '1px solid var(--border)' : 'none',
+                            }}>
+                              <PreviewFrame srcDoc={doc.srcDoc} renderId={forgeDocIndex + 1} />
+                            </div>
+                          )}
+                          {doc && forgeView === 'code' && (
+                            <pre style={{
+                              margin: 0, padding: '1rem', width: '100%', overflow: 'auto',
+                              fontFamily: 'var(--font-mono)', fontSize: '0.74rem', lineHeight: 1.6,
+                              color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                            }}>{doc.srcDoc}</pre>
+                          )}
+                        </div>
+
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
+                          padding: '0.5rem 0.75rem', borderTop: '1px solid var(--border)',
+                        }}>
                           {forgeDocs.length > 1 && (
                             <div style={{ display: 'flex', gap: '0.2rem' }} role="radiogroup" aria-label="Version">
                               {forgeDocs.map((d, i) => (
@@ -5701,16 +5912,8 @@ This document serves as our living source of truth.`
                               ))}
                             </div>
                           )}
-                          <div style={{ flex: 1 }} />
                           {doc && (
                             <>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', color: 'var(--text-tertiary)', cursor: 'pointer' }}
-                                title="Remote images are blocked by default: an <img> pointing at another server is a way for a generated page to send what it can see somewhere else.">
-                                <input type="checkbox" checked={forgeRemoteImages}
-                                  onChange={(e) => handleForgeRemoteImages(e.target.checked)}
-                                  style={{ accentColor: 'var(--accent)' }} />
-                                Remote images
-                              </label>
                               <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
                                 {(doc.bytes / 1024).toFixed(1)} KB
                               </span>
@@ -5721,87 +5924,65 @@ This document serves as our living source of truth.`
                               </button>
                             </>
                           )}
-                        </div>
-
-                        <div style={{ flex: 1, minHeight: 0, background: doc ? '#fff' : 'var(--bg-tertiary)' }}>
-                          {doc ? (
-                            <PreviewFrame srcDoc={doc.srcDoc} renderId={forgeDocIndex + 1} />
-                          ) : (
-                            <div style={{
-                              height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              padding: '2rem', textAlign: 'center',
-                            }}>
-                              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-tertiary)', lineHeight: 1.7, maxWidth: '40ch' }}>
-                                Nothing here yet. Ask for a page on the right and what the model
-                                writes appears in this frame, with this project&rsquo;s{' '}
-                                {tokenTotal} tokens already applied to it.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={{ padding: '0.5rem 0.75rem', borderTop: '1px solid var(--border)' }}>
+                          <div style={{ flex: 1, minWidth: '1rem' }} />
                           <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
                             Strata cannot see inside this frame. If the page is broken it looks
-                            broken and nothing is reported. It cannot reach the network, store
-                            anything, or open a window.
+                            broken and nothing is reported.
                           </p>
                         </div>
                       </div>
 
-                      {/* Right — the chat */}
+                      {/* ── Chat panel ─────────────────────────────────── */}
                       <div style={{
                         display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0,
-                        border: '1px solid var(--border)', borderRadius: '12px',
-                        background: 'var(--bg-secondary)', overflow: 'hidden',
+                        border: '1px solid var(--border)', borderRadius: '0 12px 12px 0',
+                        background: 'var(--bg-tertiary)', overflow: 'hidden',
                       }}>
-                        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0.85rem' }}>
-                          {forgeMessages.length === 0 && (
+                        <div style={{
+                          flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem',
+                          display: 'flex', flexDirection: 'column', gap: '0.75rem',
+                        }}>
+                          <div style={cardPanel}>
+                            <div style={cardLabel}>Context</div>
                             <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
                               Every message here goes to {provider.label} on your own key and
                               spends your own money. This project&rsquo;s design system &mdash;{' '}
                               {tokenTotal} tokens, {components.length} components, {(mdBytes / 1024).toFixed(1)} KB
                               of it &mdash; is sent with every message as context.
                             </p>
-                          )}
+                          </div>
+
                           {forgeMessages.map((m, i) => (
-                            <div key={i} style={{ marginBottom: '0.75rem' }}>
-                              <div style={{
-                                fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.06em',
-                                textTransform: 'uppercase', marginBottom: '0.25rem',
-                                color: m.role === 'user' ? 'var(--accent)' : 'var(--text-tertiary)',
-                              }}>{m.role === 'user' ? 'You' : provider.label}</div>
+                            <div key={i} style={cardPanel}>
+                              <div style={{ ...cardLabel, color: m.role === 'user' ? 'var(--text-tertiary)' : 'var(--accent)' }}>
+                                {m.role === 'user' ? 'You' : provider.label}
+                              </div>
                               {m.role === 'user' ? (
-                                <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{m.content}</p>
+                                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</p>
                               ) : (
                                 <>
-                                  {m.result && m.result.status !== 'ok' && (
-                                    <p style={{ margin: '0 0 0.35rem', fontSize: '0.78rem', color: '#F59E0B', lineHeight: 1.6 }}>
-                                      {m.result.message}
-                                    </p>
-                                  )}
-                                  {m.result?.truncated && (
-                                    <p style={{ margin: '0 0 0.35rem', fontSize: '0.78rem', color: '#F59E0B', lineHeight: 1.6 }}>
+                                  {m.result && (m.result.status !== 'ok' || m.result.truncated) && (
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: '#F59E0B', lineHeight: 1.6 }}>
                                       {m.result.message}
                                     </p>
                                   )}
                                   {m.made > 0 && (
-                                    <p style={{ margin: '0 0 0.3rem', fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
+                                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
                                       Wrote a page, {(m.made / 1024).toFixed(1)} KB. It is on the left.
                                     </p>
                                   )}
                                   {m.content && (
-                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                                    <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
                                       {m.content.length > 700 ? m.content.slice(0, 700) + '…' : m.content}
                                     </p>
                                   )}
                                   {(m.extractNote || m.buildNote) && (
-                                    <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                                    <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
                                       {m.buildNote || m.extractNote}
                                     </p>
                                   )}
                                   {m.result?.usage && (
-                                    <p style={{ margin: '0.3rem 0 0', fontSize: '0.7rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                                    <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
                                       {m.result.usage.inputTokens} in / {m.result.usage.outputTokens} out
                                     </p>
                                   )}
@@ -5809,15 +5990,19 @@ This document serves as our living source of truth.`
                               )}
                             </div>
                           ))}
+
                           {forgeSending && (
-                            <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-                              Waiting for {provider.label} &mdash; {forgeElapsed}s elapsed. Strata
-                              cannot tell how far along it is.
-                            </p>
+                            <div style={cardPanel}>
+                              <div style={cardLabel}>{provider.label}</div>
+                              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                                Waiting &mdash; {forgeElapsed}s elapsed. Strata cannot tell how far along it is.
+                              </p>
+                            </div>
                           )}
                         </div>
-                        <div style={{ padding: '0.65rem', borderTop: '1px solid var(--border)' }}>
-                          {composer(false)}
+
+                        <div style={{ padding: '1rem', borderTop: '1px solid var(--border)' }}>
+                          <div style={{ ...cardPanel, gap: '0.75rem' }}>{composer(false)}</div>
                         </div>
                       </div>
                     </div>
