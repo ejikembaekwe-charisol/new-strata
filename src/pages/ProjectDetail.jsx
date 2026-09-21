@@ -16,7 +16,8 @@ import {
 } from '../data/previewDocument';
 import PreviewFrame from '../components/forge/PreviewFrame';
 import ForgeIcon from '../components/forge/ForgeIcon';
-import TemplateGallery from '../components/newProject/TemplateGallery';
+import TemplateGallery, { TemplateCard } from '../components/newProject/TemplateGallery';
+import { TEMPLATES } from '../components/newProject/templateData';
 import BrandContextEngine from '../components/BrandContextEngine';
 import StartChoice from '../components/StartChoice';
 import ScratchWizard from '../components/newProject/ScratchWizard';
@@ -456,6 +457,7 @@ function ProjectDetailInner() {
   const [forgeMode, setForgeMode] = useState('build');
   const [forgeSettingsOpen, setForgeSettingsOpen] = useState(false);
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
+  const [forgeExamplePage, setForgeExamplePage] = useState(0);
 
   // ── Strata Forge ───────────────────────────────────────────────────────
   // The key itself never lives in state beyond the field being typed into, and the test
@@ -5588,7 +5590,6 @@ This document serves as our living source of truth.`
                   const modelList = forgeTest?.models || [];
                   const usingModel = pickModel(forgeProvider, { model: forgeModel, models: modelList });
                   const doc = forgeDocIndex >= 0 ? forgeDocs[forgeDocIndex] : null;
-                  const lastReply = [...forgeMessages].reverse().find(m => m.role === 'assistant');
                   const copyDoc = (text, key) => (
                     <button type="button" className="sf-focus" style={smallBtn}
                       onClick={() => { navigator.clipboard.writeText(text); setDevCopied(key);
@@ -5598,6 +5599,112 @@ This document serves as our living source of truth.`
                   );
 
                   // Cards, labels and the composer, matching the Figma frame's shapes.
+                  // ── The toolbar, from the Figma frame ──────────────────
+                  // Every colour in that frame is one of this app's own tokens, so none of
+                  // them is written as a hex here: the design was drawn from --bg-secondary,
+                  // --bg-tertiary, --border, --text-secondary, --text-tertiary and --accent,
+                  // and using the variables keeps the light theme working.
+                  const toolBtn = (on) => ({
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: '0.8rem', lineHeight: 1,
+                    background: on ? 'var(--accent-glow)' : 'var(--bg-tertiary)',
+                    border: '1px solid ' + (on ? 'rgba(252,6,148,0.25)' : 'var(--border)'),
+                    color: on ? 'var(--accent)' : 'var(--text-secondary)',
+                  });
+                  const toggle = (icon, on, label, onClick) => (
+                    <button type="button" className="sf-focus" role="radio" aria-checked={on}
+                      aria-label={label} title={label} onClick={onClick} style={toolBtn(on)}>
+                      <ForgeIcon name={icon} size={16} />
+                    </button>
+                  );
+
+                  const toolbar = (
+                      <div className="pd-forge-toolbar" style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: '0.75rem', flexWrap: 'wrap',
+                        padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border)',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                            {project.name} · {doc ? 'Preview page' : 'No page yet'}
+                          </span>
+                          <div style={{ display: 'flex', gap: '0.5rem' }} role="radiogroup" aria-label="Preview or source">
+                            {toggle('eye', forgeView === 'preview', 'Show the page', () => setForgeView('preview'))}
+                            {toggle('code', forgeView === 'code', 'Show the source', () => setForgeView('code'))}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '0.5rem' }} role="radiogroup" aria-label="Preview width">
+                          {toggle('laptop', forgeDevice === 'desktop', 'Full width', () => setForgeDevice('desktop'))}
+                          {toggle('phone', forgeDevice === 'phone', 'Phone width, 390px', () => setForgeDevice('phone'))}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ position: 'relative' }}>
+                            <button type="button" className="sf-focus"
+                              aria-expanded={forgeSettingsOpen} aria-label="Preview settings"
+                              onClick={() => setForgeSettingsOpen(v => !v)}
+                              style={{ ...toolBtn(false), gap: '0.25rem' }}>
+                              <ForgeIcon name="settings" size={16} />
+                              <ForgeIcon name="chevronDown" size={12} />
+                            </button>
+                            {forgeSettingsOpen && (
+                              <>
+                                <div onClick={() => setForgeSettingsOpen(false)}
+                                  style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'transparent' }} />
+                                <div style={{
+                                  position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 201,
+                                  width: '270px', padding: '0.75rem',
+                                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                                  borderRadius: '10px', boxShadow: 'var(--shadow-dropdown)',
+                                }}>
+                                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={forgeRemoteImages}
+                                      onChange={(e) => handleForgeRemoteImages(e.target.checked)}
+                                      style={{ marginTop: '0.2rem', accentColor: 'var(--accent)' }} />
+                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                      Allow remote images
+                                      <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
+                                        Off by default: an image pointing at another server is a way
+                                        for a generated page to send what it can see somewhere else.
+                                      </span>
+                                    </span>
+                                  </label>
+                                  <button type="button" className="sf-focus"
+                                    onClick={() => { handleForgeNewChat(); setForgeSettingsOpen(false); }}
+                                    style={{ ...smallBtn, width: '100%', marginTop: '0.75rem', textAlign: 'left' }}>
+                                    Start a new conversation
+                                  </button>
+                                  <button type="button" className="sf-focus"
+                                    onClick={() => { setForgeKeysOpen(true); setForgeSettingsOpen(false); }}
+                                    style={{ ...smallBtn, width: '100%', marginTop: '0.4rem', textAlign: 'left' }}>
+                                    Model keys
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          {/* The same publish the app header runs — this is the design's
+                              button, wired to the real action rather than a second one. */}
+                          <button type="button" className="sf-focus"
+                            onClick={() => {
+                              setActiveTab('branch');
+                              if (can(myRole, 'releases', 'publish') && hasUnpublished) setPublishOpen(true);
+                            }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '0.4rem',
+                              padding: '0.4rem 0.9rem', borderRadius: '6px', cursor: 'pointer',
+                              background: 'var(--accent)', border: '1px solid var(--accent)',
+                              color: '#fff', fontSize: '0.8rem', fontWeight: 600, fontFamily: 'inherit',
+                            }}>
+                            Publish
+                            <ForgeIcon name="chevronDown" size={12} />
+                          </button>
+                        </div>
+                      </div>
+                  );
+
                   const cardPanel = {
                     background: 'var(--bg-secondary)', border: '1px solid var(--border)',
                     borderRadius: '12px', padding: '1rem',
@@ -5643,7 +5750,7 @@ This document serves as our living source of truth.`
                       }}>
                         <textarea
                           aria-label="Describe what to make"
-                          placeholder={big ? 'Describe your idea.' : 'Ask for a change...'}
+                          placeholder="Ask for a change..."
                           rows={big ? 3 : 3}
                           value={forgeInput}
                           onChange={(e) => setForgeInput(e.target.value)}
@@ -5722,50 +5829,87 @@ This document serves as our living source of truth.`
                     </>
                   );
 
-                  // ── An empty project: the prompt, and systems to start from ──
+                  // ── An empty project ────────────────────────────────────
+                  // The frame for this one has no chat column: a project with no design
+                  // system has nothing for a conversation to be about yet, so it gets the
+                  // prompt and a shelf of systems to start from instead.
                   if (forgeEmptyProject) {
+                    const perPage = 3;
+                    const pages = Math.max(1, Math.ceil(TEMPLATES.length / perPage));
+                    const page = ((forgeExamplePage % pages) + pages) % pages;
+                    const shown = TEMPLATES.slice(page * perPage, page * perPage + perPage);
+                    const arrow = (dir, label) => (
+                      <button type="button" className="sf-focus" aria-label={label} title={label}
+                        onClick={() => setForgeExamplePage(p => p + dir)}
+                        style={{
+                          width: '34px', height: '34px', borderRadius: '100px', border: 'none',
+                          background: 'rgba(255,255,255,0.1)', color: 'var(--text-primary)',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          style={{ transform: dir > 0 ? 'rotate(180deg)' : 'none' }}>
+                          <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
+                        </svg>
+                      </button>
+                    );
+
                     return (
-                      <div style={{ maxWidth: '1200px' }}>
-                        <div style={{ maxWidth: '760px', margin: '3rem auto 0', textAlign: 'center' }}>
-                          <h2 style={{ margin: 0, fontSize: '2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            What do you want to make?
+                      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: 'var(--bg-secondary)' }}>
+                        {toolbar}
+                        <div className="pd-forge-empty" style={{
+                          flex: 1, minHeight: 0, overflowY: 'auto',
+                          padding: '5.25rem 7.5rem 4rem',
+                          display: 'flex', flexDirection: 'column', gap: '3rem', alignItems: 'center',
+                        }}>
+                          <h2 style={{
+                            margin: 0, width: '100%', textAlign: 'center',
+                            fontSize: '2rem', lineHeight: 1.25, fontWeight: 700,
+                            color: 'var(--text-primary)',
+                          }}>
+                            What do you want to Forge today, Chief?
                           </h2>
-                          <p style={{ margin: '0.6rem 0 1.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                            {project.name} has no design system yet, so anything made here comes
-                            back in the model&rsquo;s own defaults rather than yours. Building one
-                            first, or starting from a template below, is what makes it yours.
-                          </p>
-                          <div style={{ textAlign: 'left' }}>{composer(true)}</div>
-                          {forgeMessages.length > 0 && (
-                            <p style={{ margin: '1rem 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                              {forgeSending ? 'Working… ' + forgeElapsed + 's elapsed.' : (lastReply?.result?.message || '')}
+
+                          <div style={{ width: '100%', maxWidth: '952px', ...cardPanel, gap: '0.75rem' }}>
+                            {composer(true)}
+                          </div>
+
+                          {/* The same card the create flow shows, imported rather than drawn
+                              again, so a template looks the same in both places. */}
+                          <div style={{ width: '100%', maxWidth: '952px' }}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              gap: '1rem', marginBottom: '1rem',
+                            }}>
+                              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                Start from an example
+                              </h3>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
+                                <Link to="/projects/new" style={{
+                                  fontSize: '0.7rem', color: 'var(--accent)', textDecoration: 'none',
+                                }}>See More</Link>
+                                <div style={{ display: 'flex', gap: '0.55rem' }}>
+                                  {arrow(-1, 'Previous examples')}
+                                  {arrow(1, 'Next examples')}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="pd-forge-examples" style={{
+                              display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem',
+                            }}>
+                              {shown.map(t => <TemplateCard key={t.id} t={t} />)}
+                            </div>
+                            <p style={{ margin: '0.9rem 0 0', fontSize: '0.75rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                              {project.name} has no design system yet, so anything made here comes
+                              back in the model&rsquo;s own defaults rather than yours. Opening one
+                              of these builds a system you can then forge against.
                             </p>
-                          )}
+                          </div>
                         </div>
-                        <TemplateGallery />
                       </div>
                     );
                   }
 
-                  // ── The toolbar, from the Figma frame ──────────────────
-                  // Every colour in that frame is one of this app's own tokens, so none of
-                  // them is written as a hex here: the design was drawn from --bg-secondary,
-                  // --bg-tertiary, --border, --text-secondary, --text-tertiary and --accent,
-                  // and using the variables keeps the light theme working.
-                  const toolBtn = (on) => ({
-                    display: 'flex', alignItems: 'center', gap: '0.5rem',
-                    padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer',
-                    fontFamily: 'inherit', fontSize: '0.8rem', lineHeight: 1,
-                    background: on ? 'var(--accent-glow)' : 'var(--bg-tertiary)',
-                    border: '1px solid ' + (on ? 'rgba(252,6,148,0.25)' : 'var(--border)'),
-                    color: on ? 'var(--accent)' : 'var(--text-secondary)',
-                  });
-                  const toggle = (icon, on, label, onClick) => (
-                    <button type="button" className="sf-focus" role="radio" aria-checked={on}
-                      aria-label={label} title={label} onClick={onClick} style={toolBtn(on)}>
-                      <ForgeIcon name={icon} size={16} />
-                    </button>
-                  );
 
                   return (
                     <div className="pd-forge-split" style={{
@@ -5777,89 +5921,7 @@ This document serves as our living source of truth.`
                         display: 'flex', flexDirection: 'column', minWidth: 0,
                         background: 'var(--bg-secondary)', overflow: 'hidden',
                       }}>
-                        <div className="pd-forge-toolbar" style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          gap: '0.75rem', flexWrap: 'wrap',
-                          padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border)',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                              {project.name} · {doc ? 'Preview page' : 'No page yet'}
-                            </span>
-                            <div style={{ display: 'flex', gap: '0.5rem' }} role="radiogroup" aria-label="Preview or source">
-                              {toggle('eye', forgeView === 'preview', 'Show the page', () => setForgeView('preview'))}
-                              {toggle('code', forgeView === 'code', 'Show the source', () => setForgeView('code'))}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '0.5rem' }} role="radiogroup" aria-label="Preview width">
-                            {toggle('laptop', forgeDevice === 'desktop', 'Full width', () => setForgeDevice('desktop'))}
-                            {toggle('phone', forgeDevice === 'phone', 'Phone width, 390px', () => setForgeDevice('phone'))}
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ position: 'relative' }}>
-                              <button type="button" className="sf-focus"
-                                aria-expanded={forgeSettingsOpen} aria-label="Preview settings"
-                                onClick={() => setForgeSettingsOpen(v => !v)}
-                                style={{ ...toolBtn(false), gap: '0.25rem' }}>
-                                <ForgeIcon name="settings" size={16} />
-                                <ForgeIcon name="chevronDown" size={12} />
-                              </button>
-                              {forgeSettingsOpen && (
-                                <>
-                                  <div onClick={() => setForgeSettingsOpen(false)}
-                                    style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'transparent' }} />
-                                  <div style={{
-                                    position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 201,
-                                    width: '270px', padding: '0.75rem',
-                                    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                    borderRadius: '10px', boxShadow: 'var(--shadow-dropdown)',
-                                  }}>
-                                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}>
-                                      <input type="checkbox" checked={forgeRemoteImages}
-                                        onChange={(e) => handleForgeRemoteImages(e.target.checked)}
-                                        style={{ marginTop: '0.2rem', accentColor: 'var(--accent)' }} />
-                                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                                        Allow remote images
-                                        <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
-                                          Off by default: an image pointing at another server is a way
-                                          for a generated page to send what it can see somewhere else.
-                                        </span>
-                                      </span>
-                                    </label>
-                                    <button type="button" className="sf-focus"
-                                      onClick={() => { handleForgeNewChat(); setForgeSettingsOpen(false); }}
-                                      style={{ ...smallBtn, width: '100%', marginTop: '0.75rem', textAlign: 'left' }}>
-                                      Start a new conversation
-                                    </button>
-                                    <button type="button" className="sf-focus"
-                                      onClick={() => { setForgeKeysOpen(true); setForgeSettingsOpen(false); }}
-                                      style={{ ...smallBtn, width: '100%', marginTop: '0.4rem', textAlign: 'left' }}>
-                                      Model keys
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                            {/* The same publish the app header runs — this is the design's
-                                button, wired to the real action rather than a second one. */}
-                            <button type="button" className="sf-focus"
-                              onClick={() => {
-                                setActiveTab('branch');
-                                if (can(myRole, 'releases', 'publish') && hasUnpublished) setPublishOpen(true);
-                              }}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                                padding: '0.4rem 0.9rem', borderRadius: '6px', cursor: 'pointer',
-                                background: 'var(--accent)', border: '1px solid var(--accent)',
-                                color: '#fff', fontSize: '0.8rem', fontWeight: 600, fontFamily: 'inherit',
-                              }}>
-                              Publish
-                              <ForgeIcon name="chevronDown" size={12} />
-                            </button>
-                          </div>
-                        </div>
+                        {toolbar}
 
                         <div style={{
                           flex: 1, minHeight: 0, overflow: 'auto',

@@ -147,7 +147,7 @@ const ProBadge = () => (
 // real <button> and a real <input>, and an <a> may not contain interactive content any more
 // than a <button> may; as a sibling it nests nothing. Being a real <a href> is also what
 // makes middle-click, ctrl-click and "open in new window" behave the way they should.
-const TemplateCard = ({ t }) => {
+export const TemplateCard = ({ t }) => {
   const locked = t.tier === 'pro';
   const p = t.palette;
   return (
