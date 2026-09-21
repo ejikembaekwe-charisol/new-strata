@@ -2213,10 +2213,14 @@ This document serves as our living source of truth.`
   // test — see ProjectContext.addProject. Tokens and brand context both being untouched is
   // what "no design system yet" actually means.
   const forgeEmptyProject = tokenTotal === 0 && completeness.done === 0;
-  // Forge's workspace is the one panel that runs edge to edge: the frame it was built from
-  // has the toolbar flush to the top and the chat flush to the right, with no page padding
-  // around either. Every other tab keeps the padding.
-  const forgeFullBleed = activeTab === 'forge' && forgeAnyKey && !forgeEmptyProject && !forgeKeysOpen;
+  // Forge is the one tab that runs edge to edge. Both frames it was built from have the
+  // toolbar flush to the top of the window and the content filling everything under it, so
+  // the page's own padding and max width come off for the whole tab rather than for the
+  // workspace alone. Every other tab keeps them.
+  const forgeFullBleed = activeTab === 'forge';
+  // ...except the two states that are a form rather than a workspace. They still fill the
+  // area, they just keep a margin so the card is not welded to the window edge.
+  const forgePadded = forgeFullBleed && (!forgeAnyKey || forgeKeysOpen);
 
   const hasBrandContext = completeness.done > 0 || Boolean(
     project?.brand?.primaryColor || project?.brand?.logoPreview ||
@@ -3219,7 +3223,10 @@ This document serves as our living source of truth.`
         <main
           className={'pd-main' + (previewComponentId ? ' has-inspector' : '')}
           style={{
-            flex: 1, overflowY: forgeFullBleed ? 'hidden' : 'auto',
+            flex: 1,
+            // The workspace and the empty page scroll inside their own panes; the form
+            // states scroll here, because a long key list has to go somewhere.
+            overflowY: forgeFullBleed && !forgePadded ? 'hidden' : 'auto',
             padding: forgeFullBleed ? 0 : '1.5rem 2rem',
           }}
         >
@@ -5581,9 +5588,9 @@ This document serves as our living source of truth.`
                 display: 'flex', flexDirection: 'column',
                 gap: forgeFullBleed ? 0 : '1.25rem',
                 maxWidth: forgeFullBleed ? 'none' : '1200px',
-                height: forgeFullBleed ? '100%' : 'auto',
-                minHeight: 0,
-                padding: forgeKeysOpen ? '1.5rem 2rem' : 0,
+                height: forgeFullBleed && !forgePadded ? '100%' : 'auto',
+                minHeight: forgePadded ? '100%' : 0,
+                padding: forgePadded ? '1.5rem 2rem' : 0,
               }}>
                 {/* ── The tool ───────────────────────────────────────────── */}
                 {forgeAnyKey && !forgeKeysOpen && (() => {
