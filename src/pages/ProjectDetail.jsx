@@ -18,6 +18,7 @@ import PreviewFrame from '../components/forge/PreviewFrame';
 import { demoSitePage } from '../data/demoSitePage';
 import ForgeIcon from '../components/forge/ForgeIcon';
 import ModelPicker from '../components/forge/ModelPicker';
+import { modelsFor } from '../data/modelCatalogue';
 import TemplateGallery, { TemplateCard } from '../components/newProject/TemplateGallery';
 import { TEMPLATES } from '../components/newProject/templateData';
 import BrandContextEngine from '../components/BrandContextEngine';
@@ -5678,8 +5679,8 @@ This document serves as our living source of truth.`
                   // The provider's own label for it where there is one, so the button reads
                   // "Claude Sonnet 4.5" rather than an id - and the bare id when that is all
                   // anyone knows, rather than prettifying it into something it is not.
-                  const modelLabel = (forgeModelsBy[forgeProvider] || modelList)
-                    .find(m => m.id === usingModel)?.label || usingModel;
+                  const modelLabel = modelsFor(forgeProvider, forgeModelsBy[forgeProvider])
+                    .models.find(m => m.id === usingModel)?.label || usingModel;
                   const forgeConnectedProviders = new Set(
                     listKeys(forgeOwner).map(k => k.provider)
                       .concat(LLM_PROVIDERS.filter(pv => getSessionToken(sessionScope(id, pv.id))).map(pv => pv.id)),
