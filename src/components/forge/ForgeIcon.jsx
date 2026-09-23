@@ -14,8 +14,10 @@ import phone from '../../assets/forge/phone.svg';
 import settings from '../../assets/forge/settings.svg';
 import chevronDown from '../../assets/forge/chevron-down.svg';
 import plus from '../../assets/forge/plus.svg';
+import search from '../../assets/forge/search.svg';
+import chevronRight from '../../assets/forge/chevron-right.svg';
 
-const SOURCES = { eye, code, laptop, phone, settings, chevronDown, plus };
+const SOURCES = { eye, code, laptop, phone, settings, chevronDown, plus, search, chevronRight };
 
 export default function ForgeIcon({ name, size = 16, style }) {
   const src = SOURCES[name];

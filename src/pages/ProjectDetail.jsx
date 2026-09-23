@@ -17,6 +17,7 @@ import {
 import PreviewFrame from '../components/forge/PreviewFrame';
 import { demoSitePage } from '../data/demoSitePage';
 import ForgeIcon from '../components/forge/ForgeIcon';
+import ModelPicker from '../components/forge/ModelPicker';
 import TemplateGallery, { TemplateCard } from '../components/newProject/TemplateGallery';
 import { TEMPLATES } from '../components/newProject/templateData';
 import BrandContextEngine from '../components/BrandContextEngine';
@@ -462,6 +463,12 @@ function ProjectDetailInner() {
   const [forgeSettingsOpen, setForgeSettingsOpen] = useState(false);
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
   const [forgeExamplePage, setForgeExamplePage] = useState(0);
+  const [forgePickerOpen, setForgePickerOpen] = useState(false);
+  // What each provider said when its key was tested, kept per provider so the picker can
+  // show more than whichever one was tested last. Nothing is put here that a provider did
+  // not return.
+  const [forgeModelsBy, setForgeModelsBy] = useState({});
+  const [forgeLoadingProvider, setForgeLoadingProvider] = useState('');
   // The chat column's width. Component state rather than stored: it is a per-sitting
   // adjustment, and writing it to `strata_open_tabs` would make a drag outlive the reason
   // for it. The bounds keep the composer usable at one end and the preview usable at the
@@ -653,6 +660,9 @@ function ProjectDetailInner() {
         baseUrl: saved ? (saved.baseUrl || '') : forgeBaseUrl,
       });
       setForgeTest({ ...res, keyId: keyId || null });
+      if (res.status === 'ok' && res.models.length) {
+        setForgeModelsBy(m => ({ ...m, [provider.id]: res.models }));
+      }
       if (keyId && res.status === 'ok') { touchKey(keyId); refreshForgeKeys(); }
     } finally {
       setForgeBusy(false);
@@ -774,6 +784,41 @@ function ProjectDetailInner() {
       });
       return built.ok ? { ...d, srcDoc: built.srcDoc, bytes: built.bytes } : d;
     }));
+  };
+
+  /**
+   * Picking a model is picking its provider too, so the key that goes with it has to come
+   * along - handleForgeSend reads the saved list for whichever provider is current.
+   */
+  const handleForgePickModel = (providerId, modelId) => {
+    if (providerId !== forgeProvider) {
+      setForgeProvider(providerId);
+      refreshForgeKeys(providerId);
+      clearForgeTest();
+    }
+    setForgeModel(modelId);
+    setForgePickerOpen(false);
+  };
+
+  /** Asks one provider for its list, using the key already saved for it. */
+  const handleForgeLoadModels = async (providerId) => {
+    if (forgeBusy) return;
+    const key = listKeys(forgeOwner, providerId)[0];
+    const secret = key ? getSecret(key.id) : getSessionToken(sessionScope(id, providerId));
+    if (!secret) return;
+    setForgeLoadingProvider(providerId);
+    setForgeBusy(true);
+    try {
+      const res = await testKey({ providerId, secret, baseUrl: key?.baseUrl || '' });
+      if (res.status === 'ok' && res.models.length) {
+        setForgeModelsBy(m => ({ ...m, [providerId]: res.models }));
+      } else {
+        setForgeNote(res.message);
+      }
+    } finally {
+      setForgeBusy(false);
+      setForgeLoadingProvider('');
+    }
   };
 
   const handleForgeDelete = (keyId) => {
@@ -5627,9 +5672,18 @@ This document serves as our living source of truth.`
               }}>
                 {/* ── The tool ───────────────────────────────────────────── */}
                 {forgeAnyKey && !forgeKeysOpen && (() => {
-                  const modelList = forgeTest?.models || [];
+                  const modelList = forgeModelsBy[forgeProvider] || forgeTest?.models || [];
                   const compIndex = indexById(components);
                   const usingModel = pickModel(forgeProvider, { model: forgeModel, models: modelList });
+                  // The provider's own label for it where there is one, so the button reads
+                  // "Claude Sonnet 4.5" rather than an id - and the bare id when that is all
+                  // anyone knows, rather than prettifying it into something it is not.
+                  const modelLabel = (forgeModelsBy[forgeProvider] || modelList)
+                    .find(m => m.id === usingModel)?.label || usingModel;
+                  const forgeConnectedProviders = new Set(
+                    listKeys(forgeOwner).map(k => k.provider)
+                      .concat(LLM_PROVIDERS.filter(pv => getSessionToken(sessionScope(id, pv.id))).map(pv => pv.id)),
+                  );
                   /**
                    * The page the demo project opens on.
                    *
@@ -5852,20 +5906,62 @@ This document serves as our living source of truth.`
                           {forgeSending && (
                             <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{forgeElapsed}s</span>
                           )}
-                          {modelList.length > 0
-                            ? picker('Model', usingModel, modelList.map(m => ({ id: m.id, label: m.label })), setForgeModel, '150px')
-                            : (
-                              <input
-                                aria-label="Model"
-                                placeholder={provider.needsModel ? 'model id (required)' : 'model id'}
-                                value={forgeModel}
-                                onChange={(e) => setForgeModel(e.target.value)}
-                                style={{
+                          {/* The model in use, and the way to change it. The label is the
+                              provider's own name for the model when it gave one. */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              type="button" className="sf-focus"
+                              aria-haspopup="dialog" aria-expanded={forgePickerOpen}
+                              aria-label={'Model: ' + (modelLabel || 'none chosen')}
+                              onClick={() => setForgePickerOpen(v => !v)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '0.15rem', height: '30px',
+                                maxWidth: '190px', background: 'none', border: 'none', padding: 0,
+                                cursor: 'pointer', fontFamily: 'inherit',
+                              }}>
+                              <span style={{
+                                fontSize: '0.72rem', color: 'var(--text-tertiary)',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}>{modelLabel || 'Choose a model'}</span>
+                              <span style={{
+                                width: '30px', height: '30px', borderRadius: '15px', flexShrink: 0,
+                                background: 'var(--bg-secondary)', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)',
+                              }}>
+                                <ForgeIcon name="chevronDown" size={18} />
+                              </span>
+                            </button>
+
+                            {forgePickerOpen && (
+                              <>
+                                <div onClick={() => setForgePickerOpen(false)}
+                                  style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'transparent' }} />
+                                <div role="dialog" aria-label="Choose a model" style={{
+                                  position: 'absolute', bottom: 'calc(100% + 8px)', right: 0, zIndex: 301,
+                                  width: '320px', maxWidth: '80vw',
                                   background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                  borderRadius: '6px', color: 'var(--text-tertiary)', width: '150px',
-                                  fontSize: '0.72rem', fontFamily: 'var(--font-mono)', padding: '0.3rem 0.4rem',
-                                }} />
+                                  borderRadius: '10px', boxShadow: 'var(--shadow-dropdown)', overflow: 'hidden',
+                                }}>
+                                  <ModelPicker
+                                    providers={LLM_PROVIDERS}
+                                    byProvider={forgeModelsBy}
+                                    connected={forgeConnectedProviders}
+                                    currentProvider={forgeProvider}
+                                    currentModel={usingModel}
+                                    loading={forgeLoadingProvider}
+                                    onPick={handleForgePickModel}
+                                    onLoad={handleForgeLoadModels}
+                                    onSetup={(pid) => {
+                                      setForgeProvider(pid);
+                                      refreshForgeKeys(pid);
+                                      setForgePickerOpen(false);
+                                      setForgeKeysOpen(true);
+                                    }}
+                                  />
+                                </div>
+                              </>
                             )}
+                          </div>
                           {/* The frame has no send of its own — both of its round buttons are
                               chevrons. Enter alone would strand anyone on a touch screen, so
                               this stays. */}
