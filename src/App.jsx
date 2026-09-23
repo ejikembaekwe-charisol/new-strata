@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import './App.css';
 import { useAuth, AuthProvider } from './context/AuthContext';
 import { ProjectProvider } from './context/ProjectContext';
@@ -26,6 +26,24 @@ import Generator from './pages/Generator';
 import SharedProject from './pages/SharedProject';
 import TemplatePage from './pages/TemplatePage';
 import ForgotPassword from './pages/ForgotPassword';
+
+/**
+ * One ProjectDetail per project, rather than one shared between them.
+ *
+ * Router keeps the same element mounted when only `:id` changes, so switching projects from
+ * the tab strip left every piece of that page's state behind: the previous project's tokens
+ * and components, and in Forge its conversation and the page it had generated. The Tokens
+ * tab would report the project you came from until you reloaded.
+ *
+ * Keying on the id makes the switch a remount, which is what a different project is. It
+ * costs the in-flight state of the project you are leaving — a Forge transcript does not
+ * survive going away and coming back — but that state was being shown against the wrong
+ * project before, which is worse than losing it.
+ */
+const KeyedProjectDetail = () => {
+  const { id } = useParams();
+  return <ProjectDetail key={id} />;
+};
 
 // Auth Guard Component
 const ProtectedRoute = ({ children }) => {
@@ -85,7 +103,7 @@ function AppInner() {
         } />
         <Route path="/projects/:id" element={
           <ProtectedRoute>
-            <ProjectDetail />
+            <KeyedProjectDetail />
           </ProtectedRoute>
         } />
       </Routes>
