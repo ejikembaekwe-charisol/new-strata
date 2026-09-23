@@ -15,6 +15,7 @@ import {
   FORGE_SYSTEM_PROMPT, extractHtml, buildPreviewDocument,
 } from '../data/previewDocument';
 import PreviewFrame from '../components/forge/PreviewFrame';
+import { demoSitePage } from '../data/demoSitePage';
 import ForgeIcon from '../components/forge/ForgeIcon';
 import TemplateGallery, { TemplateCard } from '../components/newProject/TemplateGallery';
 import { TEMPLATES } from '../components/newProject/templateData';
@@ -461,6 +462,34 @@ function ProjectDetailInner() {
   const [forgeSettingsOpen, setForgeSettingsOpen] = useState(false);
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
   const [forgeExamplePage, setForgeExamplePage] = useState(0);
+  // The chat column's width. Component state rather than stored: it is a per-sitting
+  // adjustment, and writing it to `strata_open_tabs` would make a drag outlive the reason
+  // for it. The bounds keep the composer usable at one end and the preview usable at the
+  // other.
+  const [forgeChatWidth, setForgeChatWidth] = useState(380);
+  const forgeSplitRef = useRef(null);
+
+  const FORGE_CHAT_MIN = 300;
+  const FORGE_CHAT_MAX = 760;
+  const clampChat = (px) => Math.max(FORGE_CHAT_MIN, Math.min(FORGE_CHAT_MAX, Math.round(px)));
+
+  /**
+   * Resizing by pointer, with capture so the drag survives the cursor leaving the 6px
+   * handle - without it the column stops following the moment you move faster than React
+   * re-renders.
+   */
+  const handleChatResize = (e) => {
+    const box = forgeSplitRef.current?.getBoundingClientRect();
+    if (!box) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const move = (ev) => setForgeChatWidth(clampChat(box.right - ev.clientX));
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop, { once: true });
+  };
 
   // ── Strata Forge ───────────────────────────────────────────────────────
   // The key itself never lives in state beyond the field being typed into, and the test
@@ -764,6 +793,7 @@ function ProjectDetailInner() {
     return Array.isArray(project?.components) ? project.components : [];
   });
   const [suggestion, setSuggestion] = useState(null);
+
 
   // Asset model states
   const [uploadedAssets, setUploadedAssets] = useState([]);
@@ -5598,8 +5628,29 @@ This document serves as our living source of truth.`
                 {/* ── The tool ───────────────────────────────────────────── */}
                 {forgeAnyKey && !forgeKeysOpen && (() => {
                   const modelList = forgeTest?.models || [];
+                  const compIndex = indexById(components);
                   const usingModel = pickModel(forgeProvider, { model: forgeModel, models: modelList });
-                  const doc = forgeDocIndex >= 0 ? forgeDocs[forgeDocIndex] : null;
+                  /**
+                   * The page the demo project opens on.
+                   *
+                   * Only the demo gets one, and only until the model writes something: it is
+                   * a worked example, and Forge opening on an empty frame made it look as
+                   * though there were nothing to work with. It is composed from this
+                   * project's own components and tokens - see demoSitePage - and it is
+                   * labelled as Strata's, not as a reply, wherever it appears.
+                   */
+                  const starter = () => {
+                    const html = demoSitePage({
+                      project, components, tokensMap: activeTokens, byId: compIndex,
+                    });
+                    const built = buildPreviewDocument({ html, tokensMap: activeTokens, project });
+                    return built.ok
+                      ? { html, srcDoc: built.srcDoc, bytes: built.bytes, at: 'starter', starter: true }
+                      : null;
+                  };
+                  const doc = forgeDocIndex >= 0
+                    ? forgeDocs[forgeDocIndex]
+                    : (project?.isDemo ? starter() : null);
                   const copyDoc = (text, key) => (
                     <button type="button" className="sf-focus" style={smallBtn}
                       onClick={() => { navigator.clipboard.writeText(text); setDevCopied(key);
@@ -5637,7 +5688,7 @@ This document serves as our living source of truth.`
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                           <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                            {project.name} · {doc ? 'Preview page' : 'No page yet'}
+                            {project.name} · {doc ? (doc.starter ? 'Starter page' : 'Preview page') : 'No page yet'}
                           </span>
                           <div style={{ display: 'flex', gap: '0.5rem' }} role="radiogroup" aria-label="Preview or source">
                             {toggle('eye', forgeView === 'preview', 'Show the page', () => setForgeView('preview'))}
@@ -5922,8 +5973,9 @@ This document serves as our living source of truth.`
 
 
                   return (
-                    <div className="pd-forge-split" style={{
-                      display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 380px',
+                    <div className="pd-forge-split" ref={forgeSplitRef} style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) ' + forgeChatWidth + 'px',
                       gap: 0, height: '100%', minHeight: '520px',
                     }}>
                       {/* ── Preview panel ──────────────────────────────── */}
@@ -6005,6 +6057,11 @@ This document serves as our living source of truth.`
                           )}
                           <div style={{ flex: 1, minWidth: '1rem' }} />
                           <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                            {/* Both facts, not one or the other: where the page came from,
+                                and that nothing here can report on it either way. */}
+                            {doc?.starter
+                              ? 'Strata drew this one from this project\u2019s own components and tokens \u2014 no model has been asked for anything yet. '
+                              : ''}
                             Strata cannot see inside this frame. If the page is broken it looks
                             broken and nothing is reported.
                           </p>
@@ -6014,9 +6071,34 @@ This document serves as our living source of truth.`
                       {/* ── Chat panel ─────────────────────────────────── */}
                       <div style={{
                         display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0,
-                        borderLeft: '1px solid var(--border)',
                         background: 'var(--bg-tertiary)', overflow: 'hidden',
+                        position: 'relative',
                       }}>
+                        {/* The rule between the columns is the grab handle. A separator with
+                            a value, so it can be moved with the arrow keys as well as
+                            dragged - a 6px target is not a keyboard's idea of one. */}
+                        <div
+                          className="pd-forge-resize sf-focus"
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label="Chat panel width"
+                          aria-valuenow={forgeChatWidth}
+                          aria-valuemin={FORGE_CHAT_MIN}
+                          aria-valuemax={FORGE_CHAT_MAX}
+                          tabIndex={0}
+                          onPointerDown={handleChatResize}
+                          onKeyDown={(e) => {
+                            const step = e.shiftKey ? 48 : 16;
+                            if (e.key === 'ArrowLeft') { e.preventDefault(); setForgeChatWidth(w => clampChat(w + step)); }
+                            if (e.key === 'ArrowRight') { e.preventDefault(); setForgeChatWidth(w => clampChat(w - step)); }
+                            if (e.key === 'Home') { e.preventDefault(); setForgeChatWidth(380); }
+                          }}
+                          style={{
+                            position: 'absolute', left: '-3px', top: 0, bottom: 0, width: '6px',
+                            zIndex: 2, cursor: 'col-resize', background: 'transparent',
+                            borderLeft: '1px solid var(--border)',
+                          }}
+                        />
                         <div style={{
                           flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem',
                           display: 'flex', flexDirection: 'column', gap: '0.75rem',
