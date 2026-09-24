@@ -24,11 +24,12 @@ import zap from '../../assets/forge/zap.svg';
 import moon from '../../assets/forge/moon.svg';
 import users from '../../assets/forge/users.svg';
 import sparkles from '../../assets/forge/sparkles.svg';
+import figma from '../../assets/forge/figma.svg';
 
 const SOURCES = {
   eye, code, laptop, phone, settings, chevronDown, plus, search, chevronRight,
   // The connect screen's provider glyphs, from the same file.
-  xCircle, brain, shuffle, arrowUpRight, zap, moon, users, sparkles,
+  xCircle, brain, shuffle, arrowUpRight, zap, moon, users, sparkles, figma,
 };
 
 export default function ForgeIcon({ name, size = 16, style }) {

@@ -20,6 +20,7 @@ import ForgeIcon from '../components/forge/ForgeIcon';
 import ModelPicker from '../components/forge/ModelPicker';
 import ConnectPanel from '../components/forge/ConnectPanel';
 import { entryById, connectedEntryIds } from '../data/llmDirectory';
+import { MCP_PRESETS, listServers, addServer, removeServer, probeServer } from '../data/mcpServers';
 import { modelsFor } from '../data/modelCatalogue';
 import TemplateGallery, { TemplateCard } from '../components/newProject/TemplateGallery';
 import { TEMPLATES } from '../components/newProject/templateData';
@@ -467,6 +468,13 @@ function ProjectDetailInner() {
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
   // Which row of the connect directory is open. '' is the directory itself.
   const [forgeDirEntry, setForgeDirEntry] = useState('');
+  const [forgeConnectTab, setForgeConnectTab] = useState('models');
+  // The endpoints this person configured. Probe results are NOT among them: a stored
+  // "answered" would outlive the moment it described, exactly as a stored key test would.
+  const [mcpOwn, setMcpOwn] = useState(() => listServers(user?.email || ''));
+  const [mcpProbes, setMcpProbes] = useState({});
+  const [mcpProbing, setMcpProbing] = useState('');
+  const [mcpNote, setMcpNote] = useState('');
   const [forgeExamplePage, setForgeExamplePage] = useState(0);
   const [forgePickerOpen, setForgePickerOpen] = useState(false);
   // What each provider said when its key was tested, kept per provider so the picker can
@@ -842,6 +850,42 @@ function ProjectDetailInner() {
     if (e.via !== forgeProvider) { setForgeProvider(e.via); refreshForgeKeys(e.via); }
     setForgeBaseUrl(e.baseUrl || '');
     clearForgeTest();
+  };
+
+  /**
+   * The MCP tab's rows: the one preset Strata knows the address of, then whatever was added.
+   * `preset: true` is what makes a row un-removable - there is nothing stored to remove.
+   */
+  const mcpServers = [
+    ...MCP_PRESETS.map(x => ({ ...x, preset: true })),
+    ...mcpOwn,
+  ];
+
+  const handleMcpProbe = async (server) => {
+    if (mcpProbing) return;
+    setMcpProbing(server.id);
+    try {
+      const res = await probeServer({ url: server.url });
+      setMcpProbes(m => ({ ...m, [server.id]: res }));
+    } finally {
+      setMcpProbing('');
+    }
+  };
+
+  /** @returns {boolean} whether the form should close */
+  const handleMcpAdd = ({ name, url }) => {
+    const res = addServer({ owner: forgeOwner, name, url });
+    if (!res.ok) { setMcpNote(res.reason); return false; }
+    setMcpOwn(listServers(forgeOwner));
+    setMcpNote('');
+    return true;
+  };
+
+  const handleMcpRemove = (serverId) => {
+    removeServer(serverId);
+    setMcpOwn(listServers(forgeOwner));
+    // The result described a server that is no longer on the list.
+    setMcpProbes(m => { const next = { ...m }; delete next[serverId]; return next; });
   };
 
   const handleForgeDelete = (keyId) => {
@@ -6277,6 +6321,17 @@ This document serves as our living source of truth.`
                 {(!forgeAnyKey || forgeKeysOpen) && (
                   <div style={{ ...card, padding: 0, overflow: 'hidden', flexShrink: 0 }}>
                     <ConnectPanel
+                      tab={forgeConnectTab}
+                      onTab={setForgeConnectTab}
+                      mcp={{
+                        servers: mcpServers,
+                        probes: mcpProbes,
+                        probing: mcpProbing,
+                        onProbe: handleMcpProbe,
+                        onAdd: handleMcpAdd,
+                        onRemove: handleMcpRemove,
+                        note: mcpNote,
+                      }}
                       entry={forgeEntry}
                       connected={forgeConnectedEntries}
                       checkingId={forgeBusy && forgeEntry ? forgeEntry.id : ''}
