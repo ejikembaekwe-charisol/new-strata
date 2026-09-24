@@ -184,11 +184,12 @@ const HISTORY_LIMIT = 50;
 
 const COLOR_VALUE_TYPES = new Set(['color', 'background-color', 'border-color', 'outline-color', 'text-decoration-color', 'accent-color', 'fill', 'stroke']);
 
-// Forge's composer offers two modes. They differ in the system prompt, not in wording:
-// Build asks for a page and renders what comes back, Ask answers in prose about the system.
+// Forge's composer offers two modes. They differ in the system prompt and in what is done
+// with the reply, not in wording: Build asks for a page and renders what comes back, Plan asks
+// for the approach in prose and renders nothing — the frame is left exactly as it was.
 const FORGE_MODES = [
-  { id: 'build', label: 'Build' },
-  { id: 'ask', label: 'Ask' },
+  { id: 'build', label: 'Build', hint: 'Write the page and render it' },
+  { id: 'plan', label: 'Plan', hint: 'Describe the approach first, and build nothing' },
 ];
 
 // Sidebar main navigation tabs — shared by the desktop list, the mobile icon rail, and the mobile nav overlay
@@ -471,6 +472,7 @@ function ProjectDetailInner() {
   const [forgeView, setForgeView] = useState('preview');
   const [forgeDevice, setForgeDevice] = useState('desktop');
   const [forgeMode, setForgeMode] = useState('build');
+  const [forgeModeOpen, setForgeModeOpen] = useState(false);
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
   // Which row of the connect directory is open. '' is the directory itself.
   const [forgeDirEntry, setForgeDirEntry] = useState('');
@@ -740,8 +742,11 @@ function ProjectDetailInner() {
     setForgeElapsed(0);
     setForgeSending(true);
     try {
-      const rules = forgeMode === 'ask'
-        ? 'You are helping someone reason about the design system below. Answer in prose. Do not write a page unless you are asked for one.'
+      // Plan is not a lighter Build: it must not return a document at all, because nothing
+      // downstream will render one, and a page nobody can see is a wasted request billed to
+      // this person's key.
+      const rules = forgeMode === 'plan'
+        ? 'You are planning a page against the design system below, not writing it. Say what you would build: the sections in order, which of the components and tokens below each one would use, and anything the system does not yet have that the page would need. Answer in prose, briefly. Do not write HTML, CSS or any code, even if asked \u2014 the person will switch to Build for that.'
         : FORGE_SYSTEM_PROMPT;
       const res = await sendChat({
         providerId: forgeProvider,
@@ -6063,30 +6068,81 @@ This document serves as our living source of truth.`
                   // A label with a chevron in a round well, the shape the frame uses for both
                   // of its pickers. The select itself covers the whole control, so the chevron
                   // never has to catch a click of its own.
-                  const picker = (label, value, options, onChange, width) => (
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '30px' }}>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                        {options.find(o => o.id === value)?.label || label}
-                      </span>
-                      <span style={{
-                        width: '30px', height: '30px', borderRadius: '15px', marginLeft: '0.15rem',
-                        background: 'var(--bg-secondary)', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)',
-                      }}>
-                        <ForgeIcon name="chevronDown" size={18} />
-                      </span>
-                      <select
-                        aria-label={label}
-                        value={value}
-                        onChange={(e) => onChange(e.target.value)}
-                        style={{
-                          position: 'absolute', inset: 0, width: width || '100%',
-                          opacity: 0, cursor: 'pointer', fontFamily: 'inherit',
-                        }}>
-                        {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                      </select>
-                    </div>
-                  );
+                  /**
+                   * The mode chip and its menu.
+                   *
+                   * This was a native select made invisible over a styled chip, which meant the
+                   * open list was the browser's own - white on Windows, whatever the theme said
+                   * elsewhere, and not something CSS could reliably reach through an element at
+                   * opacity 0. It is drawn here instead, so the menu is black because this file
+                   * says it is, and each option can carry the line that says what it does.
+                   */
+                  const picker = (label, value, options, onChange) => {
+                    const current = options.find(o => o.id === value) || options[0];
+                    return (
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '30px' }}>
+                        <button
+                          type="button" className="sf-focus"
+                          aria-label={label}
+                          aria-haspopup="listbox"
+                          aria-expanded={forgeModeOpen}
+                          onClick={() => setForgeModeOpen(v => !v)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '0.15rem', height: '30px',
+                            padding: 0, background: 'none', border: 'none', cursor: 'pointer',
+                            fontFamily: 'inherit',
+                          }}>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                            {current.label}
+                          </span>
+                          <span style={{
+                            width: '30px', height: '30px', borderRadius: '15px',
+                            background: 'var(--bg-secondary)', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)',
+                          }}>
+                            <ForgeIcon name="chevronDown" size={18} />
+                          </span>
+                        </button>
+
+                        {forgeModeOpen && (
+                          <>
+                            <div onClick={() => setForgeModeOpen(false)}
+                              style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'transparent' }} />
+                            <div role="listbox" aria-label={label} style={{
+                              position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 301,
+                              minWidth: '232px', padding: '0.25rem',
+                              background: '#000', border: '1px solid var(--border)',
+                              borderRadius: '10px', boxShadow: 'var(--shadow-dropdown)',
+                            }}>
+                              {options.map(o => {
+                                const on = o.id === value;
+                                return (
+                                  <button
+                                    key={o.id} type="button" role="option" className="sf-focus"
+                                    aria-selected={on}
+                                    onClick={() => { onChange(o.id); setForgeModeOpen(false); }}
+                                    style={{
+                                      display: 'block', width: '100%', textAlign: 'left',
+                                      padding: '0.5rem 0.625rem', borderRadius: '6px', border: 'none',
+                                      background: on ? 'rgba(255,255,255,0.08)' : 'none',
+                                      cursor: 'pointer', fontFamily: 'inherit',
+                                    }}>
+                                    <span style={{
+                                      display: 'block', fontSize: '0.82rem',
+                                      fontWeight: on ? 600 : 500, color: '#fff',
+                                    }}>{o.label}</span>
+                                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                      {o.hint}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  };
 
                   const composer = (big) => (
                     <>
@@ -6130,7 +6186,7 @@ This document serves as our living source of truth.`
                             }}>
                             <ForgeIcon name="plus" size={18} />
                           </button>
-                          {picker('Mode', forgeMode, FORGE_MODES, setForgeMode, '96px')}
+                          {picker('Mode', forgeMode, FORGE_MODES, setForgeMode)}
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
