@@ -19,10 +19,13 @@
 // It lived twice in ProjectDetail — once behind the gear menu and once as the empty state —
 // and the two copies had to be edited in lockstep. There is one now.
 //
-// The header's second tab is the frame's MCP screen, in McpPanel.
+// The header's second tab is the frame's MCP screen, in McpPanel, and its third is the
+// accounts screen in GeneralPanel. The toolbar's gear opens this panel on that third tab:
+// it was a dropdown menu of three items, and all three of them are in here.
 
 import { PROVIDER_DIRECTORY, CUSTOM_ENTRY } from '../../data/llmDirectory';
 import McpPanel from './McpPanel';
+import GeneralPanel from './GeneralPanel';
 import { maskSecret, relativeTime } from '../../utils/llmKeys';
 import ForgeIcon from './ForgeIcon';
 
@@ -119,11 +122,12 @@ function ProviderRow({ entry, state, onClick }) {
  * @param {Set<string>} p.connected   entry ids with a key behind them
  * @param {string} p.checkingId       the entry a test is running against, or ''
  * @param {() => void} [p.onClose]    back to the workspace; absent when there is no workspace yet
- * @param {'models'|'mcp'} p.tab      which of the frame's two tabs is showing
+ * @param {'models'|'mcp'|'general'} p.tab  which tab is showing
  * @param {object} p.mcp              everything McpPanel needs, passed straight through
+ * @param {object} p.general          the same for GeneralPanel
  */
 export default function ConnectPanel({
-  tab, onTab, mcp,
+  tab, onTab, mcp, general,
   entry, connected, checkingId, onChoose, onBack, onClose,
   provider, baseUrl, onBaseUrl, keyDraft, onKeyDraft, name, onName,
   remember, onRemember, busy, sessionKeyHeld, note, test, saved,
@@ -142,7 +146,11 @@ export default function ConnectPanel({
             because Forge sends a prompt and renders the reply - there is no agent behind it
             and the MCP tab says as much about itself. */}
         <div role="tablist" aria-label="Connect" style={{ display: 'flex', gap: '0.5rem' }}>
-          {[{ id: 'models', label: 'Models' }, { id: 'mcp', label: 'MCP' }].map(t => (
+          {[
+            { id: 'models', label: 'Models' },
+            { id: 'mcp', label: 'MCP' },
+            { id: 'general', label: 'General' },
+          ].map(t => (
             <button key={t.id} type="button" role="tab" className="sf-focus"
               aria-selected={tab === t.id}
               onClick={() => onTab(t.id)}
@@ -178,7 +186,9 @@ export default function ConnectPanel({
         display: 'flex', flexDirection: 'column', gap: '1.75rem',
         padding: '2.5rem', minHeight: 0, overflowY: 'auto',
       }}>
-        {tab === 'mcp' ? <McpPanel {...mcp} /> : (<>
+        {tab === 'mcp' ? <McpPanel {...mcp} />
+          : tab === 'general' ? <GeneralPanel {...general} />
+            : (<>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <h2 style={{
             margin: 0, fontFamily: 'var(--font-heading)', fontSize: '2rem',

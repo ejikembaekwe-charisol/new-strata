@@ -21,6 +21,13 @@ import ModelPicker from '../components/forge/ModelPicker';
 import ConnectPanel from '../components/forge/ConnectPanel';
 import { entryById, connectedEntryIds } from '../data/llmDirectory';
 import { MCP_PRESETS, listServers, addServer, removeServer, probeServer } from '../data/mcpServers';
+import { verifyToken, listRepos, commitFiles, suggestBranch, loadTarget, saveTarget } from '../data/github';
+import {
+  listTokens as listGhTokens, saveToken as saveGhToken, getSecret as getGhSecret,
+  deleteToken as deleteGhToken, touchToken as touchGhToken,
+  setSessionToken as setGhSession, getSessionToken as getGhSession,
+  GITHUB_SESSION_SCOPE,
+} from '../utils/githubTokens';
 import { modelsFor } from '../data/modelCatalogue';
 import TemplateGallery, { TemplateCard } from '../components/newProject/TemplateGallery';
 import { TEMPLATES } from '../components/newProject/templateData';
@@ -464,7 +471,6 @@ function ProjectDetailInner() {
   const [forgeView, setForgeView] = useState('preview');
   const [forgeDevice, setForgeDevice] = useState('desktop');
   const [forgeMode, setForgeMode] = useState('build');
-  const [forgeSettingsOpen, setForgeSettingsOpen] = useState(false);
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
   // Which row of the connect directory is open. '' is the directory itself.
   const [forgeDirEntry, setForgeDirEntry] = useState('');
@@ -475,6 +481,26 @@ function ProjectDetailInner() {
   const [mcpProbes, setMcpProbes] = useState({});
   const [mcpProbing, setMcpProbing] = useState('');
   const [mcpNote, setMcpNote] = useState('');
+
+  // ── GitHub ───────────────────────────────────────────────────────────────
+  // The token is the only new secret here, and it is the first one in Strata that can write
+  // to something outside the browser. Nothing about a check or a commit is persisted: both
+  // describe a moment, and GitHub is where they stay true.
+  const [ghDraft, setGhDraft] = useState('');
+  const [ghRemember, setGhRemember] = useState(false);
+  const [ghSaved, setGhSaved] = useState(() => listGhTokens(user?.email || ''));
+  const [ghBusy, setGhBusy] = useState(false);
+  const [ghNote, setGhNote] = useState('');
+  const [ghVerify, setGhVerify] = useState(null);
+  const [ghRepos, setGhRepos] = useState([]);
+  const [ghReposComplete, setGhReposComplete] = useState(true);
+  const [ghReposNote, setGhReposNote] = useState('');
+  const [ghReposBusy, setGhReposBusy] = useState(false);
+  const [ghTarget, setGhTarget] = useState(() => loadTarget(user?.email || '', id)
+    || { repoFullName: '', branch: '', folder: 'strata' });
+  const [ghCommit, setGhCommit] = useState(null);
+  const [ghCommitBusy, setGhCommitBusy] = useState(false);
+  const [ghStep, setGhStep] = useState(null);
   const [forgeExamplePage, setForgeExamplePage] = useState(0);
   const [forgePickerOpen, setForgePickerOpen] = useState(false);
   // What each provider said when its key was tested, kept per provider so the picker can
@@ -886,6 +912,136 @@ function ProjectDetailInner() {
     setMcpOwn(listServers(forgeOwner));
     // The result described a server that is no longer on the list.
     setMcpProbes(m => { const next = { ...m }; delete next[serverId]; return next; });
+  };
+
+  /** The token a request should use: a saved one, else whatever is held for this tab. */
+  const ghSecretFor = (tokenId) => (tokenId ? getGhSecret(tokenId)
+    : (ghDraft.trim() || getGhSecret(ghSaved[0]?.id) || getGhSession(GITHUB_SESSION_SCOPE)));
+
+  /** Save (or hold) the pasted token, then immediately ask GitHub whose it is. */
+  const handleGhConnect = async () => {
+    const secret = ghDraft.trim();
+    if (!secret || ghBusy) return;
+    setGhBusy(true);
+    setGhVerify(null);
+    setGhNote('');
+    try {
+      const res = await verifyToken(secret);
+      setGhVerify(res);
+      // Only a token GitHub accepted is worth keeping. Storing one it refused would leave a
+      // dead credential in the vault with a green row next to it.
+      if (res.status === 'ok') {
+        if (ghRemember) {
+          const { entry, persisted } = await saveGhToken({
+            owner: forgeOwner,
+            name: res.account.login ? '@' + res.account.login : 'GitHub token',
+            secret,
+          });
+          setGhNote(persisted ? 'Saved as "' + entry.name + '".'
+            : 'The browser refused to store it \u2014 its storage is full. It is held for this tab.');
+          if (!persisted) setGhSession(GITHUB_SESSION_SCOPE, secret);
+          setGhSaved(listGhTokens(forgeOwner));
+        } else {
+          setGhSession(GITHUB_SESSION_SCOPE, secret);
+          setGhNote('Kept for this browser tab only.');
+        }
+        setGhDraft('');
+        if (!ghTarget.branch) {
+          setGhTarget(t => ({ ...t, branch: suggestBranch(markdownSlug(project?.name || '')) }));
+        }
+      }
+    } finally {
+      setGhBusy(false);
+    }
+  };
+
+  const handleGhVerify = async (tokenId) => {
+    if (ghBusy) return;
+    const secret = ghSecretFor(tokenId);
+    if (!secret) { setGhNote('Paste a token first.'); return; }
+    setGhBusy(true);
+    setGhVerify(null);
+    try {
+      const res = await verifyToken(secret);
+      setGhVerify(res);
+      if (tokenId && res.status === 'ok') { touchGhToken(tokenId); setGhSaved(listGhTokens(forgeOwner)); }
+    } finally {
+      setGhBusy(false);
+    }
+  };
+
+  const handleGhDisconnect = (tokenId) => {
+    deleteGhToken(tokenId);
+    setGhSaved(listGhTokens(forgeOwner));
+    // Both described a token that no longer exists.
+    setGhVerify(null);
+    setGhRepos([]);
+  };
+
+  const handleGhLoadRepos = async () => {
+    if (ghReposBusy) return;
+    const secret = ghSecretFor(null);
+    if (!secret) { setGhReposNote('Connect a token first.'); return; }
+    setGhReposBusy(true);
+    setGhReposNote('');
+    try {
+      const res = await listRepos(secret);
+      setGhRepos(res.repos);
+      setGhReposComplete(res.complete);
+      setGhReposNote(res.status === 'ok' && res.repos.length ? '' : res.message);
+    } finally {
+      setGhReposBusy(false);
+    }
+  };
+
+  const handleGhTarget = (patch) => {
+    setGhTarget((t) => {
+      const next = { ...t, ...patch };
+      saveTarget(forgeOwner, id, next);
+      return next;
+    });
+  };
+
+  /**
+   * Commits the Handoff bundle. `files` is handed in for the same reason handleWriteFiles takes
+   * it: it is built in the Handoff block, from this project's tokens and components.
+   *
+   * The confirm is not decoration. This writes to somebody's real repository and Strata has no
+   * server, no record of what it wrote and no undo; the only thing that makes it safe is that
+   * it lands on a branch you can delete.
+   */
+  const handleGhCommit = async (files) => {
+    if (ghCommitBusy) return;
+    const secret = ghSecretFor(null);
+    if (!secret) { setGhNote('Connect a GitHub token first.'); return; }
+    const [owner, repo] = String(ghTarget.repoFullName || '').split('/');
+    if (!owner || !repo) { setGhNote('Choose a repository first, on the General tab.'); return; }
+
+    const branch = ghTarget.branch || suggestBranch(markdownSlug(project?.name || ''));
+    const agreed = window.confirm(
+      'Commit ' + files.length + ' files to ' + owner + '/' + repo + ' on ' + branch + '?\n\n'
+      + files.map(f => '  ' + (ghTarget.folder ? ghTarget.folder + '/' : '') + f.name).join('\n')
+      + '\n\nThis is a real commit from this browser, with your token. Strata has no server and'
+      + ' cannot undo it \u2014 deleting the branch on GitHub is the only way back.',
+    );
+    if (!agreed) return;
+
+    setGhCommitBusy(true);
+    setGhCommit(null);
+    setGhStep(null);
+    try {
+      const res = await commitFiles({
+        secret, owner, repo, branch,
+        path: ghTarget.folder,
+        message: 'Update ' + (project?.name || 'design system') + ' from Strata',
+        files,
+        onStep: (st) => setGhStep(st),
+      });
+      setGhCommit(res);
+    } finally {
+      setGhCommitBusy(false);
+      setGhStep(null);
+    }
   };
 
   const handleForgeDelete = (keyId) => {
@@ -5239,6 +5395,69 @@ This document serves as our living source of truth.`
                           </div>
                         )}
 
+                        {/* The same six files, committed rather than written to disk. The
+                            token and the target live on Forge's General tab; this is only the
+                            button, because this is where the bundle is. */}
+                        <div style={{
+                          marginBottom: '1rem', padding: '0.9rem 1rem', borderRadius: '10px',
+                          background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                              Commit to GitHub
+                            </span>
+                            <div style={{ flex: 1 }} />
+                            {ghTarget.repoFullName && (ghSaved.length > 0 || getGhSession(GITHUB_SESSION_SCOPE)) ? (
+                              <button type="button" className="sf-focus" style={{
+                                padding: '0.45rem 1rem', borderRadius: '999px', border: 'none',
+                                background: 'var(--accent)', color: '#fff', fontSize: '0.8rem',
+                                fontWeight: 600, fontFamily: 'inherit',
+                                cursor: ghCommitBusy ? 'not-allowed' : 'pointer',
+                              }} disabled={ghCommitBusy} onClick={() => handleGhCommit(files)}>
+                                {ghCommitBusy
+                                  ? 'Committing…'
+                                  : 'Commit ' + files.length + ' files to ' + ghTarget.repoFullName + ' on ' + ghTarget.branch}
+                              </button>
+                            ) : (
+                              <button type="button" className="sf-focus" style={smallBtn}
+                                onClick={() => { setActiveTab('forge'); setForgeConnectTab('general'); setForgeDirEntry(''); setForgeKeysOpen(true); }}>
+                                Connect GitHub
+                              </button>
+                            )}
+                          </div>
+                          {/* The button names its destination. A generic "Commit" gets pressed
+                              without being read; one that names the repository does not. */}
+                          <p style={{ margin: '0.5rem 0 0', fontSize: '0.76rem', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                            {ghTarget.repoFullName
+                              ? 'One commit, on a branch Strata creates rather than your default one. Nothing in the repository changes until the last step, so a failure part-way leaves it exactly as it was.'
+                              : 'Connect a token and pick a repository on Forge → General, and this commits the same six files.'}
+                          </p>
+                          {ghCommitBusy && ghStep && (
+                            <p style={{ margin: '0.4rem 0 0', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
+                              {ghStep.step} · step {ghStep.index} of {ghStep.total}
+                              {ghStep.mutating ? ' — writing now' : ' — nothing has changed yet'}
+                            </p>
+                          )}
+                          {ghCommit && (
+                            <div style={{ marginTop: '0.6rem' }}>
+                              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.6 }}>
+                                {ghCommit.message}
+                              </p>
+                              {ghCommit.detail && (
+                                <p style={{ margin: '0.3rem 0 0', fontSize: '0.74rem', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
+                                  {ghCommit.detail}
+                                </p>
+                              )}
+                              {ghCommit.htmlUrl && (
+                                <a href={ghCommit.htmlUrl} target="_blank" rel="noopener noreferrer"
+                                  style={{ fontSize: '0.78rem', color: 'var(--accent)', textDecoration: 'none' }}>
+                                  {ghCommit.mutationCertainty === 'applied' ? 'See it on GitHub' : 'Open the branch on GitHub'} &#8599;
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
                         {fsSupported && fsDir && (
                           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                             Connected to <strong style={{ color: 'var(--text-primary)' }}>{fsDir.name}</strong>
@@ -5803,50 +6022,15 @@ This document serves as our living source of truth.`
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                          <div style={{ position: 'relative' }}>
-                            <button type="button" className="sf-focus"
-                              aria-expanded={forgeSettingsOpen} aria-label="Preview settings"
-                              onClick={() => setForgeSettingsOpen(v => !v)}
-                              style={{ ...toolBtn(false), gap: '0.25rem' }}>
-                              <ForgeIcon name="settings" size={16} />
-                              <ForgeIcon name="chevronDown" size={12} />
-                            </button>
-                            {forgeSettingsOpen && (
-                              <>
-                                <div onClick={() => setForgeSettingsOpen(false)}
-                                  style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'transparent' }} />
-                                <div style={{
-                                  position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 201,
-                                  width: '270px', padding: '0.75rem',
-                                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                  borderRadius: '10px', boxShadow: 'var(--shadow-dropdown)',
-                                }}>
-                                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}>
-                                    <input type="checkbox" checked={forgeRemoteImages}
-                                      onChange={(e) => handleForgeRemoteImages(e.target.checked)}
-                                      style={{ marginTop: '0.2rem', accentColor: 'var(--accent)' }} />
-                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                                      Allow remote images
-                                      <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
-                                        Off by default: an image pointing at another server is a way
-                                        for a generated page to send what it can see somewhere else.
-                                      </span>
-                                    </span>
-                                  </label>
-                                  <button type="button" className="sf-focus"
-                                    onClick={() => { handleForgeNewChat(); setForgeSettingsOpen(false); }}
-                                    style={{ ...smallBtn, width: '100%', marginTop: '0.75rem', textAlign: 'left' }}>
-                                    Start a new conversation
-                                  </button>
-                                  <button type="button" className="sf-focus"
-                                    onClick={() => { setForgeDirEntry(''); setForgeKeysOpen(true); setForgeSettingsOpen(false); }}
-                                    style={{ ...smallBtn, width: '100%', marginTop: '0.4rem', textAlign: 'left' }}>
-                                    Model keys
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
+                          {/* One press, no menu. Everything that was in the dropdown lives in
+                              the panel now: the two workspace settings on its General tab, and
+                              the keys on its Models tab. */}
+                          <button type="button" className="sf-focus"
+                            aria-label="Workspace settings"
+                            onClick={() => { setForgeConnectTab('general'); setForgeDirEntry(''); setForgeKeysOpen(true); }}
+                            style={toolBtn(false)}>
+                            <ForgeIcon name="settings" size={16} />
+                          </button>
                           {/* The same publish the app header runs — this is the design's
                               button, wired to the real action rather than a second one. */}
                           <button type="button" className="sf-focus"
@@ -6331,6 +6515,34 @@ This document serves as our living source of truth.`
                         onAdd: handleMcpAdd,
                         onRemove: handleMcpRemove,
                         note: mcpNote,
+                      }}
+                      general={{
+                        github: {
+                          saved: ghSaved,
+                          sessionHeld: Boolean(getGhSession(GITHUB_SESSION_SCOPE)),
+                          draft: ghDraft,
+                          onDraft: setGhDraft,
+                          remember: ghRemember,
+                          onRemember: setGhRemember,
+                          busy: ghBusy,
+                          note: ghNote,
+                          verify: ghVerify,
+                          onConnect: handleGhConnect,
+                          onVerify: handleGhVerify,
+                          onDisconnect: handleGhDisconnect,
+                          repos: ghRepos,
+                          reposComplete: ghReposComplete,
+                          reposNote: ghReposNote,
+                          reposBusy: ghReposBusy,
+                          onLoadRepos: handleGhLoadRepos,
+                          target: ghTarget,
+                          onTarget: handleGhTarget,
+                        },
+                        workspace: {
+                          remoteImages: forgeRemoteImages,
+                          onRemoteImages: handleForgeRemoteImages,
+                          onNewChat: handleForgeNewChat,
+                        },
                       }}
                       entry={forgeEntry}
                       connected={forgeConnectedEntries}
