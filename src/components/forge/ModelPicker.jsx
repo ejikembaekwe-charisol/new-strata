@@ -5,8 +5,10 @@
 // list replaces the written one outright, because a merge would put rows in front of someone
 // that their own key had just finished saying it does not have.
 //
-// The frame's "Setup" row is what a model whose provider has no key gets. Picking it opens
-// the key panel for that provider rather than selecting something that would fail on send.
+// The frame's "Setup" affordance sits on the provider's own heading rather than on each of
+// its models: it is one action for the provider, and repeating it under Anthropic would have
+// said the same thing eight times. Its models stay listed but dimmed, and pressing one still
+// takes you to the key panel rather than selecting something that would fail on send.
 
 import { useState } from 'react';
 import ForgeIcon from './ForgeIcon';
@@ -89,21 +91,21 @@ export default function ModelPicker({
             <div key={prov.id}>
               <div style={{ ...header, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                 <span>{CATALOGUE_HEADINGS[prov.id] || prov.label}</span>
-                {wired && (
-                  <button type="button" className="sf-focus"
-                    disabled={loading === prov.id}
-                    onClick={() => onLoad(prov.id)}
-                    title={live
+                <button type="button" className="sf-focus"
+                  disabled={wired && loading === prov.id}
+                  onClick={() => (wired ? onLoad(prov.id) : onSetup(prov.id))}
+                  title={!wired
+                    ? 'Connect a key for ' + prov.label + '.'
+                    : live
                       ? 'These came from your key. Ask again to refresh them.'
                       : 'Ask your key which models it can actually use.'}
-                    style={{
-                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                      fontFamily: 'inherit', fontSize: '0.65rem', letterSpacing: 0,
-                      textTransform: 'none', fontWeight: 500, color: 'var(--accent)',
-                    }}>
-                    {loading === prov.id ? 'Asking…' : (live ? 'From your key' : 'Check your key')}
-                  </button>
-                )}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    fontFamily: 'inherit', fontSize: '0.65rem', letterSpacing: 0,
+                    textTransform: 'none', fontWeight: 600, color: 'var(--accent)',
+                  }}>
+                  {!wired ? 'Setup' : loading === prov.id ? 'Asking…' : (live ? 'From your key' : 'Check your key')}
+                </button>
               </div>
 
               {shown.map((x) => {
@@ -121,15 +123,11 @@ export default function ModelPicker({
                       fontWeight: on ? 600 : 400,
                     }}
                   >
-                    <span style={{ ...label, color: wired ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                    {/* Dimmed rather than badged: the heading already says this provider
+                        needs a key, and pressing a row still takes you there. */}
+                    <span style={{ ...label, color: wired ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                       {x.label || x.id}
                     </span>
-                    {/* The frame's own affordance for a model you cannot use yet. */}
-                    {!wired && (
-                      <span style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                        Setup
-                      </span>
-                    )}
                     {on && <ForgeIcon name="chevronRight" size={12} style={{ color: 'var(--text-secondary)' }} />}
                   </button>
                 );
