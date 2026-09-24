@@ -52,6 +52,36 @@ const openAiReply = (json) => {
   };
 };
 
+/**
+ * A message's images, in each provider's own shape.
+ *
+ * `m.images` is `[{mediaType, data}]`, base64 without the data: prefix. The three spellings
+ * below are genuinely different, which is why they live with their descriptors rather than in
+ * one shared mapper.
+ *
+ * Where there are no images the text stays a bare string rather than becoming a one-element
+ * parts array: some OpenAI-compatible servers accept only the string form, and every message
+ * ever sent from this app until now was a string.
+ */
+const anthropicContent = (m) => (m.images?.length
+  ? [
+    // Anthropic's own guidance: images before the text they are about.
+    ...m.images.map(im => ({ type: 'image', source: { type: 'base64', media_type: im.mediaType, data: im.data } })),
+    { type: 'text', text: m.content },
+  ]
+  : [{ type: 'text', text: m.content }]);
+
+const openAiContent = (m) => (m.images?.length
+  ? [
+    { type: 'text', text: m.content },
+    ...m.images.map(im => ({ type: 'image_url', image_url: { url: 'data:' + im.mediaType + ';base64,' + im.data } })),
+  ]
+  : m.content);
+
+const geminiParts = (m) => (m.images?.length
+  ? [{ text: m.content }, ...m.images.map(im => ({ inlineData: { mimeType: im.mediaType, data: im.data } }))]
+  : [{ text: m.content }]);
+
 export const LLM_PROVIDERS = [
   {
     id: 'anthropic',
@@ -85,7 +115,7 @@ export const LLM_PROVIDERS = [
         model,
         max_tokens: maxTokens || ANTHROPIC_MAX_TOKENS,
         ...(system ? { system } : {}),
-        messages: messages.map(m => ({ role: m.role, content: [{ type: 'text', text: m.content }] })),
+        messages: messages.map(m => ({ role: m.role, content: anthropicContent(m) })),
       },
     }),
     // Not content[0].text: the first block can be a thinking block, whose `.text` is
@@ -120,7 +150,10 @@ export const LLM_PROVIDERS = [
       headers: { Authorization: 'Bearer ' + secret },
       body: {
         model,
-        messages: [...(system ? [{ role: 'system', content: system }] : []), ...messages],
+        messages: [
+          ...(system ? [{ role: 'system', content: system }] : []),
+          ...messages.map(m => ({ role: m.role, content: openAiContent(m) })),
+        ],
         // OpenAI's own reasoning models reject `max_tokens` outright, which is why this and
         // the OpenAI-compatible descriptor below cannot share one builder.
         ...(maxTokens ? { max_completion_tokens: maxTokens } : {}),
@@ -161,7 +194,7 @@ export const LLM_PROVIDERS = [
         // Gemini has no system role inside contents, and calls the assistant 'model'.
         contents: messages.map(m => ({
           role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
+          parts: geminiParts(m),
         })),
         ...(maxTokens ? { generationConfig: { maxOutputTokens: maxTokens } } : {}),
       },
@@ -205,7 +238,10 @@ export const LLM_PROVIDERS = [
       headers: secret ? { Authorization: 'Bearer ' + secret } : {},
       body: {
         model,
-        messages: [...(system ? [{ role: 'system', content: system }] : []), ...messages],
+        messages: [
+          ...(system ? [{ role: 'system', content: system }] : []),
+          ...messages.map(m => ({ role: m.role, content: openAiContent(m) })),
+        ],
         // `max_tokens`, not OpenAI's `max_completion_tokens`: Ollama, LM Studio, Groq and
         // most compatible servers have never heard of the newer name.
         ...(maxTokens ? { max_tokens: maxTokens } : {}),

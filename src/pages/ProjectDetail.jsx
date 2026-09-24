@@ -23,6 +23,10 @@ import { entryById, connectedEntryIds } from '../data/llmDirectory';
 import { MCP_PRESETS, listServers, addServer, removeServer, probeServer } from '../data/mcpServers';
 import { verifyToken, listRepos, commitFiles, suggestBranch, loadTarget, saveTarget } from '../data/github';
 import {
+  readAttachment, pageAttachment, attachmentText, attachmentImages,
+  totalBytes, formatBytes, FILE_ACCEPT, MAX_TOTAL_BYTES,
+} from '../data/attachments';
+import {
   listTokens as listGhTokens, saveToken as saveGhToken, getSecret as getGhSecret,
   deleteToken as deleteGhToken, touchToken as touchGhToken,
   setSessionToken as setGhSession, getSessionToken as getGhSession,
@@ -473,6 +477,11 @@ function ProjectDetailInner() {
   const [forgeDevice, setForgeDevice] = useState('desktop');
   const [forgeMode, setForgeMode] = useState('build');
   const [forgeModeOpen, setForgeModeOpen] = useState(false);
+  // Attachments belong to the next message, not to the conversation: they are cleared on
+  // send, because the message they went with keeps its own copy.
+  const [forgeAttachments, setForgeAttachments] = useState([]);
+  const [forgeAddOpen, setForgeAddOpen] = useState(false);
+  const [forgeAttachNote, setForgeAttachNote] = useState('');
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
   // Which row of the connect directory is open. '' is the directory itself.
   const [forgeDirEntry, setForgeDirEntry] = useState('');
@@ -736,9 +745,21 @@ function ProjectDetailInner() {
     const secret = key ? getSecret(key.id) : getSessionToken(forgeSessionScope);
     if (!secret) { setForgeNote('No key for this provider yet.'); return; }
 
-    const outgoing = [...forgeMessages, { role: 'user', content: prompt }];
+    // What is sent and what is shown differ: the transcript shows what was typed, with the
+    // attachments as chips under it, while the model gets the file contents appended. Pasting
+    // a 200KB stylesheet into the bubble would bury the sentence it belongs to.
+    const attached = forgeAttachments;
+    const outgoing = [...forgeMessages, {
+      role: 'user',
+      content: prompt + attachmentText(attached),
+      display: prompt,
+      images: attachmentImages(attached),
+      attachments: attached.map(a => ({ id: a.id, name: a.name, kind: a.kind, bytes: a.bytes })),
+    }];
     setForgeMessages(outgoing);
     setForgeInput('');
+    setForgeAttachments([]);
+    setForgeAttachNote('');
     setForgeElapsed(0);
     setForgeSending(true);
     try {
@@ -758,7 +779,8 @@ function ProjectDetailInner() {
         // else, and the page says its output will come back in the model's own defaults.
         system: rules + (forgeEmptyProject ? '' : '\n\n---\n\n'
           + designMarkdown({ ...project, components }, activeTokens)),
-        messages: outgoing.map(m => ({ role: m.role, content: m.content })),
+        // `images` rides along untouched: each provider's builder spells it its own way.
+        messages: outgoing.map(m => ({ role: m.role, content: m.content, images: m.images })),
       });
       if (key && res.reachedProvider) touchKey(key.id);
 
@@ -831,6 +853,42 @@ function ProjectDetailInner() {
       return built.ok ? { ...d, srcDoc: built.srcDoc, bytes: built.bytes } : d;
     }));
   };
+
+  /**
+   * Files picked from the device. Each is read on its own so one refusal does not lose the
+   * rest, and the reasons are collected into a single line rather than an alert per file.
+   */
+  const handleForgeAttachFiles = async (fileList) => {
+    const files = [...(fileList || [])];
+    if (!files.length) return;
+    const added = [];
+    const refused = [];
+    let running = totalBytes(forgeAttachments);
+    for (const file of files) {
+      const res = await readAttachment(file);
+      if (!res.ok) { refused.push(res.name + ' \u2014 ' + res.reason); continue; }
+      if (running + res.attachment.bytes > MAX_TOTAL_BYTES) {
+        refused.push(res.attachment.name + ' \u2014 that would take this message past '
+          + formatBytes(MAX_TOTAL_BYTES) + ', and every later message would carry it again.');
+        continue;
+      }
+      running += res.attachment.bytes;
+      added.push(res.attachment);
+    }
+    if (added.length) setForgeAttachments(list => [...list, ...added]);
+    setForgeAttachNote(refused.join(' '));
+  };
+
+  /** The page in the preview, as source. It is a reply, so it is not in the system prompt. */
+  const handleForgeAttachPage = (html, label) => {
+    if (!html) return;
+    setForgeAttachments(list => [...list, pageAttachment(html, label)]);
+    setForgeAttachNote('');
+    setForgeAddOpen(false);
+  };
+
+  const handleForgeRemoveAttachment = (attId) =>
+    setForgeAttachments(list => list.filter(a => a.id !== attId));
 
   /**
    * Picking a model is picking its provider too, so the key that goes with it has to come
@@ -6146,6 +6204,40 @@ This document serves as our living source of truth.`
 
                   const composer = (big) => (
                     <>
+                      {/* What is going with the next message. Removable until it is sent, and
+                          gone from here afterwards - the message keeps its own copy. */}
+                      {forgeAttachments.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                          {forgeAttachments.map(a => (
+                            <span key={a.id} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                              padding: '0.25rem 0.5rem 0.25rem 0.6rem', borderRadius: '6px',
+                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                              fontSize: '0.72rem', color: 'var(--text-secondary)',
+                            }}>
+                              {a.kind === 'image' && (
+                                <img src={'data:' + a.mediaType + ';base64,' + a.data} alt=""
+                                  width="16" height="16" style={{ borderRadius: '3px', objectFit: 'cover' }} />
+                              )}
+                              <span style={{ fontFamily: 'var(--font-mono)' }}>{a.name}</span>
+                              <span style={{ color: 'var(--text-tertiary)' }}>{formatBytes(a.bytes)}</span>
+                              <button type="button" className="sf-focus"
+                                aria-label={'Remove ' + a.name}
+                                onClick={() => handleForgeRemoveAttachment(a.id)}
+                                style={{
+                                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                  color: 'var(--text-tertiary)', fontSize: '0.85rem', lineHeight: 1,
+                                }}>&times;</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {forgeAttachNote && (
+                        <p style={{ margin: 0, fontSize: '0.72rem', color: '#F59E0B', lineHeight: 1.5 }}>
+                          {forgeAttachNote}
+                        </p>
+                      )}
+
                       <div style={{
                         background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
                         borderRadius: '12px', padding: '1rem',
@@ -6171,21 +6263,90 @@ This document serves as our living source of truth.`
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          {/* The frame's plus. It starts a new conversation — the one thing a
-                              plus here can do that Strata can actually carry out, and worth
-                              having because every message re-sends the whole design system. */}
-                          <button type="button" className="sf-focus"
-                            aria-label="Start a new conversation" title="Start a new conversation"
-                            onClick={handleForgeNewChat}
-                            disabled={forgeMessages.length === 0 && !forgeInput}
-                            style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              width: '30px', height: '30px', borderRadius: '15px',
-                              background: 'none', border: 'none', cursor: 'pointer',
-                              color: 'var(--text-tertiary)', padding: 0,
-                            }}>
-                            <ForgeIcon name="plus" size={18} />
-                          </button>
+                          {/* The frame's plus: what goes with the message besides the
+                              sentence. Two things, because two things are all this app has
+                              that a model could not already see - the design system is in
+                              every request's system prompt, so attaching it again would only
+                              spend tokens saying it twice. */}
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <input
+                              id={'forge-files-' + (big ? 'big' : 'small')}
+                              type="file" multiple accept={FILE_ACCEPT}
+                              style={{ display: 'none' }}
+                              onChange={(e) => { handleForgeAttachFiles(e.target.files); e.target.value = ''; setForgeAddOpen(false); }}
+                            />
+                            <button type="button" className="sf-focus"
+                              aria-label="Add to this message" title="Add to this message"
+                              aria-haspopup="menu" aria-expanded={forgeAddOpen}
+                              onClick={() => setForgeAddOpen(v => !v)}
+                              style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                width: '30px', height: '30px', borderRadius: '15px',
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                color: 'var(--text-tertiary)', padding: 0,
+                              }}>
+                              <ForgeIcon name="plus" size={18} />
+                            </button>
+
+                            {forgeAddOpen && (
+                              <>
+                                <div onClick={() => setForgeAddOpen(false)}
+                                  style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'transparent' }} />
+                                <div role="menu" aria-label="Add to this message" style={{
+                                  position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 301,
+                                  width: '286px', padding: '0.25rem',
+                                  background: '#000', border: '1px solid var(--border)',
+                                  borderRadius: '10px', boxShadow: 'var(--shadow-dropdown)',
+                                }}>
+                                  <button type="button" role="menuitem" className="sf-focus"
+                                    onClick={() => document.getElementById('forge-files-' + (big ? 'big' : 'small'))?.click()}
+                                    style={{
+                                      display: 'block', width: '100%', textAlign: 'left',
+                                      padding: '0.5rem 0.625rem', borderRadius: '6px', border: 'none',
+                                      background: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                    }}>
+                                    <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: '#fff' }}>
+                                      Add media or files
+                                    </span>
+                                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                      Images, or text the model can read &mdash; css, json, md, svg
+                                    </span>
+                                  </button>
+
+                                  <button type="button" role="menuitem" className="sf-focus"
+                                    disabled={!doc}
+                                    onClick={() => handleForgeAttachPage(doc?.html, doc?.starter ? 'starter-page.html' : 'page-on-screen.html')}
+                                    style={{
+                                      display: 'block', width: '100%', textAlign: 'left',
+                                      padding: '0.5rem 0.625rem', borderRadius: '6px', border: 'none',
+                                      background: 'none', cursor: doc ? 'pointer' : 'not-allowed',
+                                      fontFamily: 'inherit', opacity: doc ? 1 : 0.5,
+                                    }}>
+                                    <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: '#fff' }}>
+                                      Add from workspace
+                                    </span>
+                                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                                      {doc
+                                        ? 'The page on screen, as source'
+                                        : 'Nothing to add yet \u2014 no page has been made'}
+                                    </span>
+                                  </button>
+
+                                  {/* Said here rather than discovered by attaching something
+                                      twice, or by attaching a file that holds nothing. */}
+                                  <p style={{
+                                    margin: 0, padding: '0.5rem 0.625rem 0.35rem',
+                                    borderTop: '1px solid var(--border)',
+                                    fontSize: '0.69rem', color: 'var(--text-tertiary)', lineHeight: 1.5,
+                                  }}>
+                                    This project&rsquo;s tokens and components already go with every
+                                    message. Brand assets do not: Strata stores their names, not
+                                    their contents.
+                                  </p>
+                                </div>
+                              </>
+                            )}
+                          </div>
                           {picker('Mode', forgeMode, FORGE_MODES, setForgeMode)}
                         </div>
 
@@ -6503,7 +6664,22 @@ This document serves as our living source of truth.`
                                 {m.role === 'user' ? 'You' : provider.label}
                               </div>
                               {m.role === 'user' ? (
-                                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{m.content}</p>
+                                <>
+                                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                                    {m.display ?? m.content}
+                                  </p>
+                                  {m.attachments?.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+                                      {m.attachments.map(a => (
+                                        <span key={a.id} style={{
+                                          fontSize: '0.68rem', padding: '0.15rem 0.45rem', borderRadius: '4px',
+                                          background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)',
+                                          fontFamily: 'var(--font-mono)',
+                                        }}>{a.name} · {formatBytes(a.bytes)}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
                               ) : (
                                 <>
                                   {m.result && (m.result.status !== 'ok' || m.result.truncated) && (
