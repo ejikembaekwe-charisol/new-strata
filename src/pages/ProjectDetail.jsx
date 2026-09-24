@@ -8,7 +8,7 @@ import { resolveMyRole, can, canViewTab, ROLES, describeRole, roleSummary, LOCAL
 import { getBrandCompleteness, emptyBrandContext } from '../utils/projectCompleteness';
 import {
   listKeys, saveKey, getKey, getSecret, deleteKey, touchKey,
-  setSessionToken, getSessionToken, sessionScope, maskSecret, relativeTime,
+  setSessionToken, getSessionToken, sessionScope,
 } from '../utils/llmKeys';
 import { LLM_PROVIDERS, getProvider, normaliseBaseUrl, testKey, sendChat, pickModel } from '../data/llmProviders';
 import {
@@ -18,6 +18,8 @@ import PreviewFrame from '../components/forge/PreviewFrame';
 import { demoSitePage } from '../data/demoSitePage';
 import ForgeIcon from '../components/forge/ForgeIcon';
 import ModelPicker from '../components/forge/ModelPicker';
+import ConnectPanel from '../components/forge/ConnectPanel';
+import { entryById, connectedEntryIds } from '../data/llmDirectory';
 import { modelsFor } from '../data/modelCatalogue';
 import TemplateGallery, { TemplateCard } from '../components/newProject/TemplateGallery';
 import { TEMPLATES } from '../components/newProject/templateData';
@@ -463,6 +465,8 @@ function ProjectDetailInner() {
   const [forgeMode, setForgeMode] = useState('build');
   const [forgeSettingsOpen, setForgeSettingsOpen] = useState(false);
   const [forgeKeysOpen, setForgeKeysOpen] = useState(false);
+  // Which row of the connect directory is open. '' is the directory itself.
+  const [forgeDirEntry, setForgeDirEntry] = useState('');
   const [forgeExamplePage, setForgeExamplePage] = useState(0);
   const [forgePickerOpen, setForgePickerOpen] = useState(false);
   // What each provider said when its key was tested, kept per provider so the picker can
@@ -607,6 +611,8 @@ function ProjectDetailInner() {
     const secret = forgeKeyDraft.trim();
     if (!secret || forgeBusy) return;
     const provider = getProvider(forgeProvider);
+    // Five rows share the custom adapter, so "Custom key" would name five different things.
+    const dirEntry = entryById(forgeDirEntry);
     if (provider?.needsBaseUrl) {
       const n = normaliseBaseUrl(forgeBaseUrl);
       if (!n.ok) { setForgeNote(n.reason); return; }
@@ -616,7 +622,7 @@ function ProjectDetailInner() {
       if (forgeRemember) {
         const { entry, deduped, persisted } = await saveKey({
           owner: forgeOwner,
-          name: forgeName.trim() || (provider?.label || 'Key') + ' key',
+          name: forgeName.trim() || (dirEntry?.name || provider?.label || 'Key') + ' key',
           secret,
           provider: forgeProvider,
           baseUrl: provider?.needsBaseUrl ? normaliseBaseUrl(forgeBaseUrl).url : '',
@@ -820,6 +826,22 @@ function ProjectDetailInner() {
       setForgeBusy(false);
       setForgeLoadingProvider('');
     }
+  };
+
+  /**
+   * Opening one row of the connect directory.
+   *
+   * A preset is the custom adapter with its endpoint filled in, so choosing one sets both.
+   * Setting only the provider would leave the previous row's base URL in the field, and the
+   * key would be sent somewhere it does not belong.
+   */
+  const handleForgeChooseEntry = (entryId) => {
+    const e = entryById(entryId);
+    if (!e) return;
+    setForgeDirEntry(entryId);
+    if (e.via !== forgeProvider) { setForgeProvider(e.via); refreshForgeKeys(e.via); }
+    setForgeBaseUrl(e.baseUrl || '');
+    clearForgeTest();
   };
 
   const handleForgeDelete = (keyId) => {
@@ -5633,33 +5655,13 @@ This document serves as our living source of truth.`
               color: 'var(--text-secondary)', fontSize: '0.76rem', fontWeight: 600,
               fontFamily: 'inherit',
             };
-            const field = {
-              width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-              borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text-primary)',
-              fontSize: '0.82rem', fontFamily: 'var(--font-mono)', outline: 'none',
-            };
-            const pill = (text, tone) => (
-              <span style={{
-                fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.06em',
-                textTransform: 'uppercase', padding: '0.2rem 0.5rem', borderRadius: '100px',
-                flexShrink: 0,
-                background: tone === 'on' ? 'rgba(16,185,129,0.12)' : 'var(--bg-tertiary)',
-                color: tone === 'on' ? '#10B981' : 'var(--text-tertiary)',
-                border: '1px solid ' + (tone === 'on' ? 'rgba(16,185,129,0.25)' : 'var(--border)'),
-              }}>{text}</span>
-            );
-            const sectionHead = (title, badge, lead) => (
-              <div style={{ marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h3>
-                  {badge}
-                </div>
-                {lead && (
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '64ch' }}>
-                    {lead}
-                  </p>
-                )}
-              </div>
+            // Which row of the connect directory each key belongs to. A key held for
+            // this tab records a provider and no endpoint, so it can vouch for the three
+            // native rows and not for a preset - connectedEntryIds explains why.
+            const forgeEntry = entryById(forgeDirEntry);
+            const forgeConnectedEntries = connectedEntryIds(
+              listKeys(forgeOwner),
+              new Set(LLM_PROVIDERS.filter(pv => getSessionToken(sessionScope(id, pv.id))).map(pv => pv.id)),
             );
 
             return (
@@ -5793,7 +5795,7 @@ This document serves as our living source of truth.`
                                     Start a new conversation
                                   </button>
                                   <button type="button" className="sf-focus"
-                                    onClick={() => { setForgeKeysOpen(true); setForgeSettingsOpen(false); }}
+                                    onClick={() => { setForgeDirEntry(''); setForgeKeysOpen(true); setForgeSettingsOpen(false); }}
                                     style={{ ...smallBtn, width: '100%', marginTop: '0.4rem', textAlign: 'left' }}>
                                     Model keys
                                   </button>
@@ -5953,8 +5955,9 @@ This document serves as our living source of truth.`
                                     onPick={handleForgePickModel}
                                     onLoad={handleForgeLoadModels}
                                     onSetup={(pid) => {
-                                      setForgeProvider(pid);
-                                      refreshForgeKeys(pid);
+                                      // The directory's ids are the provider ids, so
+                                      // Setup lands on that provider's form, not the list.
+                                      handleForgeChooseEntry(pid);
                                       setForgePickerOpen(false);
                                       setForgeKeysOpen(true);
                                     }}
@@ -6267,427 +6270,37 @@ This document serves as our living source of truth.`
                   );
                 })()}
 
-                {/* The connect panel is one of the gear menu’s items rather than a
-                    permanent block: connecting is something you do once. It still has to be
-                    reachable, though — it is the only way to change provider, add a second
-                    key or delete one. */}
-                {forgeAnyKey ? (forgeKeysOpen && (
-                  <div style={{ flexShrink: 0 }}>
-                    <button type="button" className="sf-focus" style={{ ...smallBtn, marginBottom: '0.75rem' }}
-                      onClick={() => setForgeKeysOpen(false)}>← Back to the workspace</button>
-                      <div style={card}>
-                        {sectionHead('Connect your model', pill('Working', 'on'),
-                          'Strata sends your key straight to the provider from this browser. There is no Strata server in between, because there is no Strata server.')}
-
-                        <p style={{
-                          margin: '0 0 1.25rem', fontSize: '0.78rem', color: 'var(--text-tertiary)',
-                          lineHeight: 1.6, maxWidth: '64ch',
-                        }}>
-                          The key is stored in this browser under your own account &mdash; it is not
-                          part of the project, so teammates who open this project will not see it, and
-                          you will not see theirs. It is kept in plain text: anyone who can read this
-                          browser can read it, and unlike a Figma token an API key spends money.
-                        </p>
-
-                        {/* Provider */}
-                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1rem' }} role="radiogroup" aria-label="Model provider">
-                          {LLM_PROVIDERS.map(p => (
-                            <button key={p.id} type="button" className="sf-focus" role="radio"
-                              aria-checked={forgeProvider === p.id}
-                              onClick={() => { setForgeProvider(p.id); clearForgeTest(); refreshForgeKeys(p.id); }}
-                              style={{
-                                padding: '0.45rem 1rem', borderRadius: '999px', fontFamily: 'inherit',
-                                border: '1px solid ' + (forgeProvider === p.id ? 'var(--accent)' : 'var(--border)'),
-                                background: forgeProvider === p.id ? 'var(--accent)' : 'var(--bg-tertiary)',
-                                color: forgeProvider === p.id ? '#fff' : 'var(--text-secondary)',
-                                fontSize: '0.82rem', fontWeight: forgeProvider === p.id ? 600 : 400,
-                                cursor: 'pointer', touchAction: 'manipulation',
-                              }}>{p.label}</button>
-                          ))}
-                        </div>
-
-                        <p style={{ margin: '0 0 1rem', fontSize: '0.78rem', color: 'var(--text-tertiary)', lineHeight: 1.6, maxWidth: '64ch' }}>
-                          {provider.keyHint}
-                          {provider.docsUrl && (
-                            <>
-                              {' '}
-                              <a href={provider.docsUrl} target="_blank" rel="noopener noreferrer"
-                                style={{ color: 'var(--accent)', textDecoration: 'none' }}>Get a key &#8599;</a>
-                            </>
-                          )}
-                        </p>
-
-                        {provider.needsBaseUrl && (
-                          <div style={{ marginBottom: '0.75rem' }}>
-                            <label htmlFor="forge-base" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                              Base URL
-                            </label>
-                            <input id="forge-base" type="text" style={field} autoComplete="off"
-                              placeholder="https://openrouter.ai/api/v1"
-                              value={forgeBaseUrl}
-                              onChange={(e) => { setForgeBaseUrl(e.target.value); clearForgeTest(); }} />
-                          </div>
-                        )}
-
-                        <div className="pd-forge-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                          <div>
-                            <label htmlFor="forge-key" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                              API key
-                            </label>
-                            {/* type=password so it is not shoulder-read, and the value only ever
-                                lives in this field — a saved key is never rendered back. */}
-                            <input id="forge-key" type="password" style={field} autoComplete="off"
-                              placeholder={provider.keyPlaceholder}
-                              value={forgeKeyDraft}
-                              onChange={(e) => { setForgeKeyDraft(e.target.value); clearForgeTest(); }} />
-                          </div>
-                          <div>
-                            <label htmlFor="forge-name" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                              Name it (optional)
-                            </label>
-                            <input id="forge-name" type="text" style={{ ...field, fontFamily: 'inherit' }} autoComplete="off"
-                              placeholder="Work key"
-                              value={forgeName}
-                              onChange={(e) => setForgeName(e.target.value)} />
-                          </div>
-                        </div>
-
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '1rem', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={forgeRemember}
-                            onChange={(e) => setForgeRemember(e.target.checked)}
-                            style={{ marginTop: '0.15rem', accentColor: 'var(--accent)' }} />
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                            Remember this key on this device
-                            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                              {forgeRemember
-                                ? 'Not encrypted — anyone with access to this browser can read it.'
-                                : 'Kept for this browser tab only.'}
-                            </span>
-                          </span>
-                        </label>
-
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <button type="button" className="sf-focus"
-                            disabled={!forgeKeyDraft.trim() || forgeBusy}
-                            onClick={handleForgeSave}
-                            style={{
-                              padding: '0.5rem 1.1rem', borderRadius: '999px', border: 'none',
-                              background: forgeKeyDraft.trim() ? 'var(--accent)' : 'var(--bg-tertiary)',
-                              color: forgeKeyDraft.trim() ? '#fff' : 'var(--text-tertiary)',
-                              fontSize: '0.82rem', fontWeight: 600, fontFamily: 'inherit',
-                              cursor: forgeKeyDraft.trim() && !forgeBusy ? 'pointer' : 'not-allowed',
-                            }}>
-                            {forgeRemember ? 'Save key' : 'Keep for this tab'}
-                          </button>
-                          <button type="button" className="sf-focus" style={smallBtn}
-                            disabled={forgeBusy || (!forgeKeyDraft.trim() && !sessionKeyHeld)}
-                            onClick={() => handleForgeTest(null)}>
-                            {forgeBusy ? 'Testing…' : 'Test connection'}
-                          </button>
-                          {sessionKeyHeld && !forgeKeyDraft.trim() && (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                              A key is held for this tab.
-                            </span>
-                          )}
-                        </div>
-
-                        {forgeNote && (
-                          <p style={{ margin: '0.75rem 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{forgeNote}</p>
-                        )}
-
-                        {/* The result. Every sentence here is keyed off reachedProvider: when the
-                            browser blocked the request we learned nothing about the key, and the
-                            copy must not pretend otherwise. */}
-                        {forgeTest && (
-                          <div style={{
-                            marginTop: '1rem', padding: '0.9rem 1rem', borderRadius: '10px',
-                            background: 'var(--bg-tertiary)',
-                            border: '1px solid ' + (forgeTest.status === 'ok' ? 'rgba(16,185,129,0.35)' : 'var(--border)'),
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                              {pill(forgeTest.status === 'ok' ? 'Answered' : forgeTest.reachedProvider ? 'Answered' : 'No answer',
-                                forgeTest.status === 'ok' ? 'on' : 'off')}
-                              <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-                                {forgeTest.message}
-                              </span>
-                            </div>
-                            {forgeTest.detail && (
-                              <p style={{ margin: '0.5rem 0 0', fontSize: '0.76rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>
-                                {forgeTest.detail}
-                              </p>
-                            )}
-                            {forgeTest.models.length > 0 && (
-                              <div style={{ marginTop: '0.75rem' }}>
-                                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.4rem' }}>
-                                  What it returned
-                                </div>
-                                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                                  {forgeTest.models.slice(0, 12).map(m => (
-                                    <span key={m.id} style={{
-                                      fontSize: '0.72rem', fontFamily: 'var(--font-mono)',
-                                      padding: '0.2rem 0.5rem', borderRadius: '6px',
-                                      background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                      color: 'var(--text-secondary)',
-                                    }}>{m.label}</span>
-                                  ))}
-                                </div>
-                                {/* A raw count would flatter: OpenAI's list includes embeddings and
-                                    speech models that cannot generate a prototype. */}
-                                <p style={{ margin: '0.5rem 0 0', fontSize: '0.74rem', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-                                  {forgeTest.models.length > 12
-                                    ? 'The first 12 of ' + forgeTest.models.length + '. '
-                                    : ''}
-                                  This is everything the key can see, which for some providers includes
-                                  embedding and speech models as well as ones that can write code.
-                                </p>
-                              </div>
-                            )}
-                            <p style={{ margin: '0.6rem 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-                              Checked {relativeTime(forgeTest.checkedAt)} · took {forgeTest.durationMs}ms.
-                              This says the key worked from this browser just now, and nothing beyond that.
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Saved keys */}
-                        {forgeSaved.length > 0 && (
-                          <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
-                            <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.6rem' }}>
-                              Saved for {provider.label}
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                              {forgeSaved.map(k => (
-                                <div key={k.id} className="pd-forge-key-row" style={{
-                                  display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
-                                  padding: '0.6rem 0.8rem', borderRadius: '8px',
-                                  background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                                }}>
-                                  <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 600 }}>{k.name}</span>
-                                  <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
-                                    {maskSecret(k.secret)}
-                                  </span>
-                                  <span style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
-                                    used {relativeTime(k.lastUsedAt)}
-                                  </span>
-                                  <div style={{ flex: 1 }} />
-                                  <button type="button" className="sf-focus" style={smallBtn}
-                                    disabled={forgeBusy}
-                                    onClick={() => handleForgeTest(k.id)}>Test</button>
-                                  <button type="button" className="sf-focus" style={smallBtn}
-                                    onClick={() => handleForgeDelete(k.id)}>Delete</button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                  </div>
-                )) : (
-                  <div style={card}>
-                    {sectionHead('Connect your model', pill('Working', 'on'),
-                      'Strata sends your key straight to the provider from this browser. There is no Strata server in between, because there is no Strata server.')}
-
-                    <p style={{
-                      margin: '0 0 1.25rem', fontSize: '0.78rem', color: 'var(--text-tertiary)',
-                      lineHeight: 1.6, maxWidth: '64ch',
-                    }}>
-                      The key is stored in this browser under your own account &mdash; it is not
-                      part of the project, so teammates who open this project will not see it, and
-                      you will not see theirs. It is kept in plain text: anyone who can read this
-                      browser can read it, and unlike a Figma token an API key spends money.
-                    </p>
-
-                    {/* Provider */}
-                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1rem' }} role="radiogroup" aria-label="Model provider">
-                      {LLM_PROVIDERS.map(p => (
-                        <button key={p.id} type="button" className="sf-focus" role="radio"
-                          aria-checked={forgeProvider === p.id}
-                          onClick={() => { setForgeProvider(p.id); clearForgeTest(); refreshForgeKeys(p.id); }}
-                          style={{
-                            padding: '0.45rem 1rem', borderRadius: '999px', fontFamily: 'inherit',
-                            border: '1px solid ' + (forgeProvider === p.id ? 'var(--accent)' : 'var(--border)'),
-                            background: forgeProvider === p.id ? 'var(--accent)' : 'var(--bg-tertiary)',
-                            color: forgeProvider === p.id ? '#fff' : 'var(--text-secondary)',
-                            fontSize: '0.82rem', fontWeight: forgeProvider === p.id ? 600 : 400,
-                            cursor: 'pointer', touchAction: 'manipulation',
-                          }}>{p.label}</button>
-                      ))}
-                    </div>
-
-                    <p style={{ margin: '0 0 1rem', fontSize: '0.78rem', color: 'var(--text-tertiary)', lineHeight: 1.6, maxWidth: '64ch' }}>
-                      {provider.keyHint}
-                      {provider.docsUrl && (
-                        <>
-                          {' '}
-                          <a href={provider.docsUrl} target="_blank" rel="noopener noreferrer"
-                            style={{ color: 'var(--accent)', textDecoration: 'none' }}>Get a key &#8599;</a>
-                        </>
-                      )}
-                    </p>
-
-                    {provider.needsBaseUrl && (
-                      <div style={{ marginBottom: '0.75rem' }}>
-                        <label htmlFor="forge-base" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                          Base URL
-                        </label>
-                        <input id="forge-base" type="text" style={field} autoComplete="off"
-                          placeholder="https://openrouter.ai/api/v1"
-                          value={forgeBaseUrl}
-                          onChange={(e) => { setForgeBaseUrl(e.target.value); clearForgeTest(); }} />
-                      </div>
-                    )}
-
-                    <div className="pd-forge-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                      <div>
-                        <label htmlFor="forge-key" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                          API key
-                        </label>
-                        {/* type=password so it is not shoulder-read, and the value only ever
-                            lives in this field — a saved key is never rendered back. */}
-                        <input id="forge-key" type="password" style={field} autoComplete="off"
-                          placeholder={provider.keyPlaceholder}
-                          value={forgeKeyDraft}
-                          onChange={(e) => { setForgeKeyDraft(e.target.value); clearForgeTest(); }} />
-                      </div>
-                      <div>
-                        <label htmlFor="forge-name" style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                          Name it (optional)
-                        </label>
-                        <input id="forge-name" type="text" style={{ ...field, fontFamily: 'inherit' }} autoComplete="off"
-                          placeholder="Work key"
-                          value={forgeName}
-                          onChange={(e) => setForgeName(e.target.value)} />
-                      </div>
-                    </div>
-
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '1rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={forgeRemember}
-                        onChange={(e) => setForgeRemember(e.target.checked)}
-                        style={{ marginTop: '0.15rem', accentColor: 'var(--accent)' }} />
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                        Remember this key on this device
-                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                          {forgeRemember
-                            ? 'Not encrypted — anyone with access to this browser can read it.'
-                            : 'Kept for this browser tab only.'}
-                        </span>
-                      </span>
-                    </label>
-
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <button type="button" className="sf-focus"
-                        disabled={!forgeKeyDraft.trim() || forgeBusy}
-                        onClick={handleForgeSave}
-                        style={{
-                          padding: '0.5rem 1.1rem', borderRadius: '999px', border: 'none',
-                          background: forgeKeyDraft.trim() ? 'var(--accent)' : 'var(--bg-tertiary)',
-                          color: forgeKeyDraft.trim() ? '#fff' : 'var(--text-tertiary)',
-                          fontSize: '0.82rem', fontWeight: 600, fontFamily: 'inherit',
-                          cursor: forgeKeyDraft.trim() && !forgeBusy ? 'pointer' : 'not-allowed',
-                        }}>
-                        {forgeRemember ? 'Save key' : 'Keep for this tab'}
-                      </button>
-                      <button type="button" className="sf-focus" style={smallBtn}
-                        disabled={forgeBusy || (!forgeKeyDraft.trim() && !sessionKeyHeld)}
-                        onClick={() => handleForgeTest(null)}>
-                        {forgeBusy ? 'Testing…' : 'Test connection'}
-                      </button>
-                      {sessionKeyHeld && !forgeKeyDraft.trim() && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                          A key is held for this tab.
-                        </span>
-                      )}
-                    </div>
-
-                    {forgeNote && (
-                      <p style={{ margin: '0.75rem 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{forgeNote}</p>
-                    )}
-
-                    {/* The result. Every sentence here is keyed off reachedProvider: when the
-                        browser blocked the request we learned nothing about the key, and the
-                        copy must not pretend otherwise. */}
-                    {forgeTest && (
-                      <div style={{
-                        marginTop: '1rem', padding: '0.9rem 1rem', borderRadius: '10px',
-                        background: 'var(--bg-tertiary)',
-                        border: '1px solid ' + (forgeTest.status === 'ok' ? 'rgba(16,185,129,0.35)' : 'var(--border)'),
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          {pill(forgeTest.status === 'ok' ? 'Answered' : forgeTest.reachedProvider ? 'Answered' : 'No answer',
-                            forgeTest.status === 'ok' ? 'on' : 'off')}
-                          <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 500 }}>
-                            {forgeTest.message}
-                          </span>
-                        </div>
-                        {forgeTest.detail && (
-                          <p style={{ margin: '0.5rem 0 0', fontSize: '0.76rem', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', lineHeight: 1.5 }}>
-                            {forgeTest.detail}
-                          </p>
-                        )}
-                        {forgeTest.models.length > 0 && (
-                          <div style={{ marginTop: '0.75rem' }}>
-                            <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.4rem' }}>
-                              What it returned
-                            </div>
-                            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                              {forgeTest.models.slice(0, 12).map(m => (
-                                <span key={m.id} style={{
-                                  fontSize: '0.72rem', fontFamily: 'var(--font-mono)',
-                                  padding: '0.2rem 0.5rem', borderRadius: '6px',
-                                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                                  color: 'var(--text-secondary)',
-                                }}>{m.label}</span>
-                              ))}
-                            </div>
-                            {/* A raw count would flatter: OpenAI's list includes embeddings and
-                                speech models that cannot generate a prototype. */}
-                            <p style={{ margin: '0.5rem 0 0', fontSize: '0.74rem', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-                              {forgeTest.models.length > 12
-                                ? 'The first 12 of ' + forgeTest.models.length + '. '
-                                : ''}
-                              This is everything the key can see, which for some providers includes
-                              embedding and speech models as well as ones that can write code.
-                            </p>
-                          </div>
-                        )}
-                        <p style={{ margin: '0.6rem 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
-                          Checked {relativeTime(forgeTest.checkedAt)} · took {forgeTest.durationMs}ms.
-                          This says the key worked from this browser just now, and nothing beyond that.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Saved keys */}
-                    {forgeSaved.length > 0 && (
-                      <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
-                        <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-tertiary)', fontWeight: 600, marginBottom: '0.6rem' }}>
-                          Saved for {provider.label}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          {forgeSaved.map(k => (
-                            <div key={k.id} className="pd-forge-key-row" style={{
-                              display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
-                              padding: '0.6rem 0.8rem', borderRadius: '8px',
-                              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                            }}>
-                              <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)', fontWeight: 600 }}>{k.name}</span>
-                              <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>
-                                {maskSecret(k.secret)}
-                              </span>
-                              <span style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
-                                used {relativeTime(k.lastUsedAt)}
-                              </span>
-                              <div style={{ flex: 1 }} />
-                              <button type="button" className="sf-focus" style={smallBtn}
-                                disabled={forgeBusy}
-                                onClick={() => handleForgeTest(k.id)}>Test</button>
-                              <button type="button" className="sf-focus" style={smallBtn}
-                                onClick={() => handleForgeDelete(k.id)}>Delete</button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                {/* Connecting is something you do once, so the panel lives behind the
+                    gear menu rather than sitting in the workspace permanently. It is still
+                    the only way to change provider, add a second key or delete one — and
+                    until the first key exists it is the whole page. */}
+                {(!forgeAnyKey || forgeKeysOpen) && (
+                  <div style={{ ...card, padding: 0, overflow: 'hidden', flexShrink: 0 }}>
+                    <ConnectPanel
+                      entry={forgeEntry}
+                      connected={forgeConnectedEntries}
+                      checkingId={forgeBusy && forgeEntry ? forgeEntry.id : ''}
+                      onChoose={handleForgeChooseEntry}
+                      onBack={() => { setForgeDirEntry(''); clearForgeTest(); }}
+                      onClose={forgeAnyKey ? () => setForgeKeysOpen(false) : null}
+                      provider={provider}
+                      baseUrl={forgeBaseUrl}
+                      onBaseUrl={(v) => { setForgeBaseUrl(v); clearForgeTest(); }}
+                      keyDraft={forgeKeyDraft}
+                      onKeyDraft={(v) => { setForgeKeyDraft(v); clearForgeTest(); }}
+                      name={forgeName}
+                      onName={setForgeName}
+                      remember={forgeRemember}
+                      onRemember={setForgeRemember}
+                      busy={forgeBusy}
+                      sessionKeyHeld={sessionKeyHeld}
+                      note={forgeNote}
+                      test={forgeTest}
+                      saved={forgeSaved}
+                      onSave={handleForgeSave}
+                      onTest={handleForgeTest}
+                      onDelete={handleForgeDelete}
+                    />
                   </div>
                 )}
               </div>

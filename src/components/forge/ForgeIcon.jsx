@@ -16,8 +16,20 @@ import chevronDown from '../../assets/forge/chevron-down.svg';
 import plus from '../../assets/forge/plus.svg';
 import search from '../../assets/forge/search.svg';
 import chevronRight from '../../assets/forge/chevron-right.svg';
+import xCircle from '../../assets/forge/x-circle.svg';
+import brain from '../../assets/forge/brain.svg';
+import shuffle from '../../assets/forge/shuffle.svg';
+import arrowUpRight from '../../assets/forge/arrow-up-right.svg';
+import zap from '../../assets/forge/zap.svg';
+import moon from '../../assets/forge/moon.svg';
+import users from '../../assets/forge/users.svg';
+import sparkles from '../../assets/forge/sparkles.svg';
 
-const SOURCES = { eye, code, laptop, phone, settings, chevronDown, plus, search, chevronRight };
+const SOURCES = {
+  eye, code, laptop, phone, settings, chevronDown, plus, search, chevronRight,
+  // The connect screen's provider glyphs, from the same file.
+  xCircle, brain, shuffle, arrowUpRight, zap, moon, users, sparkles,
+};
 
 export default function ForgeIcon({ name, size = 16, style }) {
   const src = SOURCES[name];
